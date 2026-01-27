@@ -1,0 +1,48 @@
+# Core Dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-ai==0.0.14
+
+# Document Processing
+docling==2.0.0
+pypdf2==3.0.1
+python-multipart==0.0.6
+
+# RAG and Knowledge Graphs
+lightrag==0.1.0
+graphiti==0.2.0
+neo4j==5.15.0
+chromadb==0.4.22
+
+# Models and Translation
+openai==1.6.1
+anthropic==0.8.1
+transformers==4.36.0
+sentence-transformers==2.2.2
+
+# Evaluation and Monitoring
+deepeval==0.20.0
+opik==1.0.0
+langchain==0.1.0
+langchain-openai==0.0.5
+
+# Database
+sqlalchemy==2.0.23
+sqlite3
+
+# UI and Interface
+chainlit==1.0.0
+streamlit==1.29.0
+
+# Utilities
+python-dotenv==1.0.0
+loguru==0.7.2
+tqdm==4.66.1
+rich==13.7.0
+click==8.1.7
+
+# Development
+pytest==7.4.3
+black==23.11.0
+flake8==6.1.0
