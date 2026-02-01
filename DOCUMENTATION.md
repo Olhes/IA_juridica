@@ -474,3 +474,27 @@ curl -X POST "http://localhost:8000/evaluate-system"
 ---
 
 **🎉 IA Jurídica v2.0: Sistema legal bilingüe con procesamiento inteligente de documentos y calidad garantizada.**
+
+
+informacion en pdf sobre
+
+-sobre Violencia Física o Psicológica
+-Pensión de Alimentos(Omisión a la Asistencia)
+-Medidas de protección
+-Régimen de Visitas y Tenencia
+-Denuncias y Procesos Judiciales
+-Filiación (Reconocimiento de hijos): En zonas rurales hay muchos casos de niños no reconocidos legalmente, lo que impide pedir alimentos.
+-Derecho a la Identidad (DNI): Sin DNI no hay proceso judicial. Es la base de todo.
+
+
+individualmente lo maximo posible
+
+con estos requisitos de documentacion:
+
+- Normativa simplificada (artículos clave en lenguaje claro)
+- Guías procesales (pasos concretos)
+- Formatos y modelos (demandas, denuncias)
+- Jurisprudencia relevante (casos similares)
+- Directorios institucionales (dónde denunciar)
+
+O tal vez podría compartirme fuentes oficiales y validadas de donde podría obtener o sacarlo segun esos requisitos
