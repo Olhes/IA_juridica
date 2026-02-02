@@ -1,3 +1,4 @@
+# Python 3.12.10
 # Core Dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0

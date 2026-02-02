@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ia-juridica"
+version = "2.0.0"
+description = "Asistente virtual bilingüe (quechua-español) para consultas de derecho digital"
+authors = [
+    {name = "IA Jurídica Team"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Legal Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.12.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business :: Legal",
+]
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "pydantic==2.5.0",
+    "pydantic-ai==0.0.14",
+    "docling==2.0.0",
+    "pypdf2==3.0.1",
+    "python-multipart==0.0.6",
+    "lightrag==0.1.0",
+    "graphiti==0.2.0",
+    "neo4j==5.15.0",
+    "chromadb==0.4.22",
+    "openai==1.6.1",
+    "anthropic==0.8.1",
+    "transformers==4.36.0",
+    "sentence-transformers==2.2.2",
+    "deepeval==0.20.0",
+    "opik==1.0.0",
+    "langchain==0.1.0",
+    "langchain-openai==0.0.5",
+    "sqlalchemy==2.0.23",
+    "chainlit==1.0.0",
+    "streamlit==1.29.0",
+    "python-dotenv==1.0.0",
+    "loguru==0.7.2",
+    "tqdm==4.66.1",
+    "rich==13.7.0",
+    "click==8.1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "black==23.11.0",
+    "flake8==6.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ia-juridica/ia-juridica"
+Repository = "https://github.com/ia-juridica/ia-juridica"
+Documentation = "https://github.com/ia-juridica/ia-juridica/blob/main/DOCUMENTATION.md"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
