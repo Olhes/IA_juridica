@@ -4,10 +4,16 @@ from enum import Enum
 from datetime import datetime
 import asyncio
 from loguru import logger
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 try:
     from pydantic_ai import Agent, RunContext
     from pydantic_ai.models.openai import OpenAIModel
+    from pydantic_ai.providers.openai import OpenAIProvider
     PYDANTIC_AI_AVAILABLE = True
 except ImportError:
     logger.warning("Pydantic AI no disponible. Usando implementación simulada.")
@@ -114,7 +120,7 @@ class LegalAgent:
         """Inicializa el agente con Pydantic AI"""
         
         # Configurar modelo OpenAI
-        model = OpenAIModel('gpt-4', api_key='your-api-key-here')
+        model = OpenAIModel('gpt-4',provider= OpenAIProvider(api_key=os.getenv('OPENAI_API_KEY')))
         
         # Definir dependencias
         deps_type = type('Deps', (), {

@@ -9,8 +9,9 @@ import argparse
 from pathlib import Path
 from loguru import logger
 
-# Agregar directorio raíz al path
-sys.path.append(str(Path(__file__).parent.parent))
+# Agregar el directorio backend al path
+backend_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(backend_dir))
 
 from ingestion.pipeline import LegalIngestionPipeline
 from config.settings import settings

@@ -4,9 +4,10 @@ from typing import Dict, List, Any
 from loguru import logger
 from tqdm import tqdm
 
-from .docling_processor import LegalPDFProcessor
-from ..rag.lightrag_engine import LegalRAGEngine
-from ..utils.file_utils import FileUtils
+from ingestion.docling_processor import LegalPDFProcessor
+from rag.lightrag_engine import LegalRAGEngine
+from utils.file_utils import FileUtils
+from config.settings import settings
 
 class LegalIngestionPipeline:
     """Pipeline completo para ingesta de documentos legales"""
