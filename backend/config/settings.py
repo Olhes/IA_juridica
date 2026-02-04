@@ -159,7 +159,11 @@ class Settings(BaseSettings):
         return {
             "valid": len(issues) == 0,
             "issues": issues,
-            "warnings": warnings
+            "warnings": warnings,
+            "configuration_summary":{
+                "app_name":self.APP_NAME,
+                "version":self.APP_VERSION
+            }
         }
 
 settings = Settings()
