@@ -119,8 +119,8 @@ class LegalAgent:
     def _initialize_pydantic_agent(self):
         """Inicializa el agente con Pydantic AI"""
         
-        # Configurar modelo OpenAI
-        model = OpenAIModel('gpt-4',provider= OpenAIProvider(api_key=os.getenv('OPENAI_API_KEY')))
+        # Configurar modelo OpenAI - usando gpt-4o-mini (más accesible y económico)
+        model = OpenAIModel('gpt-4o-mini', provider=OpenAIProvider(api_key=os.getenv('OPENAI_API_KEY')))
         
         # Definir dependencias
         deps_type = type('Deps', (), {

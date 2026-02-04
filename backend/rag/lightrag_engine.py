@@ -6,12 +6,12 @@ from loguru import logger
 
 try:
     from lightrag import LightRAG, QueryParam
-    from lightrag.llm import gpt_4o_complete, gpt_4o_mini_complete
     from lightrag.utils import EmbeddingFunc
     LIGHTRAG_AVAILABLE = True
-except ImportError:
-    logger.warning("LightRAG no disponible. Usando implementación simulada.")
+except Exception as e:
+    logger.warning(f"LightRAG no disponible: {e}")
     LIGHTRAG_AVAILABLE = False
+
 
 class LegalRAGEngine:
     """Motor RAG especializado para documentos legales con LightRAG"""
@@ -19,24 +19,29 @@ class LegalRAGEngine:
     def __init__(self, working_dir: str = "./docs/knowledge_graph"):
         self.working_dir = Path(working_dir)
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        
+    
+        self.documents = {}   # ← SIEMPRE
+        self.embeddings = {}
+        self.rag = None  # Inicializar como None
+        self._storages_initialized = False  # Flag para rastrear inicialización
+    
         if LIGHTRAG_AVAILABLE:
             self._initialize_lightrag()
-        else:
-            self.documents = {}  # Implementación fallback
-            self.embeddings = {}
-        
+    
         logger.info(f"LegalRAG Engine inicializado en {working_dir}")
+
     
     def _initialize_lightrag(self):
         """Inicializa LightRAG con configuración para documentos legales"""
         
         # Configurar función de embedding
-        async def embedding_func(texts: List[str]) -> List[List[float]]:
+        async def embedding_func(texts: List[str]):
             """Función de embedding para textos legales"""
             # Aquí usarías un modelo de embeddings real
             # Por ahora, simulación simple
             import hashlib
+            import numpy as np
+            
             embeddings = []
             for text in texts:
                 # Simulación de embedding basado en hash
@@ -48,7 +53,9 @@ class LegalRAGEngine:
                 while len(embedding) < 768:
                     embedding.append(0.0)
                 embeddings.append(embedding[:768])
-            return embeddings
+            
+            # LightRAG requiere numpy array, no lista
+            return np.array(embeddings, dtype=np.float32)
         
         # Configurar función LLM
         async def llm_func(prompt: str, **kwargs) -> str:
@@ -70,41 +77,83 @@ class LegalRAGEngine:
         
         logger.info("LightRAG inicializado correctamente")
     
+    async def initialize_storages(self):
+        """
+        Inicializa los storages de LightRAG de forma asíncrona
+        REQUERIDO por LightRAG para evitar StorageNotInitializedError
+        """
+        try:
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                if not self._storages_initialized:
+                    await self.rag.initialize_storages()
+                    self._storages_initialized = True
+                    logger.info("LightRAG storages inicializados correctamente")
+                else:
+                    logger.debug("Storages ya inicializados, saltando...")
+            else:
+                logger.info("LightRAG no disponible, usando modo fallback")
+                self._storages_initialized = True  # Marcar como inicializado en modo fallback
+        except Exception as e:
+            logger.error(f"Error inicializando storages: {e}")
+            # Marcar como inicializado para evitar reintentos infinitos
+            self._storages_initialized = True
+    
+    async def _ensure_storages_initialized(self):
+        """Asegura que los storages estén inicializados antes de cualquier operación"""
+        if not self._storages_initialized:
+            logger.info("Storages no inicializados, inicializando ahora...")
+            await self.initialize_storages()
+    
     async def add_document(self, content: str, metadata: Dict[str, Any], document_id: str):
         """Agrega un documento al sistema RAG"""
         
         try:
-            if LIGHTRAG_AVAILABLE:
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                # Asegurar que los storages estén inicializados ANTES de cualquier operación
+                await self._ensure_storages_initialized()
+                
+                # Ahora sí, insertar el documento
                 await self.rag.ainsert(content)
                 logger.info(f"Documento {document_id} agregado a LightRAG")
-            else:
-                # Implementación fallback
-                self.documents[document_id] = {
-                    "content": content,
-                    "metadata": metadata,
-                    "chunks": self._chunk_content(content)
-                }
-                logger.info(f"Documento {document_id} guardado localmente")
+            
+            # SIEMPRE guardar en fallback local también (para búsqueda rápida)
+            self.documents[document_id] = {
+                "content": content,
+                "metadata": metadata,
+                "chunks": self._chunk_content(content)
+            }
+            
+            if not LIGHTRAG_AVAILABLE or self.rag is None:
+                logger.info(f"Documento {document_id} guardado localmente (modo fallback)")
                 
         except Exception as e:
             logger.error(f"Error agregando documento {document_id}: {str(e)}")
-            raise
+            # Fallback a almacenamiento local en caso de error
+            self.documents[document_id] = {
+                "content": content,
+                "metadata": metadata,
+                "chunks": self._chunk_content(content)
+            }
+            logger.info(f"Documento {document_id} guardado en modo fallback debido a error")
     
-    async def query(self, question: str, param: str = "Similarity") -> Dict[str, Any]:
+    async def query(self, question: str, param: str = "naive") -> Dict[str, Any]:
         """
         Realiza una consulta al sistema RAG
         
         Args:
             question: Pregunta del usuario
-            param: Tipo de consulta (Similarity, Naive, Local)
+            param: Tipo de consulta (naive, local, global, hybrid)
             
         Returns:
             Dict con respuesta y fuentes
         """
         
         try:
-            if LIGHTRAG_AVAILABLE:
-                # Usar LightRAG real
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                # Asegurar que los storages estén inicializados
+                await self._ensure_storages_initialized()
+                
+                # Usar LightRAG real con modo válido
                 result = await self.rag.aquery(
                     question, 
                     param=QueryParam(mode=param)
@@ -122,12 +171,16 @@ class LegalRAGEngine:
                 
         except Exception as e:
             logger.error(f"Error en consulta RAG: {str(e)}")
-            return {
-                "answer": "No se pudo procesar la consulta en este momento.",
-                "sources": [],
-                "confidence": 0.0,
-                "error": str(e)
-            }
+            # Intentar fallback
+            try:
+                return await self._fallback_query(question)
+            except:
+                return {
+                    "answer": "No se pudo procesar la consulta en este momento.",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "error": str(e)
+                }
     
     async def _fallback_query(self, question: str) -> Dict[str, Any]:
         """Implementación fallback de consulta"""
@@ -229,7 +282,8 @@ class LegalRAGEngine:
         """Reconstruye el índice RAG"""
         
         try:
-            if LIGHTRAG_AVAILABLE:
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                await self._ensure_storages_initialized()
                 # LightRAG maneja el índice automáticamente
                 logger.info("Índice LightRAG reconstruido")
             else:
@@ -244,7 +298,9 @@ class LegalRAGEngine:
         """Obtiene datos del grafo de conocimiento para visualización"""
         
         try:
-            if LIGHTRAG_AVAILABLE:
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                await self._ensure_storages_initialized()
+                
                 # Extraer grafo de LightRAG
                 graph_data = await self.rag.graph_storage.get_all_edges()
                 
@@ -290,9 +346,10 @@ class LegalRAGEngine:
     async def list_documents(self) -> List[Dict[str, Any]]:
         """Lista todos los documentos en el sistema"""
         
-        if LIGHTRAG_AVAILABLE:
+        if LIGHTRAG_AVAILABLE and self.rag is not None:
             # Obtener documentos de LightRAG
             try:
+                await self._ensure_storages_initialized()
                 docs = await self.rag.doc_storage.get_all_documents()
                 return [
                     {
@@ -323,7 +380,8 @@ class LegalRAGEngine:
         """Elimina un documento del sistema"""
         
         try:
-            if LIGHTRAG_AVAILABLE:
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                await self._ensure_storages_initialized()
                 # Implementar eliminación en LightRAG
                 # Por ahora, solo fallback
                 pass
@@ -375,6 +433,7 @@ class LegalRAGEngine:
             "total_documents": len(self.documents),
             "total_chunks": sum(len(doc["chunks"]) for doc in self.documents.values()),
             "lightrag_available": LIGHTRAG_AVAILABLE,
+            "storages_initialized": self._storages_initialized,
             "working_directory": str(self.working_dir),
             "documents_by_type": {}
         }

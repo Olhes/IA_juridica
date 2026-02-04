@@ -1,38 +1,70 @@
 from docling.document_converter import DocumentConverter
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
 from pathlib import Path
-import json
-from typing import Optional, Dict, Any
+from typing import Dict, Any
+import asyncio
 
 class LegalPDFProcessor:
-    """Procesador de PDFs legales usando Docling"""
+    """Procesador de PDFs legales usando Docling 2.5.2"""
     
     def __init__(self, output_dir: str = "./docs/processed"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Configurar opciones del pipeline
-        pipeline_options = PdfPipelineOptions()
-        pipeline_options.do_ocr = True
-        pipeline_options.do_table_structure = True
-        
+        # Inicializar converter SIN pipeline_options para Docling 2.5.2
+        # La versión 2.5.2 NO soporta PdfPipelineOptions con backend
         self.converter = DocumentConverter(
-            allowed_formats=[InputFormat.PDF],
-            format_options={
-                InputFormat.PDF: pipeline_options
-            }
+            allowed_formats=[InputFormat.PDF]
         )
     
-    def process_pdf(self, pdf_path: str) -> Dict[str, Any]:
-        """Procesa un PDF y extrae estructura legal"""
+    async def process_pdf(self, pdf_path: str) -> str:
+        """
+        Procesa un PDF y retorna el contenido en markdown (asíncrono)
+        
+        Args:
+            pdf_path: Ruta al archivo PDF
+            
+        Returns:
+            str: Contenido procesado en markdown
+        """
         pdf_path = Path(pdf_path)
         
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
         
-        # Convertir documento
-        result = self.converter.convert(pdf_path)
+        # Ejecutar conversión en thread pool para no bloquear event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, self.converter.convert, pdf_path)
+        
+        # Extraer contenido como markdown
+        markdown_content = result.document.export_to_markdown()
+        
+        # Guardar markdown procesado
+        output_file = self.output_dir / f"{pdf_path.stem}.md"
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+        
+        # Retornar solo el markdown como espera main.py línea 95
+        return markdown_content
+    
+    async def process_pdf_detailed(self, pdf_path: str) -> Dict[str, Any]:
+        """
+        Versión detallada que retorna metadata adicional
+        
+        Args:
+            pdf_path: Ruta al archivo PDF
+            
+        Returns:
+            Dict con markdown, metadata y estructura legal
+        """
+        pdf_path = Path(pdf_path)
+        
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
+        
+        # Ejecutar conversión en thread pool para no bloquear event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, self.converter.convert, pdf_path)
         
         # Extraer contenido como markdown
         markdown_content = result.document.export_to_markdown()
@@ -80,8 +112,9 @@ class LegalPDFProcessor:
         
         # Agregar metadatos al inicio
         header = f"""---
-                tipo: documento_legal
-                articulos_encontrados: {len(structure.get('articles', []))}
-                ---
-                """
+tipo: documento_legal
+articulos_encontrados: {len(structure.get('articles', []))}
+---
+
+"""
         return header + markdown

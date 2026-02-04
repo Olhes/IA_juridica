@@ -5,9 +5,13 @@ pydantic>=2.10.0
 pydantic-ai>=0.0.14
 
 # Document Processing
-docling>=2.71.0
+docling==2.5.2  # Versión fija para estabilidad
 pypdf2>=3.0.1
 python-multipart>=0.0.9,<0.0.10
+
+# OpenCV - CONTROL EXPLÍCITO para evitar conflictos
+# (dependencia transitiva de docling → easyocr → opencv)
+opencv-python-headless>=4.6,<4.10  # Compatible con numpy 1.26
 
 # RAG and Knowledge Graphs
 lightrag-hku>=1.4.9
@@ -32,6 +36,9 @@ sqlalchemy>=2.0.36
 # UI and Interface
 chainlit>=1.3.0
 streamlit>=1.40.0
+
+# Numeric Libraries - VERSIÓN COORDINADA
+numpy>=1.26,<2.0  # Requerido por: chainlit, opencv, docling
 
 # Utilities
 python-dotenv>=1.0.0
