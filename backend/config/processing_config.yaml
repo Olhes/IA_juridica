@@ -1,0 +1,46 @@
+# Configuración de procesamiento selectivo de PDFs
+# Descomenta las opciones que quieres usar
+
+# OPCIÓN 1: Procesar por categorías específicas
+categories:
+  # - "pension_alimentos"      # Solo pensiones
+  # - "violencia_familiar"     # Solo violencia familiar
+  # - "regimen_tenencia"        # Solo tenencia
+  # - "manuales quechua"        # Solo manuales quechua
+
+# OPCIÓN 2: Excluir categorías
+exclude_categories:
+  # - "manuales quechua"        # Excluir manuales quechua
+  # - "jurisprudencia"          # Excluir jurisprudencia
+
+# OPCIÓN 3: Procesar por palabras clave
+keywords:
+  # - "guía"
+  # - "manual"
+  # - "formulario"
+  # - "integral"
+
+# OPCIÓN 4: Excluir por palabras clave
+exclude_keywords:
+  # - "análisis"
+  # - "jurisprudencia"
+  # - "casación"
+
+# OPCIÓN 5: Archivos específicos
+specific_files:
+  # - "Pensión_de_Alimentos_Guía_Integral.pdf"
+  # - "Régimen_de_Visitas_Guía_Integral_Perú.pdf"
+  # - "Manual quechua cusco collao administracion de justicia.pdf"
+  # - "Formulario de demanda de alimentos para niños niñas adolescentes.pdf"
+
+# OPCIÓN 6: Límite de archivos
+max_files: 10  # Máximo número de archivos a procesar
+
+# OPCIÓN 7: Forzar reprocesamiento
+force_reprocess: false  # true para ignorar cache
+
+# Configuración de rendimiento
+performance:
+  max_workers: 4
+  timeout_seconds: 300
+  enable_cache: true

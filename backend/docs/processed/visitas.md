@@ -1,59 +1,43 @@
-## Guía sobre el Régimen de Visitas
+## Guia sobre el Regimen de Visitas
 
 <!-- image -->
 
-El régimen de visitas es un derecho fundamental del niño para mantener contacto y fortalecer el vinculo afectivo con el progenitor con el que no convive: Su principal objetivo es garantizar el desarrollo integral, psiquico y emocional del menor, priorizando siempre su interés superior.
+El regimen devisitases un derecho fundamental del ninopara mantenercontactoyfortalecer el vinculo afectivocon elprogenitorcon el que no convive.Suprincipal objetivo esgarantizar el desarrollointegral,psiquicoyemocional delmenor,priorizandosiempresuinteressuperior.
 
-## iCómo se establece el Régimen de Visitas?
+## &amp;Como se estableceel Regimen deVisitas?
 
-## Modalidades y Aspectos Clave
+## Es un derecho del nino
 
-## Es un derecho del niño
+Sufinalidadesconservarlosvinculosafectivos del menorconambospadres.
+
+Via 1:Conciliaci6n Extrajudicial
+
+Es la viamasrapida yflexible
+
+Via2:
+
+ProcesoJudicial
+
+Sinohayacuerdo,unjuez defamiliafijaelregimen devisitas.
+
+## Modalidadesy Aspectos Clave
 
 ## Tipos de Visitas
 
-Su finalidad es conservar los vínculos afectivos del menor con ambos padres.
-
-<!-- image -->
-
-Vía I: Conciliación Extrajudicial
-
-Vía 2: Proceso Judicial
-
-<!-- image -->
-
-Es la vía más rápida y flexible
-
-El no pagar la pensión de alimentos no elimina el derecho a las visitas.
-
-Con externamiento (fuera de casa)
-
-<!-- image -->
-
-<!-- image -->
-
-<!-- image -->
-
 Supervisadas
 
-<!-- image -->
+Con externamiento (fuera de casa)
 
 Virtuales
 
 Con pernocta
 
-## iQué pasa si se incumple?
+## &amp;Que pasa si se incumple?
 
-El incumplimiento reiterado del régimen de visitas puede generar la variación de la tenencia.
+Elincumplimientoreiteradodelregimendevisitas puedegenerarlavariaciondelatenencia.
 
-## Visitas y Pensión de Alimentos
+## Visitas y Pension de Alimentos
+
+Elnopagarlapensionde alimentosnoelimina el derecho alasvisitas.
 
 NotebookLM
-
-Si no hay acuerdo; un juez de familia fija el régimen de visitas.
-
-<!-- image -->
-
-<!-- image -->
-
-<!-- image -->

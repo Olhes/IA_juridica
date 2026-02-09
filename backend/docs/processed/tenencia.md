@@ -1,8 +1,8 @@
-## Tipos de Tenencia de Hijos en el Perú
+## Tipos de Tenencia de eHijosen el Peru
 
-Clasificación de la tenencia de menores según su duración yla forma en que se ejerce en la legislación peruana.
+Clasificacion de la tenencia de menores segun su duracion ylaformaenqueseejerceenlalegislacionperuana.
 
-CLASIFICACIÓN SEGÚN EL TIEMPO
+## CLASIFICACION SEGUN ELTIEMPO
 
 <!-- image -->
 
@@ -10,30 +10,28 @@ CLASIFICACIÓN SEGÚN EL TIEMPO
 
 ## Tenencia Definitiva
 
-Se establece por sentencia judicial 0 acuerdo conciliatorio y requiere un nuevo proceso para modificarse.
+Seestableceporsentenciajudicialo acuerdoconciliatorioyrequiereun nuevoprocesoparamodificarse.
 
 ## Tenencia Provisional
 
-Medida temporal otorgada durante un proceso judicial para garantizar el bienestar del menor.
+Medida temporalotorgadaduranteun proceso judicialparagarantizarel bienestardel menor.
 
-## CLASIFICACIÓN SEGÚN EL EJercicio
+## CLASIFICACION SEGUN ELEJERCICIO
 
 <!-- image -->
 
 ## Tenencia Conjunta
 
-Ocurre cuando ambos padres conviven en el mismo hogar con suS hijos.
+Ocurre cuando ambospadres convivenenelmismohogarcon sus hijos.
 
-## Tenencia Compartida
+Tenencia Compartida Padresseparadosparticipan activamenteenlaconvivencia y desarrollo del hijo.
 
-Padres separados participan activamente en la convivencia y desarrollo del hijo.
-
-<!-- image -->
+Tenencia Exclusiva
 
 <!-- image -->
 
-## Tenencia Exclusiva
+<!-- image -->
 
-Solo un progenitor convive con el hijo y toma las decisiones cotidianas sobre su cuidado.
+Solo unprogenitorconvivecon elhijoytomalasdecisiones cotidianas sobre su cuidado.
 
 NotebookLM

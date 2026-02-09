@@ -1,222 +1,185 @@
 <!-- image -->
 
-## Tipos de Tenencia enel Perú: Un Análisis Estructural
+## Tipos de Tenencia en el Peru: Un Analisis Estructural
 
 ## LP Red
 
-Glasificación por Tiempo y Ejercicio basada en la obra de Bruno Fernando Avalos Pretell
+Clasificacion por Tiempo y Ejercicio basada en la obra de Bruno Fernando Avalos Pretell
 
-LP PASIÓN POR EL DERECHO ESCUELA DE DERECHO LP
+## La arquitectura juridica de la tenencia familiar
 
-NotebookLM
-
-## La arquitectura jurídica de la tenencia familiar
-
-La doctrina ha desarrollado una tipología específica para entender la custodia, dividiéndola en dos ejes fundamentales:
+La doctrina ha desarrollado una tipologia especifica para entender la custodia, dividiéndola en dos ejes fundamentales:
 
 <!-- image -->
 
-NotebookLM
+## Tenencia Definitiva: La busqueda de estabilidad
 
-## Tenencia Definitiva: La búsqueda de estabilidad
+## Definicion y Caracter
 
-## Definición y Carácter
+Esaquellasustentadaenuna sentencia judicial o un acuerdo conciliatorio.
 
-Es aquella sustentada en una sentencia judicial 0 un acuerdo conciliatorio.
+Se denomina"definitiva" porque su variacion requiere un nuevo acto juridico (un nuevoprocesoo conciliacion).
 
-Se denomina "definitiva" porque su variación requiere un nuevo acto jurídico (un nuevo proceso 0 conciliación).
+## Marco Legal (Art. 81 Codigo de los Ninos y Adolescentes)
 
-## Marco Legal (Art. 81 Código de los Niños y Adolescentes)
-
-Si no hay acuerdo; el juez debe otorgar como primera opción la Tenencia Compartida. Excepcionalmente; se otorga la Tenencia Exclusiva; siempre salvaguardando el interés superior del niño.
-
-NotebookLM
+Si no hay acuerdo, el juez debeotorgarcomoprimera opcion la Tenencia Compartida. Excepcionalmente, se otorga la Tenencia Exclusiva, siempre salvaguardando el interés superior del nino.
 
 <!-- image -->
 
-## Tenencia Provisional: Medidas anticipadas de protección
+## Tenencia Provisional: Medidas anticipadas de proteccion
 
-- Definición: Medida cautelar concedida durante el proceso judicial para garantizar el bienestar inmediato del menor antes de la sentencia final.
-- Criterio Clave: Se otorga al progenitor que pueda tutelar mejor las necesidades materiales y espirituales del niño mientras dure el litigio.
-- Legitimidad: Solo puede ser solicitada por el progenitor que no ejerce la tenencia de hecho 0 de derecho en ese momento.
+- Definicion:Medida cautelar concedida durante el proceso judicial para garantizar el bienestar inmediato del menor antes de la sentencia final.
+- Criterio Clave: Se otorga al progenitor que pueda tutelar mejor las necesidades materiales y espirituales del nino mientras dure el litigio.
+- Legitimidad: Solo puede ser solicitada por el progenitor que no ejerce la tenencia de hecho o de derecho en ese momento.
 
 <!-- image -->
-
-NotebookLM
 
 ## El factor urgencia en la Tenencia Provisional
 
 <!-- image -->
 
-Justificación: Minoría de edad requiere cuidado especial permanente
-
 <!-- image -->
 
-Justificación: Se requiere contradictorio previo para identificar al padre idóneo.
+Justificacion: Se requiere contradictorio previo para identificar al padre idoneo.
 
-NotebookLM
+## Tenencia Conjunta: La convivencia simultanea
 
-## Tenencia Conjunta: La convivencia simultánea
-
-- Se da cuando ambos padres conviven con SUS hijos, ejerciendo conjuntamente el derecho-deber.
-- Implica la inexistencia de separación (ni divorcio; ni separación de cuerpos; ni separación de hecho).
-- En este escenario; los padres ejercen simultáneamente todos los atributos de la patria potestad (personales y patrimoniales) .
+- Se da cuando ambos padres conviven con sus hijos, ejerciendo conjuntamente el derecho-deber.
+- Implica la inexistencia de separacion (ni divorcio, ni separacion de cuerpos, ni separacion de hecho).
+- En este escenario, los padres ejercen simultaneamente todos los atributos de la patria potestad (personales y patrimoniales).
 
 <!-- image -->
-
-NotebookLM
 
 ## Tenencia Compartida: Hacia la coparentalidad
 
-Concepto Central: Mamá y son responsables y tienen autoridad por el cuidado ejercido, manteniendo la "apariencia de una familia incólume" (Marisol Fernández Revoredo). papá
+Figura del Derecho Anglosajon que permite a los menores disfrutar de la convivencia con ambos padres a pesar de la separacion.
 
-Efecto: Ambos progenitores intervienen activamente en el desarrollo social, físico y emocional del hijo.
+Concepto Central: Mama y papa son responsables y tienen autoridad por el cuidadoejercido,manteniendo la 'apariencia de una familia incolume"(Marisol Fernandez Revoredo).
 
-Figura del Derecho Anglosajón que permite a los menores disfrutar de la convivencia con ambos padres a pesar de la separación.
-
-<!-- image -->
-
-NotebookLM
-
-## La filosofía detrás del régimen compartido
+Efecto: Ambos progenitores intervienen activamente en el desarrollo social, fisico y emocional del hijo.
 
 <!-- image -->
 
-"La tenencia compartida es más que una institución legal, es una entidad resultante de un proceso sociocultural:
+## La filosofia detras del regimen compartido
 
-Fermín Romero
+<!-- image -->
 
-Principios Rectores
+"La tenencia compartida es mas que una institucion legal, es una entidad resultante de un proceso sociocultural."
 
-Derecho del Menor
-
-Equilibrio
-
-Vínculo Parental
-
-Derecho del Menor Aser cuidado por ambos padres.
+—Fermin Romero
 
 Equilibrio
+
+## Equilibrio
 
 Reparto equitativo de derechos y deberes.
 
-La separación pone fin a la pareja; no alos padres.
+## Principios Rectores
 
-Requisitos Prácticos: Proximidad de domicilios; diálogo fluido y equilibrio emocional.
+Derecho del Menor
 
-NotebookLM
+## Derechodel Menor
+
+Asercuidadopor ambos padres.
 
 Vinculo Parental
 
-## Ventajas y Desafíos de la Tenencia Compartida
+Vinculo Parental
+
+La separacion ponefin a la pareja, no a los padres.
+
+Requisitos Practicos: Proximidad de domicilios, dialogo fluido y equilibrio emocional.
+
+## Ventajas y Desafios de la Tenencia Compartida
 
 ## BENEFICIOS
 
-## DESAFIOS
-
 - Convivencia igualitaria.
-- Disminución de conflictos de lealtades en el niño.
+- Disminucion de conflictos de lealtades en el nino.
 - Equilibrio en los gastos de crianza.
+- Mejora en la comunicacion parental.
 
-Necesidad de trabajos con horarios flexibles.
-
-<!-- image -->
-
-Mejora en la comunicación parental.
-
-Requiere proximidad geográfica obligatoria.
+## DESAFiOS
 
 <!-- image -->
 
-<!-- image -->
+- Adaptacion material (doble casa, reglas, habitos).
+- Altos costos economicos.
+- Necesidad de trabajos con horarios flexibles.
+- Requiere proximidad geografica obligatoria.
 
 <!-- image -->
 
 <!-- image -->
 
-Adaptación material (doble casa, reglas, hábitos) .
-
-Altos costos económicos.
-
-NotebookLM
+<!-- image -->
 
 ## Tenencia Exclusiva: El modelo monoparental
 
-Definición: Solo uno de los progenitores cohabita con el hijo (sin importar si hubo matrimonio 0 convivencia previa).
+Definicion: Solo uno de los progenitores cohabita con el hijo (sin importar si hubo matrimonio o convivencia previa).
 
-Poder de Decisión: El progenitor custodio está facultado para decidir sobre aspectos de la custodia sin necesitar autorización previa del otro padre.
+Poder de Decision: El progenitor custodio esta facultado para decidir sobre aspectos de la custodia sin necesitar autorizacion previa del otro padre.
 
-Contexto Histórico: Antes de la Ley 29269, esta era la única forma legal de resolver conflictos de convivencia en el Perú.
+Contexto Historico: Antes de la Ley 29269, esta era la unica forma legal de resolver conflictos de convivencia en el Peru.
 
 <!-- image -->
 
-NotebookLM
-
-## El Régimen de Relación (Visitas)
+## El Regimen de Relacion (Visitas)
 
 ## La otra cara de la Tenencia Exclusiva
 
 - Concepto: El padre que no ejerce la tenencia exclusiva mantiene el derecho a "relacionarse" con su hijo.
-- La Dinámica: Genera un dualismo donde un padre asume la carga diaria y otro se relaciona solo "algunos días" yel
-- El Conflicto Legal: El Art. 88 del Código de los Niños y Adolescentes condiciona este derecho al pago de la pensión de alimentos.
+- La Dinamica: Genera un dualismo donde un padre asume la carga diaria y y el otro se relaciona solo "algunos dias".
+- El Conflicto Legal: El Art. 88 del Codigo de los Ninos y Adolescentes condiciona este derecho al pago de la pension de alimentos.
 
 <!-- image -->
 
-NotebookLM
+## Polemica: Deuda alimentaria vs. Derecho de relacion?
 
-## Polémica: àDeuda alimentaria vs. Derecho de relación?
+## LA NORMA -ART.88
 
-## LA NORMA = ART. 88
+Exige que el padre sin tenenciaacrediteestar al dia en la pension de alimentos para poder exigir su regimen de visitas.
 
-## LA CRITICA
-
-Exige que el padre sin tenencia acredite estar al día en la pensión de alimentos para exigir su régimen de visitas. poder
-
-Lógica Tradicional: No se puede premiar al deudor con ver a su hijo.
-
-Bruno Avalos Pretell cuestiona severamente esta exigencia.
-
-Argumento: La deuda económica no debe condicionar el vínculo afectivo.
-
-NotebookLM
+Logica Tradicional: No sepuede premiar al deudor con ver a su hijo.
 
 <!-- image -->
 
-## El &lt;Doble Castigo" según Avalos Pretell
+## LA CRiTICA
 
-Impedir las visitas por deuda no solo castiga al padre moroso; sino ESPECIALMENTE AL NIÑO.
+BrunoAvalosPretell cuestiona severamenteesta exigencia.
+
+Argumento: La deuda economica no debe condicionarelvinculo afectivo.
+
+## El "Doble Castigo" s segunA Avalos Pretell
+
+## Impedir las visitas por deuda no solo castiga al padre moroso, sinoESPECIALMENTE AL NINO
 
 ## Derechos Vulnerados del Menor:
 
-- 1. Derecho a la Identidad Dinámica.
-- 2 Integridad psicológica.
+1. Derecho a la Identidad Dinamica.
+2. Integridad psicologica.
+3. Dignidad humana.
 
 <!-- image -->
 
-- 3. Dignidad humana.
+El derecho de relacion es titularidad del nino, no solo del padre. Restringirlo por motivos economicos dana el desarrollo integral del menor.
 
-El derecho de relación es titularidad del niño, no solo del padre. Restringirlo por motivos económicos daña el desarrollo integral del menor.
-
-NotebookLM
-
-## Evolución Normativa en el Perú
+## Evolucion Normativa en el Peru
 
 <!-- image -->
 
-Tendencia: De la "autoridad de uno" a la "corresponsabilidad de ambos"
-
-NotebookLM
+Tendencia: De la "autoridad de uno" a la"corresponsabilidad de ambos".
 
 ## Profundiza en el Derecho de Familia
 
-Para un análisis detallado sobre Alienación Parental, Variación de Tenencia y Divorcio Incausado; consulte la obra completa.
+Para un analisis detallado sobre Alienacion Parental, Variacion de Tenencia y Divorcio Incausado, consulte la obra completa.
 
-Recurso: Libro "Derecho de Familia: Temas Polémicos" Polémicos" de Bruno Fernando Avalos Pretell.
+Recurso: Libro "Derecho de Familia: Temas Polémicos' Polémicos"de Bruno Fernando Avalos Pretell.
 
-## Oportunidad Académica:
+## Oportunidad Academica:
 
-Diplomado en Derecho de familia y procesal familiar en LP Pasión por el Derecho.
+Diplomado en Derecho de familia y procesal familiar en LP·Pasion por el Derecho.
 
 <!-- image -->
 
-NotebookLM
+<!-- image -->
