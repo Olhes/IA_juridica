@@ -205,7 +205,7 @@ PDF (local o cloud) → Docling → Markdown estructurado → LightRAG → Grafo
    upload/pipeline   docling_processor   processed md     add_document     knowledge_graph
 ```
 
-### 🤖 Flujo de Consulta Legal
+### 🤖 Flujo de Consulta Legal v2.0 (con Context Engineering)
 ```
 Usuario → Next.js UI → Use Case/Gateway → API Route Next (BFF) → FastAPI /legal-query
     ↓           ↓             ↓                 ↓                     ↓
