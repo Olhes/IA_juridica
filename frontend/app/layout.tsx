@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'IA Jurídica',
-  description: 'Asistente legal bilingue conectado a backend FastAPI'
+  description: 'Asistente legal bilingue para comunidades quechua-hablantes',
 };
 
 interface RootLayoutProps {
