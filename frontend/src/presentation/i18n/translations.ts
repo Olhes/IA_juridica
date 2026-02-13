@@ -90,7 +90,7 @@ export const consultationTranslations: Record<SupportedLanguage, ConsultationTra
       'Que medidas de proteccion puedo pedir hoy?'
     ],
     disclaimer:
-      'Esta orientacion no reemplaza la asesoria profesional de una abogada o abogado.'
+      'Esta orientación no reemplaza la asesoría profesional de una abogada o abogado.'
   },
   quechua: {
     title: 'Legal Consulta',
