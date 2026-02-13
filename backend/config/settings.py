@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Configuración de OpenAI
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4"
-    OPENAI_MAX_TOKENS: int = 1500
+    OPENAI_MAX_COMPLETION_TOKENS: int = 1500
     OPENAI_TEMPERATURE: float = 0.7
     
     # Configuración de Documentos
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
         return {
             "api_key": self.OPENAI_API_KEY,
             "model": self.OPENAI_MODEL,
-            "max_tokens": self.OPENAI_MAX_TOKENS,
+            "max_completion_tokens": self.OPENAI_MAX_TOKENS,
             "temperature": self.OPENAI_TEMPERATURE
         }
     

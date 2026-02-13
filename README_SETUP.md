@@ -47,7 +47,34 @@ python main.py
 
 El servidor iniciará en: `http://localhost:8000`
 
+### 4. Frontend (Next.js)
+
+```bash
+cd ../frontend
+npm install
+npm run dev
+```
+
+Frontend disponible en: `http://localhost:3000`
+
+Si tu backend FastAPI corre en otra URL/puerto, define:
+
+```bash
+# en frontend/.env.local
+FASTAPI_BASE_URL=http://127.0.0.1:8000
+```
+
+### 5. Sobre `npm install` en raíz vs `frontend/`
+
+- `npm install` en `frontend/` instala dependencias reales de la UI (Next.js, React, Tailwind).
+- `npm install` en la raíz solo aplica si usas scripts del `package.json` raíz; no instala librerías del frontend.
+- Con la configuración actual, para trabajar solo en frontend basta con instalar una sola vez dentro de `frontend/`.
+
 ## 📁 Subir y Procesar PDFs
+
+> Recomendación: en producción usa **modo cloud** para no versionar PDFs en Git.
+
+### Modo Local (desarrollo)
 
 ### Método 1: API REST
 
@@ -83,19 +110,37 @@ cp tus_pdfs/*.pdf docs/raw_pdfs/
 python scripts/process_pdfs.py process-dir
 ```
 
+### Modo Cloud (recomendado para producción)
+
+1. Frontend solicita URL firmada a FastAPI.
+2. Frontend sube el PDF directo a object storage (S3/GCS/R2).
+3. FastAPI/Storage encola el documento para procesamiento.
+4. Worker Python procesa con Docling + LightRAG.
+5. Frontend consulta estado (`uploaded`, `processing`, `processed`, `failed`).
+
+Referencia de implementación: `CLOUD_PDF_PIPELINE.md`.
+
+### Evitar subir PDFs al repositorio
+
+- El proyecto ya ignora `backend/docs/raw_pdfs`, `backend/docs/processed`, `backend/docs/knowledge_graph` y `backend/docs/failed` en `.gitignore`.
+- Si ya tienes PDFs versionados, retíralos del índice de Git con `git rm --cached` y mantén solo `.gitkeep`.
+
 ## 🎯 Estructura de Directorios
 
 ```
 ia-juridica/
-├── docs/
-│   ├── raw_pdfs/           # 📄 Coloca tus PDFs aquí
-│   ├── processed/          # 📝 PDFs procesados (markdown)
-│   ├── knowledge_graph/    # 🕸️ Grafo de conocimiento
-│   └── failed/            # ❌ PDFs que fallaron
 ├── backend/
 │   ├── main.py            # 🚀 Servidor principal
+│   ├── docs/              # 📄 Artefactos locales (dev)
+│   │   ├── raw_pdfs/
+│   │   ├── processed/
+│   │   ├── knowledge_graph/
+│   │   └── failed/
 │   ├── scripts/           # 🛠️ Scripts utilitarios
 │   └── config/            # ⚙️ Configuración
+├── frontend/              # 🎨 Next.js + TypeScript
+│   ├── app/
+│   └── src/
 └── requirements.txt       # 📦 Dependencias
 ```
 
@@ -250,6 +295,7 @@ Para producción, ajusta:
 ## 📞 Ayuda
 
 - **Documentación completa**: `DOCUMENTATION.md`
+- **Arquitectura cloud de PDFs**: `CLOUD_PDF_PIPELINE.md`
 - **API docs**: `http://localhost:8000/docs`
 - **Logs**: `logs/juridica.log`
 

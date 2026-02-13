@@ -26,7 +26,18 @@ requerimientos.md
 
 # next.js
 /.next/
+/frontend/.next/
 /out/
+
+# backend document artifacts (local-only)
+/backend/docs/raw_pdfs/**
+/backend/docs/processed/**
+/backend/docs/knowledge_graph/**
+/backend/docs/failed/**
+!/backend/docs/raw_pdfs/.gitkeep
+!/backend/docs/processed/.gitkeep
+!/backend/docs/knowledge_graph/.gitkeep
+!/backend/docs/failed/.gitkeep
 
 # production
 /build
