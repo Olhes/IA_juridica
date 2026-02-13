@@ -50,12 +50,16 @@ ia-juridica/
 │   │   ├── performance_settings.py  # 🚀 Configuración de rendimiento
 │   │   ├── scalability_settings.py  # 📈 Configuración de escalabilidad
 │   │   └── processing_config.yaml  # 🎯 Configuración selectiva
-│   ├── language/             # 🌐 Soporte multilingüe
-│   │   ├── language_detector.py     # Detección de idioma
-│   │   ├── language_config.py       # Configuración de idiomas
-│   │   └── translation_service.py   # Servicio de traducción
-│   ├── context/              # 📝 Gestión de contexto
-│   │   └── chunking_strategies.py  # Estrategias de chunking
+│   ├── language/             # 🌐 Soporte multilingüe bilingüe
+│   │   ├── language_detector.py     # 🔍 Detección especializada español/quechua
+│   │   ├── language_config.py       # ⚙️ Configuración de idiomas y variantes
+│   │   ├── translation_service.py   # 🔄 Traducción contextual legal
+│   │   └── __init__.py             # 📦 Orquestador LanguageHandler
+│   ├── context/              # 📝 Context Engineering cultural
+│   │   ├── chunking_strategies.py   # 🎯 Chunking legal especializado
+│   │   ├── prompt_templates.py      # 📋 Templates bilingües culturalmente adaptados
+│   │   ├── context_engineering.py   # 🧠 Orquestador de contexto cultural
+│   │   └── __init__.py             # 📦 Exportador de módulos
 │   ├── utils/                # 🛠️ Utilidades
 │   │   └── file_utils.py           # Manejo de archivos
 │   └── scripts/              # 📜 Scripts de automatización
@@ -127,15 +131,22 @@ python main.py
 - `POST /legal-query` - Consulta legal con RAG y agentes
 - `POST /generate-pdf-report` - Generar informe PDF
 - `POST /validate-query` - Validar consulta legal
+- `POST /legal-consultation` - Consulta legal con contexto cultural
 
 ### 🧪 Evaluación y Monitoreo
 - `POST /evaluate-system` - Ejecutar evaluación completa
 - `GET /health` - Health check del sistema
 - `GET /stats` - Estadísticas de procesamiento
+- `POST /language/process-query` - Procesamiento completo con detección+traducción
+- `POST /context/enrich` - Enriquecer consulta con contexto cultural
+- `POST /context/validate-cultural` - Validar apropiación cultural
 
 ### 🌐 Idioma y Traducción
 - `POST /language/detect` - Detectar idioma del texto
 - `POST /translate` - Traducir entre quechua/español
+- `POST /language/process-query` - Procesamiento completo con detección+traducción
+- `POST /context/enrich` - Enriquecer consulta con contexto cultural
+- `POST /context/validate-cultural` - Validar apropiación cultural
 
 ## 🔧 Variables de Entorno Completas
 
@@ -227,11 +238,24 @@ PDF Crudo → Docling → Markdown Estructurado → LightRAG → Grafo de Conoci
 docs/raw_pdfs → docling_processor.py → docs/processed → lightrag_engine.py → knowledge_graph/
 ```
 
-### 🤖 Flujo de Consulta Legal
+### 🤖 Flujo de Consulta Legal v2.0 (con Context Engineering)
 ```
-Usuario → API → RAG Engine → Pydantic Agent → DeepEval → Respuesta Validada
-    ↓        ↓        ↓           ↓            ↓           ↓
-Frontend → main.py → lightrag_engine.py → pydantic_agents.py → deepeval_tests.py → JSON Response
+Usuario → LanguageHandler → ContextEngineer → RAG Engine → Pydantic Agent → DeepEval → Respuesta Validada
+    ↓        ↓              ↓               ↓           ↓            ↓           ↓
+Frontend → language_detector → context_engineering.py → lightrag_engine.py → pydantic_agents.py → deepeval_tests.py → JSON Response
+    ↓              ↓                     ↓                    ↓
+Detección → Enriquecimiento → Búsqueda Contextual → Traducción → Validación Cultural
+de Idioma   Cultural       con Metadatos      Bilingüe   y Legal
+```
+
+### 🔄 Flujo de Procesamiento con Context Engineering
+```
+PDF Legal → ContextualChunker → LegalChunkingStrategy → ContextEngineer → LightRAG
+    ↓           ↓                    ↓                    ↓              ↓
+docs/raw_pdfs → chunking_strategies.py → context_engineering.py → lightrag_engine.py → knowledge_graph/
+    ↓              ↓                        ↓
+Extracción → Enriquecimiento → Inyección de
+Legal       Cultural         Metadatos Legales
 ```
 
 ## 📋 Temas Legales Soportados
