@@ -19,62 +19,42 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 - **RAG**: LightRAG con grafos de conocimiento
 - **Agentes**: Pydantic AI con validación estricta
 - **Evaluación**: DeepEval para calidad garantizada
-- **Frontend**: React SPA con Tailwind CSS
+- **Frontend**: Next.js (App Router) con Tailwind CSS
+- **Arquitectura Frontend**: Clean Architecture (`domain` / `application` / `infrastructure` / `presentation`)
 
 ### Estructura del Proyecto
 
 ```
 ia-juridica/
-├── docs/                      # 📄 Datos y documentos
-│   ├── raw_pdfs/             # PDFs legales sin procesar
-│   ├── processed/            # Markdown estructurado (salida Docling)
-│   ├── knowledge_graph/      # Grafo de conocimiento LightRAG
-│   └── failed/               # PDFs con errores
-├── backend/                   # 🚀 API y servicios core
-│   ├── main.py               # Servidor FastAPI principal
-│   ├── ingestion/            # Procesamiento de documentos
-│   │   ├── docling_processor.py    # ⭐ Núcleo Docling
-│   │   ├── pipeline.py             # Orquestación batch (original)
-│   │   ├── optimized_pipeline.py    # 🚀 Pipeline paralelo optimizado
-│   │   ├── selective_processor.py   # 🎯 Procesamiento selectivo
-│   │   ├── batch_processor.py      # 📦 Procesamiento por lotes
-│   │   └── cache_manager.py       # 💾 Cache inteligente
-│   ├── agents/               # 🤖 Agentes de IA validados
-│   │   └── pydantic_agents.py      # Respuestas estructuradas
-│   ├── rag/                  # 🔍 Motor RAG avanzado
-│   │   └── lightrag_engine.py      # Grafos de conocimiento
-│   ├── evaluation/           # 🧪 Evaluación de calidad
-│   │   └── deepeval_tests.py       # Testing automático
-│   ├── config/               # ⚙️ Configuración centralizada
-│   │   ├── settings.py             # Variables de entorno
-│   │   ├── performance_settings.py  # 🚀 Configuración de rendimiento
-│   │   ├── scalability_settings.py  # 📈 Configuración de escalabilidad
-│   │   └── processing_config.yaml  # 🎯 Configuración selectiva
-│   ├── language/             # 🌐 Soporte multilingüe bilingüe
-│   │   ├── language_detector.py     # 🔍 Detección especializada español/quechua
-│   │   ├── language_config.py       # ⚙️ Configuración de idiomas y variantes
-│   │   ├── translation_service.py   # 🔄 Traducción contextual legal
-│   │   └── __init__.py             # 📦 Orquestador LanguageHandler
-│   ├── context/              # 📝 Context Engineering cultural
-│   │   ├── chunking_strategies.py   # 🎯 Chunking legal especializado
-│   │   ├── prompt_templates.py      # 📋 Templates bilingües culturalmente adaptados
-│   │   ├── context_engineering.py   # 🧠 Orquestador de contexto cultural
-│   │   └── __init__.py             # 📦 Exportador de módulos
-│   ├── utils/                # 🛠️ Utilidades
-│   │   └── file_utils.py           # Manejo de archivos
-│   └── scripts/              # 📜 Scripts de automatización
-│       ├── setup.py                # Configuración inicial
-│       ├── process_pdfs.py         # Procesamiento CLI
-│       ├── selective_processing.py  # 🎮 Procesamiento interactivo
-│       ├── quick_process.py        # ⚡ Comandos rápidos
-│       ├── test_optimized_pipeline.py  # 🧪 Pruebas de rendimiento
-│       ├── test_real_performance.py     # 📊 Pruebas reales
-│       └── estimate_1000_pdfs.py        # 📈 Estimación de escala
-├── frontend/                  # 🎨 Interfaz web
-│   ├── src/components/       # Componentes React
-│   └── public/               # Assets estáticos
-├── requirements.txt           # 📦 Dependencias Python
-└── README_SETUP.md           # 📖 Guía rápida
+├── backend/                       # 🚀 FastAPI + RAG + Docling
+│   ├── main.py                    # API principal
+│   ├── agents/                    # Agentes Pydantic AI
+│   ├── ingestion/                 # Pipelines de procesamiento PDF
+│   ├── rag/                       # LightRAG y grafo de conocimiento
+│   ├── evaluation/                # DeepEval
+│   ├── config/                    # Settings y perfiles
+│   ├── scripts/                   # Automatización CLI
+│   └── docs/                      # Artefactos locales (dev)
+│       ├── raw_pdfs/
+│       ├── processed/
+│       ├── knowledge_graph/
+│       └── failed/
+├── frontend/                      # 🎨 Next.js App Router + TypeScript
+│   ├── app/                       # Rutas y API routes (BFF)
+│   │   ├── api/legal/consult/route.ts
+│   │   ├── api/legal/pdf/route.ts
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── src/
+│   │   ├── domain/                # Entidades/puertos
+│   │   ├── application/           # Casos de uso
+│   │   ├── infrastructure/        # Adaptadores HTTP/FastAPI
+│   │   └── presentation/          # UI + componentes
+│   └── package.json
+├── requirements.txt
+├── package.json                   # Scripts raíz (frontend/backend)
+├── README_SETUP.md
+└── CLOUD_PDF_PIPELINE.md          # Arquitectura cloud para PDFs
 ```
 
 ## 📋 Requisitos
@@ -109,7 +89,7 @@ DEBUG=true
 
 ### 3. Procesar PDFs
 ```bash
-# Colocar PDFs en docs/raw_pdfs/
+# Colocar PDFs en backend/docs/raw_pdfs/
 python scripts/process_pdfs.py process-dir
 ```
 
@@ -130,23 +110,10 @@ python main.py
 ### ⚖️ Consultas Legales
 - `POST /legal-query` - Consulta legal con RAG y agentes
 - `POST /generate-pdf-report` - Generar informe PDF
-- `POST /validate-query` - Validar consulta legal
-- `POST /legal-consultation` - Consulta legal con contexto cultural
 
 ### 🧪 Evaluación y Monitoreo
 - `POST /evaluate-system` - Ejecutar evaluación completa
 - `GET /health` - Health check del sistema
-- `GET /stats` - Estadísticas de procesamiento
-- `POST /language/process-query` - Procesamiento completo con detección+traducción
-- `POST /context/enrich` - Enriquecer consulta con contexto cultural
-- `POST /context/validate-cultural` - Validar apropiación cultural
-
-### 🌐 Idioma y Traducción
-- `POST /language/detect` - Detectar idioma del texto
-- `POST /translate` - Traducir entre quechua/español
-- `POST /language/process-query` - Procesamiento completo con detección+traducción
-- `POST /context/enrich` - Enriquecer consulta con contexto cultural
-- `POST /context/validate-cultural` - Validar apropiación cultural
 
 ## 🔧 Variables de Entorno Completas
 
@@ -170,9 +137,9 @@ DATABASE_PATH=./database/juridica.db
 
 # Documentos
 DOCS_ROOT_DIR=./docs
-RAW_PDF_DIR=./docs/raw_pdfs
-PROCESSED_DIR=./docs/processed
-KNOWLEDGE_GRAPH_DIR=./docs/knowledge_graph
+RAW_PDF_DIR=./backend/docs/raw_pdfs
+PROCESSED_DIR=./backend/docs/processed
+KNOWLEDGE_GRAPH_DIR=./backend/docs/knowledge_graph
 
 # RAG
 RAG_ENGINE=lightrag
@@ -233,29 +200,18 @@ LOG_FILE=./logs/juridica.log
 
 ### 🔄 Procesamiento de Documentos
 ```
-PDF Crudo → Docling → Markdown Estructurado → LightRAG → Grafo de Conocimiento
-    ↓           ↓              ↓                ↓              ↓
-docs/raw_pdfs → docling_processor.py → docs/processed → lightrag_engine.py → knowledge_graph/
+PDF (local o cloud) → Docling → Markdown estructurado → LightRAG → Grafo de conocimiento
+        ↓                ↓               ↓                 ↓               ↓
+   upload/pipeline   docling_processor   processed md     add_document     knowledge_graph
 ```
 
 ### 🤖 Flujo de Consulta Legal v2.0 (con Context Engineering)
 ```
-Usuario → LanguageHandler → ContextEngineer → RAG Engine → Pydantic Agent → DeepEval → Respuesta Validada
-    ↓        ↓              ↓               ↓           ↓            ↓           ↓
-Frontend → language_detector → context_engineering.py → lightrag_engine.py → pydantic_agents.py → deepeval_tests.py → JSON Response
-    ↓              ↓                     ↓                    ↓
-Detección → Enriquecimiento → Búsqueda Contextual → Traducción → Validación Cultural
-de Idioma   Cultural       con Metadatos      Bilingüe   y Legal
-```
+Usuario → Next.js UI → Use Case/Gateway → API Route Next (BFF) → FastAPI /legal-query
+    ↓           ↓             ↓                 ↓                     ↓
+Render UI   Validación TS   /api/legal/*    Normalización payload   RAG + Agente + fuentes
 
-### 🔄 Flujo de Procesamiento con Context Engineering
-```
-PDF Legal → ContextualChunker → LegalChunkingStrategy → ContextEngineer → LightRAG
-    ↓           ↓                    ↓                    ↓              ↓
-docs/raw_pdfs → chunking_strategies.py → context_engineering.py → lightrag_engine.py → knowledge_graph/
-    ↓              ↓                        ↓
-Extracción → Enriquecimiento → Inyección de
-Legal       Cultural         Metadatos Legales
+Respuesta FastAPI → API Route Next → UI bilingüe (spanish/quechua)
 ```
 
 ## 📋 Temas Legales Soportados
@@ -291,13 +247,13 @@ Legal       Cultural         Metadatos Legales
 
 ### 🔄 Estados de Procesamiento
 ```
-docs/raw_pdfs/     → docs/processed/     → docs/knowledge_graph/
+backend/docs/raw_pdfs/ → backend/docs/processed/ → backend/docs/knowledge_graph/
      ↓                    ↓                      ↓
 PDFs sin procesar   Markdown estructurado   Grafo de conocimiento
 ```
 
 ### ❌ Manejo de Errores
-- **docs/failed/** - PDFs con problemas de procesamiento
+- **backend/docs/failed/** - PDFs con problemas de procesamiento
 - **Reprocesamiento:** `python scripts/process_pdfs.py reprocess`
 - **Validación:** `python scripts/process_pdfs.py validate`
 
@@ -310,23 +266,59 @@ PDFs sin procesar   Markdown estructurado   Grafo de conocimiento
 - **error_logs** - Registro detallado de errores
 
 ### 📁 Sistema de Archivos
-- **docs/raw_pdfs/** - PDFs originales sin procesar
-- **docs/processed/** - Markdown estructurado por Docling
-- **docs/knowledge_graph/** - Grafo de conocimiento LightRAG
-- **docs/failed/** - PDFs con errores de procesamiento
+- **backend/docs/raw_pdfs/** - PDFs originales sin procesar (solo desarrollo local)
+- **backend/docs/processed/** - Markdown estructurado por Docling (artefacto local)
+- **backend/docs/knowledge_graph/** - Grafo de conocimiento LightRAG (artefacto local)
+- **backend/docs/failed/** - PDFs con errores de procesamiento
+- **Producción recomendada:** mover estos artefactos a object storage (S3/GCS/R2)
 
 ### 🕸️ Grafo de Conocimiento
 - **Nodos:** Artículos, leyes, conceptos legales
 - **Relaciones:** "aplica_a", "relaciona_con", "sanciona"
 - **Métricas:** Centralidad, relevancia, frecuencia
 
+## ☁️ Arquitectura Cloud para PDFs (sin subir PDFs al repo)
+
+### Objetivo
+Evitar versionar PDFs en Git y mover ingestión/procesamiento a servicios administrados.
+
+### Diseño recomendado
+1. **Object Storage:** S3 / GCS / Azure Blob / Cloudflare R2 para almacenar PDFs y salidas (`raw`, `processed`, `failed`).
+2. **Upload seguro:** frontend solicita URL firmada (`presigned URL`) y sube directo al bucket.
+3. **Cola de procesamiento:** SQS / Pub/Sub / RabbitMQ / Cloud Tasks con mensajes `document_id`.
+4. **Worker de ingestión:** servicio Python (mismo código Docling + LightRAG) que descarga del bucket, procesa y persiste metadatos.
+5. **Estado y trazabilidad:** PostgreSQL para `document_status`, hashes, errores y tiempos.
+6. **FastAPI como orquestador:** expone endpoints para crear uploads, consultar estado y disparar reprocesamiento.
+
+### Flujo propuesto
+```text
+Frontend -> FastAPI /documents/presign-upload -> URL firmada
+Frontend -> Object Storage (PUT PDF)
+Object Storage Event -> Queue
+Worker Python -> descarga PDF -> Docling -> LightRAG -> guarda resultados
+Worker -> actualiza PostgreSQL -> FastAPI expone estado para UI
+```
+
+### Contratos API sugeridos
+- `POST /documents/presign-upload` -> entrega `upload_url` + `document_id`
+- `POST /documents/ingest-from-object` -> encola procesamiento por `document_id`
+- `GET /documents/{document_id}/status` -> `uploaded|processing|processed|failed`
+- `POST /documents/{document_id}/reprocess` -> reprocesamiento controlado
+
+### Ventajas
+- Repositorio liviano y limpio (sin PDFs pesados)
+- Escalabilidad horizontal de workers
+- Menor riesgo de fuga de información por commits accidentales
+- Mejor observabilidad del pipeline de documentos
+
 ## 🔒 Seguridad y Validación
 
 ### 🛡️ Seguridad de API
-- **Rate Limiting:** 100 requests por IP cada 15 minutos
-- **Validación:** Entrada sanitizada con Pydantic
-- **Headers:** Helmet para seguridad HTTP
-- **JWT:** Autenticación opcional con tokens
+- **Rate Limiting:** recomendado en API Gateway/Load Balancer (producción)
+- **Validación:** entrada tipada con Pydantic en FastAPI
+- **CORS:** configurado en FastAPI (restringir orígenes en producción)
+- **Autenticación:** JWT/API key opcional según perfil de despliegue
+- **Storage cloud:** usar URLs firmadas para evitar exponer credenciales
 
 ### ✅ Validación de Datos
 - **Pydantic Models:** Estructura estricta para todas las respuestas
@@ -369,15 +361,16 @@ CMD ["python", "main.py"]
 ```
 
 ### ☁️ Plataformas Recomendadas
-- **Backend:** Railway, Heroku, DigitalOcean
-- **Documentos:** AWS S3, Google Cloud Storage
+- **Frontend:** Vercel / Netlify
+- **Backend FastAPI:** Railway / Render / Fly.io / DigitalOcean
+- **Documentos:** AWS S3 / Google Cloud Storage / Cloudflare R2
+- **Cola:** SQS / Pub/Sub / RabbitMQ
 - **Base de Datos:** PostgreSQL (producción), SQLite (desarrollo)
 
 ## 📈 Monitoreo y Métricas
 
 ### 📊 Endpoints de Monitoreo
 - `GET /health` - Estado general del sistema
-- `GET /stats` - Estadísticas de procesamiento
 - `POST /evaluate-system` - Evaluación completa
 - `GET /knowledge-graph` - Datos del grafo
 
@@ -527,7 +520,7 @@ python scripts/process_pdfs.py reprocess
 curl -X POST "http://localhost:8000/upload-pdf" -F "file=@ley_30364.pdf"
 
 # Método 2: CLI
-cp ley_30364.pdf docs/raw_pdfs/
+cp ley_30364.pdf backend/docs/raw_pdfs/
 python scripts/process_pdfs.py process-dir
 ```
 
@@ -577,6 +570,7 @@ curl -X POST "http://localhost:8000/evaluate-system"
 
 ### 📖 Documentación Adicional
 - **README_SETUP.md** - Guía de configuración rápida
+- **CLOUD_PDF_PIPELINE.md** - Diseño de almacenamiento/procesamiento cloud de PDFs
 - **API Docs** - `http://localhost:8000/docs` (Swagger)
 - **DeepEval** - Documentación de evaluación
 - **Docling** - Guía de procesamiento PDF
@@ -612,7 +606,6 @@ curl -X POST "http://localhost:8000/evaluate-system"
 ---
 
 **🎉 IA Jurídica v2.0: Sistema legal bilingüe con procesamiento inteligente de documentos y calidad garantizada.**
-
 informacion en pdf sobre
 
 -sobre Violencia Física o Psicológica
@@ -632,8 +625,6 @@ con estos requisitos de documentacion:
 - Formatos y modelos (demandas, denuncias)
 - Jurisprudencia relevante (casos similares)
 - Directorios institucionales (dónde denunciar)
-
-O tal vez podría compartirme fuentes oficiales y validadas de donde podría obtener o sacarlo segun esos requisitos
 
 ## 🔄 Flujo de Desarrollo Recomendado
 
@@ -694,11 +685,11 @@ python main.py --prod
 - **Producción:** Robusto para volúmenes grandes
 
 ### 🚀 Próximos Pasos
-1. **Integración frontend** - Conectar con React SPA
-2. **Despliegue cloud** - Railway/DigitalOcean
-3. **Base de datos PostgreSQL** - Para producción
-4. **Vector database** - Pinecone/Weaviate
-5. **Monitoring avanzado** - Grafana/Prometheus
+1. **Ingesta cloud de PDFs** - Upload firmado + cola + workers Python
+2. **PostgreSQL en producción** - Estado de documentos, auditoría y métricas
+3. **Vector DB gestionada (opcional)** - Pinecone/Weaviate/Qdrant para mayor escala
+4. **Observabilidad** - métricas y trazas (Grafana/Prometheus/OpenTelemetry)
+5. **Hardening de seguridad** - CORS restringido, rate limits y auth por entorno
 
 ---
 

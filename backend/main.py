@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 import uvicorn
-import os
 from pathlib import Path
 from contextlib import asynccontextmanager
+from typing import Any, Dict, Optional
 
 import traceback
 
@@ -17,15 +17,33 @@ from rag.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from evaluation.deepeval_tests import LegalEvaluationSuite
 
+
+BASE_DIR = Path(__file__).resolve().parent
+DOCS_DIR = BASE_DIR / "docs"
+RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
+PROCESSED_DIR = DOCS_DIR / "processed"
+KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
+
+
+class LegalQueryRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    language: str = Field(default="spanish")
+    context: Optional[Dict[str, Any]] = None
+
+
+class PDFReportRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    response: Dict[str, Any]
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Inicializando IA Jurídica...")
+    print("Inicializando IA Jurídica...")
 
     if not hasattr(app.state, "rag_engine"):
         # Crear carpetas UNA sola vez
-        os.makedirs("docs/raw_pdfs", exist_ok=True)
-        os.makedirs("docs/processed", exist_ok=True)
-        os.makedirs("docs/knowledge_graph", exist_ok=True)
+        RAW_PDFS_DIR.mkdir(parents=True, exist_ok=True)
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+        KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
         # Inicializar componentes UNA sola vez
         app.state.pdf_processor = LegalPDFProcessor()
@@ -39,13 +57,13 @@ async def lifespan(app: FastAPI):
         app.state.legal_agent = LegalAgent()
         app.state.evaluation_suite = LegalEvaluationSuite()
 
-        print("✅ Componentes inicializados")
+        print("Componentes inicializados")
     else:
-        print("⚠️ Componentes ya inicializados, saltando...")
+        print("Componentes ya inicializados, saltando...")
 
     yield
 
-    print("🛑 Cerrando IA Jurídica...")
+    print("Cerrando IA Jurídica...")
 
 
 app = FastAPI(
@@ -86,12 +104,14 @@ async def health_check():
 async def upload_pdf(file: UploadFile = File(...)):
     """Upload and process legal PDF with Docling"""
     try:
+        filename = file.filename or ""
+
         # Validate file type
-        if not file.filename.endswith('.pdf'):
+        if not filename.endswith('.pdf'):
             raise HTTPException(400, "Only PDF files are allowed")
         
         # Save uploaded file
-        file_path = Path("docs/raw_pdfs") / file.filename
+        file_path = RAW_PDFS_DIR / filename
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
@@ -100,13 +120,13 @@ async def upload_pdf(file: UploadFile = File(...)):
         processed_content = await app.state.pdf_processor.process_pdf(str(file_path))
 
         # Save processed content
-        processed_path = Path("docs/processed") / f"{file.filename}.md"
+        processed_path = PROCESSED_DIR / f"{filename}.md"
         with open(processed_path, "w", encoding="utf-8") as f:
             f.write(processed_content)
         
         metadata = {
-            "filename": file.filename,
-            "title": file.filename,
+            "filename": filename,
+            "title": filename,
             "document_type": "legal_pdf",
             "source": "upload-pdf"
         }
@@ -115,12 +135,12 @@ async def upload_pdf(file: UploadFile = File(...)):
         await app.state.rag_engine.add_document(
             processed_content,
             metadata,
-            file.filename
+            filename
         )
         
         return {
             "success": True,
-            "filename": file.filename,
+            "filename": filename,
             "processed_path": str(processed_path),
             "message": "PDF processed successfully with Docling"
         }
@@ -146,20 +166,30 @@ async def batch_process_pdfs():
         raise HTTPException(500, f"Batch processing failed: {str(e)}")
 
 @app.post("/legal-query")
-async def legal_query(query: str, language: str = "spanish"):
+async def legal_query(payload: LegalQueryRequest):
     """Process legal query with RAG and Pydantic AI"""
     try:
+        query = payload.query.strip()
+        language = payload.language
+
         # Get relevant context from RAG
         context = await app.state.rag_engine.query(query)
         
         # Generate response with Pydantic AI usando respond_general
         response = await app.state.legal_agent.respond_general(query, context, language)
+
+        if hasattr(response, "model_dump"):
+            response_payload = response.model_dump()
+        elif hasattr(response, "dict"):
+            response_payload = response.dict()
+        else:
+            response_payload = response
         
         return {
             "success": True,
             "query": query,
             "language": language,
-            "response": response.dict() if hasattr(response, 'dict') else response,
+            "response": response_payload,
             "sources": context.get("sources", [])
         }
         
@@ -168,15 +198,15 @@ async def legal_query(query: str, language: str = "spanish"):
         raise HTTPException(500, f"Legal query failed: {str(e)}")
 
 @app.post("/generate-pdf-report")
-async def generate_pdf_report(query: str, response: dict):
+async def generate_pdf_report(payload: PDFReportRequest):
     """Generate legal PDF report"""
     try:
         # This would integrate with your PDF generation service
         return {
             "success": True,
             "message": "PDF report generation not implemented yet",
-            "query": query,
-            "response": response
+            "query": payload.query,
+            "response": payload.response
         }
     except Exception as e:
         raise HTTPException(500, f"PDF generation failed: {str(e)}")

@@ -1,3 +1,4 @@
+import torch #import para evitar bug de docling 2.5.2 con PyTorch
 from docling.document_converter import DocumentConverter
 from docling.datamodel.base_models import InputFormat
 from pathlib import Path
