@@ -55,7 +55,7 @@ export function LegalAssistantPage() {
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center items-center mb-3">
             <MessageSquare className="w-6 h-6 mr-2" />
-            <span className="text-lg font-semibold">IA Juridica - Asistente Legal Bilingue</span>
+            <span className="text-lg font-semibold">IA Jurídica - Asistente Legal Bilingüe</span>
           </div>
           <p className="text-gray-300">{t.footer}</p>
         </div>

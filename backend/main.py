@@ -37,7 +37,7 @@ class PDFReportRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Inicializando IA Jurídica...")
+    print("Inicializando IA Jurídica...")
 
     if not hasattr(app.state, "rag_engine"):
         # Crear carpetas UNA sola vez
@@ -57,13 +57,13 @@ async def lifespan(app: FastAPI):
         app.state.legal_agent = LegalAgent()
         app.state.evaluation_suite = LegalEvaluationSuite()
 
-        print("✅ Componentes inicializados")
+        print("Componentes inicializados")
     else:
-        print("⚠️ Componentes ya inicializados, saltando...")
+        print("Componentes ya inicializados, saltando...")
 
     yield
 
-    print("🛑 Cerrando IA Jurídica...")
+    print("Cerrando IA Jurídica...")
 
 
 app = FastAPI(

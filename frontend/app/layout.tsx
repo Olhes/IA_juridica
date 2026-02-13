@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'IA Juridica',
+  title: 'IA Jurídica',
   description: 'Asistente legal bilingue conectado a backend FastAPI'
 };
 

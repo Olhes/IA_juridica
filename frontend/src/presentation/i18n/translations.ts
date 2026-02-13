@@ -35,8 +35,8 @@ interface ConsultationTranslation {
 
 export const homeTranslations: Record<SupportedLanguage, HomeTranslation> = {
   spanish: {
-    title: 'IA Juridica',
-    subtitle: 'Asistente Legal Bilingue',
+    title: 'IA Jurídica',
+    subtitle: 'Asistente Legal Bilingüe',
     description: 'Orientacion legal basica en derecho digital para comunidades andinas.',
     tagline: 'Acceso a la justicia para comunidades andinas',
     consultTitle: 'Consulta Legal',
@@ -54,7 +54,7 @@ export const homeTranslations: Record<SupportedLanguage, HomeTranslation> = {
     }
   },
   quechua: {
-    title: 'IA Juridica',
+    title: 'IA Jurídica',
     subtitle: 'Iskay Simi Yachachiq Legal',
     description: 'Derecho digitalmanta yachachiy, runasimipi kastillasimipipas.',
     tagline: 'Andinas comunidades para justicia acceso',

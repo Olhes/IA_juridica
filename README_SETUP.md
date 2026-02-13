@@ -57,6 +57,20 @@ npm run dev
 
 Frontend disponible en: `http://localhost:3000`
 
+### 4.1 Levantar backend + frontend con un solo comando
+
+Desde la raíz del proyecto:
+
+```bash
+npm install
+npm run install-frontend
+npm run dev
+```
+
+- `npm run dev` levanta ambos servicios en paralelo (`backend` y `frontend`).
+- Backend: `http://localhost:8000`
+- Frontend: `http://localhost:3000`
+
 Si tu backend FastAPI corre en otra URL/puerto, define:
 
 ```bash

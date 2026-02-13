@@ -16,7 +16,7 @@ export function Header({ currentLanguage, tagline }: HeaderProps) {
               <MessageSquare className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">IA Juridica</h1>
+              <h1 className="text-2xl font-bold text-gray-800">IA Jurídica</h1>
               <p className="text-sm text-gray-600">{tagline}</p>
             </div>
           </div>
