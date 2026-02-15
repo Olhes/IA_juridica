@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     
     # Configuración de OpenAI
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4"
+    OPENAI_MODEL: str = "gpt-5-mini"
     OPENAI_MAX_COMPLETION_TOKENS: int = 1500
     OPENAI_TEMPERATURE: float = 0.7
     

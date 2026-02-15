@@ -26,6 +26,17 @@ export async function postLegalQuery(payload: LegalQueryPayload) {
   });
 }
 
+export async function postLegalQueryStream(payload: LegalQueryPayload) {
+  return fetch(`${FASTAPI_BASE_URL}/legal-query-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    cache: 'no-store',
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function postPdfReport(payload: PdfPayload) {
   return fetch(`${FASTAPI_BASE_URL}/generate-pdf-report`, {
     method: 'POST',

@@ -1,6 +1,5 @@
 import { type FormEvent, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, Download, Send } from 'lucide-react';
-import { createConsultLegalUseCase } from '../../application/legal/use-cases/consult-legal';
 import { createDownloadLegalPdfUseCase } from '../../application/legal/use-cases/download-legal-pdf';
 import type { LegalConsultationResult, SupportedLanguage } from '../../domain/legal/types';
 import { HttpLegalGateway } from '../../infrastructure/legal/http-legal-gateway';
@@ -19,11 +18,11 @@ export function LegalConsultation({
 }: LegalConsultationProps) {
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState<LegalConsultationResult | null>(null);
+  const [streamedAnswer, setStreamedAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const gateway = useMemo(() => new HttpLegalGateway(), []);
-  const consultLegal = useMemo(() => createConsultLegalUseCase(gateway), [gateway]);
   const downloadLegalPdf = useMemo(() => createDownloadLegalPdfUseCase(gateway), [gateway]);
 
   const t = consultationTranslations[currentLanguage];
@@ -35,16 +34,76 @@ export function LegalConsultation({
     setIsLoading(true);
     setError(null);
     setResponse(null);
+    setStreamedAnswer('');
 
     try {
-      const result = await consultLegal({
+      const consultResponse = await fetch('/api/legal/consult', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query: query.trim(),
+          language: currentLanguage,
+          stream: true,
+          context: {
+            userAgent: navigator.userAgent,
+            timestamp: new Date().toISOString()
+          }
+        })
+      });
+
+      if (!consultResponse.ok) {
+        const contentType = consultResponse.headers.get('content-type') || '';
+        let message = 'No se pudo procesar la consulta legal.';
+
+        if (contentType.includes('application/json')) {
+          const payload = (await consultResponse.json()) as { error?: string; message?: string };
+          message = payload.error || payload.message || message;
+        } else {
+          const payloadText = await consultResponse.text();
+          if (payloadText.trim()) {
+            message = payloadText;
+          }
+        }
+
+        throw new Error(message);
+      }
+
+      if (!consultResponse.body) {
+        throw new Error('El navegador no soporta streaming de respuestas en este entorno.');
+      }
+
+      const reader = consultResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let finalText = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        finalText += chunk;
+        setStreamedAnswer(finalText);
+      }
+
+      finalText += decoder.decode();
+
+      if (!finalText.trim()) {
+        throw new Error('No se recibio contenido en streaming.');
+      }
+
+      const result: LegalConsultationResult = {
         query: query.trim(),
         language: currentLanguage,
-        context: {
-          userAgent: navigator.userAgent,
-          timestamp: new Date().toISOString()
-        }
-      });
+        response:
+          currentLanguage === 'quechua'
+            ? { spanish: '', quechua: finalText }
+            : { spanish: finalText, quechua: '' },
+        sources: []
+      };
 
       setResponse(result);
     } catch (consultError) {
@@ -87,8 +146,10 @@ export function LegalConsultation({
     }
   };
 
-  const spanishResponse = response?.response.spanish;
-  const quechuaResponse = response?.response.quechua;
+  const spanishResponse =
+    response?.response.spanish || (currentLanguage === 'spanish' ? streamedAnswer : '');
+  const quechuaResponse =
+    response?.response.quechua || (currentLanguage === 'quechua' ? streamedAnswer : '');
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -154,17 +215,21 @@ export function LegalConsultation({
           </div>
         )}
 
-        {response && (
+        {(isLoading || response || streamedAnswer) && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div className="flex items-center">
-                <CheckCircle className="w-6 h-6 text-green-600 mr-2" />
+                {isLoading && !response && !streamedAnswer ? (
+                  <Clock className="w-6 h-6 text-blue-600 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-6 h-6 text-green-600 mr-2" />
+                )}
                 <h3 className="text-2xl font-semibold text-gray-800">{t.responseTitle}</h3>
               </div>
               <button
                 type="button"
                 onClick={handleDownloadPdf}
-                disabled={isGeneratingPdf}
+                disabled={isGeneratingPdf || !response}
                 className="bg-emerald-700 text-white py-2 px-4 rounded-lg font-medium hover:bg-emerald-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center"
               >
                 {isGeneratingPdf ? (
@@ -192,6 +257,12 @@ export function LegalConsultation({
               <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200">
                 <h4 className="font-semibold text-emerald-800 mb-3">{t.quechuaResponse}</h4>
                 <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{quechuaResponse}</p>
+              </div>
+            )}
+
+            {isLoading && !spanishResponse && !quechuaResponse && (
+              <div className="p-6 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-slate-700">{t.consulting}</p>
               </div>
             )}
 

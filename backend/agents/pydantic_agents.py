@@ -1,14 +1,15 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 from enum import Enum
 from datetime import datetime
 import asyncio
 from loguru import logger
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 try:
     from pydantic_ai import Agent, RunContext
@@ -16,8 +17,69 @@ try:
     from pydantic_ai.providers.openai import OpenAIProvider
     PYDANTIC_AI_AVAILABLE = True
 except ImportError:
+    Agent = None
+    RunContext = None
+    OpenAIModel = None
+    OpenAIProvider = None
     logger.warning("Pydantic AI no disponible. Usando implementación simulada.")
     PYDANTIC_AI_AVAILABLE = False
+
+try:
+    from openai import AsyncOpenAI
+    OPENAI_SDK_AVAILABLE = True
+except ImportError:
+    AsyncOpenAI = None
+    OPENAI_SDK_AVAILABLE = False
+
+OPENAI_MODEL_NAME = "gpt-5-mini"
+GLOBAL_SYSTEM_PROMPT = (
+    os.getenv("SYSTEM_PROMPT")
+    or os.getenv("LEGAL_SYSTEM_PROMPT")
+    or (
+        "Eres un asistente legal peruano especializado en derecho familiar. "
+        "Tu prioridad es brindar orientacion juridica precisa, clara y accionable, "
+        "con rigor tecnico y lenguaje comprensible para personas no especialistas."
+    )
+)
+
+SYSTEM_PROMPT_GUARDRAILS = (
+    "Reglas obligatorias: "
+    "1) Nunca digas ni sugieras que eres un modelo de lenguaje, un LLM o una IA. "
+    "2) No te salgas de tu rol de asistente legal; evita temas ajenos a orientacion juridica. "
+    "3) No inventes leyes, articulos, jurisprudencia, plazos ni entidades. "
+    "4) Si falta informacion, indicalo y pide solo los datos minimos necesarios. "
+    "5) Prioriza precision, consistencia y pasos concretos de accion en Perú."
+)
+
+SYSTEM_PROMPT_VARIANTS = {
+    "violence": (
+        "Enfoque de atencion: violencia familiar en Peru. "
+        "Prioriza la seguridad, entrega pasos inmediatos, recursos locales y fuentes legales. "
+        "Responde con la estructura Pydantic solicitada."
+    ),
+    "pension": (
+        "Enfoque de atencion: pension de alimentos en Peru. "
+        "Explica proceso, documentos, plazos y recursos aplicables. "
+        "Responde con la estructura Pydantic solicitada."
+    ),
+    "general": (
+        "Enfoque de atencion: orientacion legal bilingue (espanol y quechua). "
+        "Usa lenguaje simple, pasos accionables, advertencias y fuentes. "
+        "Responde con la estructura Pydantic solicitada."
+    ),
+    "stream": (
+        "Formato de salida: solo texto plano, sin JSON ni markdown. "
+        "Si falta informacion para precision legal, dilo explicitamente."
+    )
+}
+
+
+def get_system_prompt(variant: str) -> str:
+    variant_prompt = SYSTEM_PROMPT_VARIANTS.get(variant, "")
+    base_prompt = f"{GLOBAL_SYSTEM_PROMPT}\n\n{SYSTEM_PROMPT_GUARDRAILS}"
+    if not variant_prompt:
+        return base_prompt
+    return f"{base_prompt}\n\n{variant_prompt}"
 
 # Enumeraciones para respuestas estructuradas
 class UrgencyLevel(str, Enum):
@@ -110,6 +172,15 @@ class LegalAgent:
     """Agente legal con validación Pydantic"""
     
     def __init__(self):
+        self.model_name = OPENAI_MODEL_NAME
+        self.violence_agent = None
+        self.pension_agent = None
+        self.general_agent = None
+        self.openai_client = None
+
+        if OPENAI_SDK_AVAILABLE and os.getenv('OPENAI_API_KEY'):
+            self.openai_client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
         if PYDANTIC_AI_AVAILABLE:
             self._initialize_pydantic_agent()
         else:
@@ -118,9 +189,17 @@ class LegalAgent:
     
     def _initialize_pydantic_agent(self):
         """Inicializa el agente con Pydantic AI"""
+        if not Agent or not OpenAIModel or not OpenAIProvider:
+            logger.warning("Pydantic AI no disponible en runtime. Se usara modo fallback.")
+            return
+
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            logger.warning("OPENAI_API_KEY no configurada. Se usara modo fallback.")
+            return
         
-        # Configurar modelo OpenAI - usando gpt-4o-mini (más accesible y económico)
-        model = OpenAIModel('gpt-4o-mini', provider=OpenAIProvider(api_key=os.getenv('OPENAI_API_KEY')))
+        # Configurar modelo OpenAI-compatible
+        model = OpenAIModel(self.model_name, provider=OpenAIProvider(api_key=api_key))
         
         # Definir dependencias
         deps_type = type('Deps', (), {
@@ -132,55 +211,21 @@ class LegalAgent:
         self.violence_agent = Agent(
             model,
             result_type=ViolenceResponse,
-            system_prompt="""Eres un asistente legal especializado en violencia familiar en Perú.
-            
-            Tu objetivo es proporcionar ayuda inmediata y orientación legal clara.
-            
-            IMPORTANTE:
-            1. Prioriza la seguridad de la persona
-            2. Proporciona recursos concretos y locales
-            3. Incluye advertencias sobre seguridad
-            4. Cita fuentes legales específicas
-            5. Sé claro y directo
-            
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            system_prompt=get_system_prompt("violence")
         )
         
         # Crear agente para pensión de alimentos
         self.pension_agent = Agent(
             model,
             result_type=PensionResponse,
-            system_prompt="""Eres un asistente legal especializado en pensión de alimentos en Perú.
-            
-            Tu objetivo es guiar en el proceso de solicitud de pensión.
-            
-            IMPORTANTE:
-            1. Explica el proceso paso a paso
-            2. Detalla los documentos necesarios
-            3. Menciona los plazos importantes
-            4. Proporciona recursos útiles
-            5. Cita la legislación aplicable
-            
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            system_prompt=get_system_prompt("pension")
         )
         
         # Crear agente general
         self.general_agent = Agent(
             model,
             result_type=GeneralLegalResponse,
-            system_prompt="""Eres un asistente legal bilingüe especializado en derecho familiar peruano.
-            
-            Tu objetivo es proporcionar orientación legal clara en español y quechua.
-            
-            IMPORTANTE:
-            1. Responde en ambos idiomas
-            2. Usa lenguaje sencillo y comprensible
-            3. Proporciona pasos concretos
-            4. Incluye recursos locales
-            5. Añade advertencias importantes
-            6. Cita fuentes legales
-            
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            system_prompt=get_system_prompt("general")
         )
         
         logger.info("Agentes Pydantic AI inicializados correctamente")
@@ -228,6 +273,60 @@ class LegalAgent:
         except Exception as e:
             logger.error(f"Error en respuesta general: {str(e)}")
             raise
+
+    async def stream_general_text(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        language: str = "spanish"
+    ) -> AsyncGenerator[str, None]:
+        """Transmite respuesta legal en texto usando OpenAI streaming."""
+        normalized_language = "quechua" if language == "quechua" else "spanish"
+
+        if not self.openai_client:
+            raise RuntimeError(
+                "OPENAI_API_KEY no configurada en backend para streaming."
+            )
+
+        context_answer = str(context.get("answer", "")).strip()
+        context_sources = context.get("sources", [])
+        sources_text = ", ".join(str(source) for source in context_sources) if context_sources else "Sin fuentes"
+
+        system_prompt = get_system_prompt("stream")
+        user_prompt = (
+            f"Idioma de salida: {normalized_language}.\n"
+            f"Consulta del usuario:\n{query}\n\n"
+            f"Contexto recuperado por RAG:\n{context_answer}\n\n"
+            f"Fuentes detectadas: {sources_text}\n\n"
+            "Instrucciones:\n"
+            "1) Da una orientacion legal clara y accionable.\n"
+            "2) Si falta informacion para precision legal, dilo explicitamente.\n"
+            "3) No incluyas JSON ni markdown; devuelve solo texto plano."
+        )
+
+        try:
+            stream = await self.openai_client.chat.completions.create(
+                model=self.model_name,
+                stream=True,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta
+                content = getattr(delta, "content", None)
+                if isinstance(content, str) and content:
+                    yield content
+        except Exception as e:
+            logger.error(f"Error en streaming general: {str(e)}")
+            raise RuntimeError(
+                f"Fallo OpenAI streaming ({self.model_name}): {str(e)}"
+            ) from e
     
     async def _fallback_violence_response(self, query: str, context: Dict[str, Any]) -> ViolenceResponse:
         """Implementación fallback para violencia"""
@@ -395,6 +494,8 @@ class LegalAgent:
         
         return {
             "pydantic_ai_available": PYDANTIC_AI_AVAILABLE,
+            "openai_streaming_available": self.openai_client is not None,
+            "model": self.model_name,
             "agents_configured": 3 if PYDANTIC_AI_AVAILABLE else 0,
             "response_types": [
                 "violencia_familiar",
