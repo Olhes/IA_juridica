@@ -15,6 +15,3 @@ __all__ = [
     'PromptType',
     'ContextEngineer'
 ]
-
-# Instancia global del orquestador principal
-context_engineer = ContextEngineer()

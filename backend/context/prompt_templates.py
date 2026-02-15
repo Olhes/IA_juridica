@@ -599,6 +599,139 @@ class PromptManager:
         prompt_type = agent_mapping.get(agent_type, PromptType.GENERAL_LEGAL)
         return self.templates.get_prompt(prompt_type, language, context)
     
+    def build_prompt_for_cohere(
+        self,
+        prompt_type: PromptType,
+        query: str,
+        documents: List[Dict[str, Any]],
+        language: str = "spanish",
+        user_location: Optional[str] = None,
+        enriched_context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Construye prompt optimizado para Cohere con documentos rerankeados.
+        
+        Args:
+            prompt_type: Tipo de prompt legal
+            query: Consulta del usuario
+            documents: Documentos rerankeados con scores
+            language: Idioma de respuesta
+            user_location: Ubicación del usuario (ej: cusco, puno)
+            enriched_context: Contexto cultural enriquecido
+        
+        Returns:
+            Prompt completo listo para enviar a Cohere
+        """
+        # Obtener template base
+        base_template = self.templates.get_prompt(prompt_type, language)
+        
+        # Formatear documentos como contexto
+        context_text = self._format_documents_for_prompt(documents)
+        
+        # Información local si se detectó ubicación
+        local_resources = ""
+        if user_location:
+            local_resources = self._get_local_resources(user_location)
+        
+        # Contexto cultural adicional
+        cultural_notes = ""
+        if enriched_context:
+            cultural_notes = self._format_cultural_context(enriched_context)
+        
+        final_prompt = f"""{base_template}
+
+=== CONTEXTO LEGAL RELEVANTE ===
+{context_text}
+
+{f'=== RECURSOS LOCALES ({user_location.upper()}) ===' + chr(10) + local_resources if local_resources else ''}
+
+{f'=== NOTAS CULTURALES ===' + chr(10) + cultural_notes if cultural_notes else ''}
+
+=== CONSULTA DEL USUARIO ===
+{query}
+
+=== INSTRUCCIONES DE RESPUESTA ===
+- Responde en {"español y quechua" if language in ("spanish", "quechua") else language}
+- Cita artículos y leyes específicas del contexto proporcionado
+- Mantén sensibilidad cultural para comunidades rurales
+- Usa lenguaje sencillo y accesible
+- Incluye pasos concretos y recursos locales"""
+        
+        return final_prompt.strip()
+    
+    def _format_documents_for_prompt(self, docs: List[Dict[str, Any]]) -> str:
+        """Formatea documentos rerankeados para incluirlos en el prompt"""
+        if not docs:
+            return "No se encontraron documentos relevantes en la base de conocimiento."
+        
+        formatted = []
+        for i, doc in enumerate(docs, 1):
+            source = doc.get("metadata", {}).get("title", "Fuente no especificada")
+            score = doc.get("relevance_score", 0)
+            content = doc.get("content", "")[:600]
+            
+            formatted.append(
+                f"--- Documento {i} ---\n"
+                f"Fuente: {source}\n"
+                f"Relevancia: {score:.2f}\n\n"
+                f"{content}\n"
+            )
+        
+        return "\n".join(formatted)
+    
+    def _get_local_resources(self, location: str) -> str:
+        """Obtiene recursos locales según ubicación detectada"""
+        resources = {
+            "cusco": (
+                "- Juzgado de Paz Letrado del Cusco\n"
+                "- Comisaría de la Mujer del Cusco\n"
+                "- Centro de Emergencia Mujer (CEM) Cusco\n"
+                "- RENIEC Cusco\n"
+                "- Línea 113 (gratuita 24/7)"
+            ),
+            "puno": (
+                "- Juzgado de Paz Letrado de Puno\n"
+                "- Comisaría de la Mujer de Puno\n"
+                "- CEM Puno\n"
+                "- RENIEC Puno\n"
+                "- Línea 113 (gratuita 24/7)"
+            ),
+            "ayacucho": (
+                "- Juzgado de Paz Letrado de Ayacucho\n"
+                "- Comisaría de la Mujer Ayacucho\n"
+                "- CEM Ayacucho\n"
+                "- RENIEC Ayacucho\n"
+                "- Línea 113 (gratuita 24/7)"
+            ),
+            "huancavelica": (
+                "- Juzgado de Paz Letrado de Huancavelica\n"
+                "- Comisaría de la Mujer Huancavelica\n"
+                "- CEM Huancavelica\n"
+                "- RENIEC Huancavelica\n"
+                "- Línea 113 (gratuita 24/7)"
+            ),
+        }
+        return resources.get(location.lower(), "- Línea 113 (gratuita 24/7)\n- Defensoría del Pueblo\n- CEM más cercano")
+    
+    def _format_cultural_context(self, context: Dict[str, Any]) -> str:
+        """Formatea contexto cultural enriquecido"""
+        parts = []
+        
+        if context.get("urgency_level"):
+            parts.append(f"- Urgencia detectada: {context['urgency_level']}")
+        
+        if context.get("query_language"):
+            parts.append(f"- Idioma del usuario: {context['query_language']}")
+        
+        if context.get("legal_topic"):
+            parts.append(f"- Tema legal: {context['legal_topic']}")
+            
+        location_info = context.get("location_info", {})
+        if location_info.get("cultural_notes"):
+            parts.append(f"- Contexto cultural: {location_info['cultural_notes']}")
+        
+        return "\n".join(parts) if parts else ""
+    
     def get_validation_prompt(self, language: str = "spanish") -> str:
         """Obtiene prompt para validación legal"""
         return self.templates.get_prompt(PromptType.LEGAL_VALIDATOR, language)

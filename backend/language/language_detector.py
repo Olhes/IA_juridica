@@ -3,7 +3,7 @@ Detector de idiomas especializado para español y quechua
 Optimizado para variantes regionales y contexto rural peruano
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple,Any
 import re
 from loguru import logger
 

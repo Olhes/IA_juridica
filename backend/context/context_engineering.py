@@ -10,8 +10,17 @@ from loguru import logger
 
 from .chunking_strategies import ContextualChunker
 from .prompt_templates import PromptManager, PromptType
-from ..language.language_detector import LanguageDetector
-from ..language.translation_service import TranslationService
+from language.language_detector import LanguageDetector
+from language.translation_service import TranslationService
+
+# Mapeo de tipos de consulta a PromptType
+_QUERY_TYPE_TO_PROMPT: Dict[str, PromptType] = {
+    "violencia_familiar": PromptType.VIOLENCE_FAMILY,
+    "pensión_alimentos": PromptType.PENSION_FOOD,
+    "identidad": PromptType.IDENTITY_RIGHTS,
+    "demanda": PromptType.GENERAL_LEGAL,
+    "general": PromptType.GENERAL_LEGAL,
+}
 
 class ContextEngineer:
     """Orquestador principal de Context Engineering"""
@@ -373,6 +382,80 @@ class ContextEngineer:
             logger.error(f"Error generando prompt contextualizado: {str(e)}")
             # Fallback a prompt básico
             return self.prompt_manager.get_system_prompt(agent_type), {}
+    
+    def build_legal_prompt(
+        self,
+        query: str,
+        documents: List[Dict[str, Any]],
+        language: str = "spanish",
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Construye prompt legal optimizado para Cohere con contexto cultural.
+        
+        Integra: clasificación de consulta → detección de ubicación → 
+        enriquecimiento cultural → PromptManager.build_prompt_for_cohere()
+        
+        Args:
+            query: Consulta del usuario
+            documents: Documentos rerankeados desde query_with_rerank()
+            language: Idioma de respuesta
+            
+        Returns:
+            Tuple (prompt_completo, contexto_enriquecido)
+        """
+        try:
+            # 1. Detectar idioma de la consulta
+            query_language = self.language_detector.detect_language(query)
+            if query_language == "quechua":
+                language = "quechua"
+            
+            # 2. Clasificar tipo de consulta
+            query_lower = query.lower()
+            legal_type = self._detect_legal_type(query_lower)
+            prompt_type = _QUERY_TYPE_TO_PROMPT.get(legal_type, PromptType.GENERAL_LEGAL)
+            
+            # 3. Detectar ubicación
+            detected_location = self._detect_location(query)
+            
+            # 4. Evaluar urgencia y sensibilidad cultural
+            urgency = self._assess_urgency(query_lower)
+            cultural_sensitivity = self._assess_cultural_sensitivity(query_lower)
+            
+            # 5. Construir contexto enriquecido
+            enriched_context = {
+                "query_language": query_language,
+                "detected_location": detected_location,
+                "legal_topic": legal_type,
+                "urgency_level": urgency,
+                "cultural_context": cultural_sensitivity,
+            }
+            
+            # Agregar info cultural de la ubicación
+            if detected_location and detected_location in self.cultural_db["communities"]:
+                enriched_context["location_info"] = self.cultural_db["communities"][detected_location]
+            
+            # 6. Construir prompt con PromptManager
+            prompt = self.prompt_manager.build_prompt_for_cohere(
+                prompt_type=prompt_type,
+                query=query,
+                documents=documents,
+                language=language,
+                user_location=detected_location,
+                enriched_context=enriched_context,
+            )
+            
+            logger.info(
+                f"Prompt construido: tipo={legal_type}, ubicación={detected_location}, "
+                f"urgencia={urgency}, docs={len(documents)}"
+            )
+            
+            return prompt, enriched_context
+            
+        except Exception as e:
+            logger.error(f"Error construyendo prompt legal: {e}")
+            # Fallback: prompt básico sin enriquecimiento
+            basic_prompt = self.prompt_manager.get_system_prompt("general", language)
+            return f"{basic_prompt}\n\nConsulta: {query}", {}
     
     def _detect_location(self, text: str) -> Optional[str]:
         """Detecta mención de ubicaciones conocidas"""
