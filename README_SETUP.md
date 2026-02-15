@@ -3,6 +3,8 @@
 ## 📋 Requisitos Previos
 
 - **Python 3.9+**
+- **Node.js 24 LTS**
+- **pnpm 10+**
 - **API Key de OpenAI** (obligatoria)
 - **PDFs legales** (opcional para empezar)
 
@@ -51,8 +53,8 @@ El servidor iniciará en: `http://localhost:8000`
 
 ```bash
 cd ../frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Frontend disponible en: `http://localhost:3000`
@@ -62,12 +64,12 @@ Frontend disponible en: `http://localhost:3000`
 Desde la raíz del proyecto:
 
 ```bash
-npm install
-npm run install-frontend
-npm run dev
+pnpm install
+pnpm run install-frontend
+pnpm dev
 ```
 
-- `npm run dev` levanta ambos servicios en paralelo (`backend` y `frontend`).
+- `pnpm dev` levanta ambos servicios en paralelo (`backend` y `frontend`).
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
 
@@ -78,10 +80,10 @@ Si tu backend FastAPI corre en otra URL/puerto, define:
 FASTAPI_BASE_URL=http://127.0.0.1:8000
 ```
 
-### 5. Sobre `npm install` en raíz vs `frontend/`
+### 5. Sobre `pnpm install` en raíz vs `frontend/`
 
-- `npm install` en `frontend/` instala dependencias reales de la UI (Next.js, React, Tailwind).
-- `npm install` en la raíz solo aplica si usas scripts del `package.json` raíz; no instala librerías del frontend.
+- `pnpm install` en `frontend/` instala dependencias reales de la UI (Next.js, React, Tailwind).
+- `pnpm install` en la raíz solo aplica si usas scripts del `package.json` raíz; no instala librerías del frontend.
 - Con la configuración actual, para trabajar solo en frontend basta con instalar una sola vez dentro de `frontend/`.
 
 ## 📁 Subir y Procesar PDFs

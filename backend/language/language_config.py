@@ -26,7 +26,7 @@ class LanguageConfig:
             "is_primary": True,
             "legal_documents": True,
             "translation_available": True,
-            "models": ["gpt-4", "gpt-3.5-turbo", "claude-3"]
+            "models": ["gpt-5-mini", "claude-3"]
         },
         LanguageCode.QUECHUA: {
             "name": "Quechua",
@@ -34,7 +34,7 @@ class LanguageConfig:
             "is_primary": False,
             "legal_documents": False,
             "translation_available": True,
-            "models": ["gpt-4", "custom-quechua-model"],
+            "models": ["gpt-5-mini", "custom-quechua-model"],
             "variants": ["chanka", "collao", "cusco", "ayacucho", "puno"]
         },
         LanguageCode.AYMARA: {
@@ -43,7 +43,7 @@ class LanguageConfig:
             "is_primary": False,
             "legal_documents": False,
             "translation_available": True,
-            "models": ["gpt-4", "custom-aymara-model"],
+            "models": ["gpt-5-mini", "custom-aymara-model"],
             "variants": ["puno", "tacna", "moquegua"]
         }
     }

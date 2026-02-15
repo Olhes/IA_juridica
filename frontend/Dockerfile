@@ -1,26 +1,29 @@
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN corepack enable
 
-RUN npm ci && npm --prefix frontend ci
+COPY package.json ./
+COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
+
+RUN pnpm --dir frontend install --frozen-lockfile
 
 COPY frontend ./frontend
-RUN npm --prefix frontend run build
+RUN pnpm --dir frontend run build
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 
 WORKDIR /app/frontend
+
+RUN corepack enable
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000
 
 COPY --from=builder /app/frontend ./
-RUN npm prune --omit=dev
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["pnpm", "run", "start"]

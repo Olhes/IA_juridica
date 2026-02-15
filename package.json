@@ -4,18 +4,22 @@
   "description": "Asistente virtual bilingüe (quechua-español) para consultas de derecho digital",
   "main": "backend/main.py",
   "scripts": {
-    "dev": "npm run dev:full",
-    "dev:full": "concurrently -k -n BACKEND,FRONTEND -c green,blue \".\\.venv\\Scripts\\python.exe backend\\scripts\\run_dev_server.py\" \"npm run frontend:dev\"",
-    "frontend:dev": "npm --prefix frontend run dev",
-    "frontend:build": "npm --prefix frontend run build",
-    "frontend:start": "npm --prefix frontend run start",
+    "dev": "pnpm run dev:full",
+    "dev:full": "concurrently -k -n BACKEND,FRONTEND -c green,blue \".\\.venv\\Scripts\\python.exe backend\\scripts\\run_dev_server.py\" \"pnpm run frontend:dev\"",
+    "frontend:dev": "pnpm --dir frontend dev",
+    "frontend:build": "pnpm --dir frontend build",
+    "frontend:start": "pnpm --dir frontend start",
     "backend:dev": "python backend/main.py",
     "backend:dev:safe": ".\\.venv\\Scripts\\python.exe backend\\scripts\\run_dev_server.py",
-    "install-frontend": "npm --prefix frontend install"
+    "install-frontend": "pnpm --dir frontend install"
   },
   "keywords": ["ia", "juridico", "quechua", "espanol", "derecho-digital"],
   "author": "IA Jurídica Team",
   "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "packageManager": "pnpm@10.17.1",
   "devDependencies": {
     "concurrently": "^9.2.1"
   }

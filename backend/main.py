@@ -8,6 +8,7 @@ import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
+import asyncio
 
 import traceback
 
@@ -288,6 +289,33 @@ async def legal_query(request: Request, payload: LegalQueryRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, f"Legal query failed: {str(e)}")
+
+@app.post("/legal-query-stream")
+async def legal_query_stream(payload: LegalQueryRequest):
+    """Stream legal response text directly from backend model."""
+    try:
+        query = payload.query.strip()
+        language = payload.language
+
+        async def stream_generator():
+            context = await app.state.rag_engine.query(query)
+            async for chunk in app.state.legal_agent.stream_general_text(query, context, language):
+                if chunk:
+                    for start in range(0, len(chunk), 24):
+                        yield chunk[start:start + 24]
+                        await asyncio.sleep(0)
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, f"Legal query stream failed: {str(e)}")
 
 @app.post("/generate-pdf-report")
 async def generate_pdf_report(payload: PDFReportRequest):

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
   parseUpstreamPayload,
-  postLegalQuery
+  postLegalQuery,
+  postLegalQueryStream
 } from '../../../../src/infrastructure/backend/fastapi-client';
 
 export const runtime = 'nodejs';
@@ -10,6 +11,7 @@ interface ConsultRequestBody {
   query?: string;
   language?: string;
   context?: unknown;
+  stream?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -17,12 +19,53 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ConsultRequestBody;
     const query = typeof body.query === 'string' ? body.query.trim() : '';
     const language = typeof body.language === 'string' ? body.language : 'spanish';
+    const shouldStream = body.stream === true;
 
     if (!query) {
       return NextResponse.json(
         { success: false, error: 'La consulta es obligatoria.' },
         { status: 400 }
       );
+    }
+
+    if (shouldStream) {
+      const upstreamStreamResponse = await postLegalQueryStream({
+        query,
+        language,
+        context: body.context
+      });
+
+      if (!upstreamStreamResponse.ok) {
+        const upstreamErrorPayload = await parseUpstreamPayload(upstreamStreamResponse);
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              (typeof upstreamErrorPayload.detail === 'string' && upstreamErrorPayload.detail) ||
+              'No se pudo procesar la consulta legal en streaming.'
+          },
+          { status: upstreamStreamResponse.status }
+        );
+      }
+
+      if (!upstreamStreamResponse.body) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'El backend no devolvio un stream valido.'
+          },
+          { status: 500 }
+        );
+      }
+
+      return new Response(upstreamStreamResponse.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive'
+        }
+      });
     }
 
     const upstreamResponse = await postLegalQuery({
