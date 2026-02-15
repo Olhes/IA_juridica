@@ -2,7 +2,7 @@
 Configuración de soporte para idiomas del sistema legal bilingüe
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from enum import Enum
 from pathlib import Path
 import json

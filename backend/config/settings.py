@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 from pathlib import Path
 
@@ -28,11 +28,23 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./juridica.db"
     DATABASE_PATH: str = "./database/juridica.db"
     
-    # Configuración de OpenAI
+    # Configuración de OpenAI (legacy)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4"
     OPENAI_MAX_COMPLETION_TOKENS: int = 1500
     OPENAI_TEMPERATURE: float = 0.7
+    
+    # Configuración de Cohere (principal)
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
+    COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
+    COHERE_LLM_MODEL: str = "command-r7b-12-2024"
+    COHERE_MAX_TOKENS: int = 2048
+    COHERE_TEMPERATURE: float = 0.3
+    
+    # Configuración de Reranking
+    RERANK_TOP_K: int = 5
+    RERANK_CANDIDATES: int = 50
     
     # Configuración de Documentos
     DOCS_ROOT_DIR: str = "./docs"
@@ -43,10 +55,11 @@ class Settings(BaseSettings):
     
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
-    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
-    EMBEDDING_DIM: int = 768
+    EMBEDDING_MODEL: str = "embed-multilingual-v3.0"
+    EMBEDDING_DIM: int = 1024
     MAX_CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
+    EMBEDDING_BATCH_SIZE: int = 96  # Límite de Cohere por llamada
     
     # Configuración de Evaluación
     EVALUATION_ENABLED: bool = True
@@ -129,11 +142,26 @@ class Settings(BaseSettings):
         return not self.is_development()
     
     def get_openai_config(self) -> dict:
+        """Configuración OpenAI (legacy)"""
         return {
             "api_key": self.OPENAI_API_KEY,
             "model": self.OPENAI_MODEL,
-            "max_completion_tokens": self.OPENAI_MAX_TOKENS,
+            "max_completion_tokens": self.OPENAI_MAX_COMPLETION_TOKENS,
             "temperature": self.OPENAI_TEMPERATURE
+        }
+    
+    def get_cohere_config(self) -> Dict[str, Any]:
+        """Configuración Cohere (principal)"""
+        return {
+            "api_key": self.COHERE_API_KEY,
+            "embed_model": self.COHERE_EMBED_MODEL,
+            "rerank_model": self.COHERE_RERANK_MODEL,
+            "llm_model": self.COHERE_LLM_MODEL,
+            "max_tokens": self.COHERE_MAX_TOKENS,
+            "temperature": self.COHERE_TEMPERATURE,
+            "embedding_dim": self.EMBEDDING_DIM,
+            "rerank_top_k": self.RERANK_TOP_K,
+            "rerank_candidates": self.RERANK_CANDIDATES,
         }
     
     def get_rag_config(self) -> dict:
@@ -150,19 +178,28 @@ class Settings(BaseSettings):
         issues = []
         warnings = []
         
+        if not self.COHERE_API_KEY:
+            issues.append("COHERE_API_KEY no está configurada")
+        
         if not self.OPENAI_API_KEY:
-            issues.append("OPENAI_API_KEY no está configurada")
+            warnings.append("OPENAI_API_KEY no está configurada (legacy, opcional)")
         
         if self.SECRET_KEY == "your-secret-key-change-in-production" and self.is_production():
             issues.append("SECRET_KEY debe ser cambiada en producción")
+        
+        if self.EMBEDDING_DIM != 1024:
+            warnings.append(f"EMBEDDING_DIM es {self.EMBEDDING_DIM}, se esperan 1024 para Cohere embed-multilingual-v3.0")
         
         return {
             "valid": len(issues) == 0,
             "issues": issues,
             "warnings": warnings,
             "configuration_summary":{
-                "app_name":self.APP_NAME,
-                "version":self.APP_VERSION
+                "app_name": self.APP_NAME,
+                "version": self.APP_VERSION,
+                "llm_provider": "cohere",
+                "llm_model": self.COHERE_LLM_MODEL,
+                "embed_model": self.COHERE_EMBED_MODEL,
             }
         }
 

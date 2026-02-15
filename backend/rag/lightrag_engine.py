@@ -4,6 +4,15 @@ import json
 from pathlib import Path
 from loguru import logger
 
+from config.settings import settings
+
+try:
+    import cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    logger.warning("Cohere SDK no disponible")
+    COHERE_AVAILABLE = False
+
 try:
     from lightrag import LightRAG, QueryParam
     from lightrag.utils import EmbeddingFunc
@@ -14,16 +23,24 @@ except Exception as e:
 
 
 class LegalRAGEngine:
-    """Motor RAG especializado para documentos legales con LightRAG"""
+    """Motor RAG especializado para documentos legales con LightRAG + Cohere"""
     
     def __init__(self, working_dir: str = "./docs/knowledge_graph"):
         self.working_dir = Path(working_dir)
         self.working_dir.mkdir(parents=True, exist_ok=True)
     
-        self.documents = {}   # ← SIEMPRE
+        self.documents = {}
         self.embeddings = {}
-        self.rag = None  # Inicializar como None
-        self._storages_initialized = False  # Flag para rastrear inicialización
+        self.rag = None
+        self._storages_initialized = False
+        
+        # Inicializar cliente Cohere
+        self.cohere_client = None
+        if COHERE_AVAILABLE and settings.COHERE_API_KEY:
+            self.cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
+            logger.info("Cliente Cohere inicializado")
+        else:
+            logger.warning("Cohere no disponible: falta SDK o COHERE_API_KEY")
     
         if LIGHTRAG_AVAILABLE:
             self._initialize_lightrag()
@@ -32,50 +49,67 @@ class LegalRAGEngine:
 
     
     def _initialize_lightrag(self):
-        """Inicializa LightRAG con configuración para documentos legales"""
+        """Inicializa LightRAG con Cohere embeddings y LLM reales"""
         
-        # Configurar función de embedding
-        async def embedding_func(texts: List[str]):
-            """Función de embedding para textos legales"""
-            # Aquí usarías un modelo de embeddings real
-            # Por ahora, simulación simple
-            import hashlib
+        cohere_client = self.cohere_client
+        
+        async def cohere_embedding_func(texts: List[str]):
+            """Genera embeddings reales con Cohere embed-multilingual-v3.0"""
             import numpy as np
             
-            embeddings = []
-            for text in texts:
-                # Simulación de embedding basado en hash
-                hash_obj = hashlib.md5(text.encode())
-                # Convertir a vector de 768 dimensiones (tamaño típico)
-                embedding = [float(int(hash_obj.hexdigest()[i:i+2], 16)) / 255.0 
-                           for i in range(0, min(1536, len(hash_obj.hexdigest())), 2)]
-                # Rellenar o truncar a 768 dimensiones
-                while len(embedding) < 768:
-                    embedding.append(0.0)
-                embeddings.append(embedding[:768])
+            if cohere_client is None:
+                raise RuntimeError("Cohere client no inicializado. Verifica COHERE_API_KEY.")
             
-            # LightRAG requiere numpy array, no lista
-            return np.array(embeddings, dtype=np.float32)
+            all_embeddings = []
+            batch_size = settings.EMBEDDING_BATCH_SIZE
+            
+            # Procesar en batches (Cohere limita a 96 textos por llamada)
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                try:
+                    response = await cohere_client.embed(
+                        texts=batch,
+                        model=settings.COHERE_EMBED_MODEL,
+                        input_type="search_document",
+                        embedding_types=["float"],
+                    )
+                    batch_embeddings = response.embeddings.float_
+                    all_embeddings.extend(batch_embeddings)
+                except Exception as e:
+                    logger.error(f"Error generando embeddings (batch {i//batch_size}): {e}")
+                    raise
+            
+            return np.array(all_embeddings, dtype=np.float32)
         
-        # Configurar función LLM
-        async def llm_func(prompt: str, **kwargs) -> str:
-            """Función LLM para procesamiento"""
-            # Aquí integrarías con OpenAI u otro LLM
-            # Por ahora, respuesta simulada
-            return f"Respuesta LLM para: {prompt[:100]}..."
+        async def cohere_llm_func(prompt: str, **kwargs) -> str:
+            """Procesa con Cohere LLM para extracción de grafo de conocimiento"""
+            if cohere_client is None:
+                raise RuntimeError("Cohere client no inicializado. Verifica COHERE_API_KEY.")
+            
+            try:
+                response = await cohere_client.chat(
+                    message=prompt,
+                    model=settings.COHERE_LLM_MODEL,
+                    temperature=settings.COHERE_TEMPERATURE,
+                    max_tokens=settings.COHERE_MAX_TOKENS,
+                )
+                return response.text
+            except Exception as e:
+                logger.error(f"Error en Cohere LLM: {e}")
+                return ""
         
-        # Inicializar LightRAG
+        # Inicializar LightRAG con funciones reales
         self.rag = LightRAG(
             working_dir=str(self.working_dir),
-            llm_model_func=llm_func,
+            llm_model_func=cohere_llm_func,
             embedding_func=EmbeddingFunc(
-                embedding_dim=768,
+                embedding_dim=settings.EMBEDDING_DIM,
                 max_token_size=8192,
-                func=embedding_func
+                func=cohere_embedding_func
             )
         )
         
-        logger.info("LightRAG inicializado correctamente")
+        logger.info(f"LightRAG inicializado con Cohere (embed={settings.COHERE_EMBED_MODEL}, llm={settings.COHERE_LLM_MODEL})")
     
     async def initialize_storages(self):
         """
@@ -222,6 +256,160 @@ class LegalRAGEngine:
                 "confidence": 0.0,
                 "method": "fallback_no_match"
             }
+    
+    async def query_with_rerank(
+        self,
+        query: str,
+        top_k: Optional[int] = None,
+        rerank_candidates: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Búsqueda avanzada con Cohere Rerank.
+        
+        1. Recupera candidatos amplios de LightRAG
+        2. Reranquea con Cohere rerank-multilingual-v3.0
+        3. Retorna top-K con scores de relevancia
+        
+        Args:
+            query: Consulta del usuario
+            top_k: Documentos finales (default: settings.RERANK_TOP_K)
+            rerank_candidates: Candidatos iniciales (default: settings.RERANK_CANDIDATES)
+        """
+        top_k = top_k or settings.RERANK_TOP_K
+        rerank_candidates = rerank_candidates or settings.RERANK_CANDIDATES
+        
+        try:
+            # PASO 1: Obtener candidatos de LightRAG
+            candidate_docs = []
+            lightrag_answer = ""
+            
+            if LIGHTRAG_AVAILABLE and self.rag is not None:
+                await self._ensure_storages_initialized()
+                
+                try:
+                    raw_result = await self.rag.aquery(
+                        query,
+                        param=QueryParam(mode="hybrid")
+                    )
+                    lightrag_answer = raw_result
+                except Exception as e:
+                    logger.warning(f"LightRAG query falló, usando fallback local: {e}")
+            
+            # Reunir documentos candidatos del almacén local
+            for doc_id, doc_data in self.documents.items():
+                for i, chunk in enumerate(doc_data["chunks"]):
+                    candidate_docs.append({
+                        "id": f"{doc_id}_chunk_{i}",
+                        "document_id": doc_id,
+                        "content": chunk,
+                        "metadata": doc_data["metadata"],
+                    })
+            
+            if not candidate_docs:
+                return {
+                    "answer": lightrag_answer or "No hay documentos disponibles para buscar.",
+                    "documents": [],
+                    "rerank_scores": [],
+                    "sources": [],
+                    "method": "no_documents",
+                }
+            
+            # Limitar candidatos
+            candidate_docs = candidate_docs[:rerank_candidates]
+            
+            # PASO 2: Reranquear con Cohere
+            if self.cohere_client and COHERE_AVAILABLE:
+                try:
+                    rerank_response = await self.cohere_client.rerank(
+                        query=query,
+                        documents=[doc["content"] for doc in candidate_docs],
+                        model=settings.COHERE_RERANK_MODEL,
+                        top_n=top_k,
+                    )
+                    
+                    reranked_docs = []
+                    rerank_scores = []
+                    
+                    for result in rerank_response.results:
+                        idx = result.index
+                        doc = candidate_docs[idx]
+                        doc["relevance_score"] = result.relevance_score
+                        reranked_docs.append(doc)
+                        rerank_scores.append(result.relevance_score)
+                    
+                    sources = list({
+                        doc["metadata"].get("filename", doc["metadata"].get("title", "Desconocido"))
+                        for doc in reranked_docs
+                    })
+                    
+                    return {
+                        "answer": lightrag_answer or self._build_context_from_docs(reranked_docs),
+                        "documents": reranked_docs,
+                        "rerank_scores": rerank_scores,
+                        "sources": sources,
+                        "method": "cohere_rerank",
+                        "total_candidates": len(candidate_docs),
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"Cohere rerank falló, usando fallback: {e}")
+            
+            # PASO 3: Fallback sin rerank (keyword scoring)
+            return await self._fallback_rerank(query, candidate_docs, top_k, lightrag_answer)
+            
+        except Exception as e:
+            logger.error(f"Error en query_with_rerank: {e}")
+            return {
+                "answer": "Error procesando la consulta.",
+                "documents": [],
+                "rerank_scores": [],
+                "sources": [],
+                "method": "error",
+                "error": str(e),
+            }
+    
+    async def _fallback_rerank(
+        self, query: str, candidates: List[Dict], top_k: int, lightrag_answer: str
+    ) -> Dict[str, Any]:
+        """Fallback de reranking basado en keywords cuando Cohere no está disponible"""
+        query_words = set(query.lower().split())
+        
+        for doc in candidates:
+            content_words = set(doc["content"].lower().split())
+            common = query_words & content_words
+            doc["relevance_score"] = len(common) / max(len(query_words), 1)
+        
+        candidates.sort(key=lambda x: x["relevance_score"], reverse=True)
+        top_docs = candidates[:top_k]
+        
+        sources = list({
+            doc["metadata"].get("filename", doc["metadata"].get("title", "Desconocido"))
+            for doc in top_docs
+        })
+        
+        return {
+            "answer": lightrag_answer or self._build_context_from_docs(top_docs),
+            "documents": top_docs,
+            "rerank_scores": [doc["relevance_score"] for doc in top_docs],
+            "sources": sources,
+            "method": "fallback_keyword_rerank",
+            "total_candidates": len(candidates),
+        }
+    
+    def _build_context_from_docs(self, docs: List[Dict]) -> str:
+        """Construye texto de contexto a partir de documentos rerankeados"""
+        if not docs:
+            return "No se encontraron documentos relevantes."
+        
+        context_parts = []
+        for i, doc in enumerate(docs, 1):
+            source = doc.get("metadata", {}).get("title", "Fuente desconocida")
+            score = doc.get("relevance_score", 0)
+            context_parts.append(
+                f"[Fuente {i}: {source} (relevancia: {score:.2f})]\n{doc['content'][:800]}"
+            )
+        
+        return "\n\n---\n\n".join(context_parts)
     
     def _chunk_content(self, content: str, chunk_size: int = 1000) -> List[str]:
         """Divide el contenido en chunks"""

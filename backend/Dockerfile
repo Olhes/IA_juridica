@@ -25,7 +25,8 @@ RUN mkdir -p \
     /app/backend/docs/processed \
     /app/backend/docs/knowledge_graph \
     /app/backend/docs/failed \
-    /app/backend/logs && \
+    /app/backend/logs \
+    /app/backend/temp/pdfs && \
     useradd --create-home appuser && \
     chown -R appuser:appuser /app
 

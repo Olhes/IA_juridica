@@ -14,6 +14,7 @@ services:
     volumes:
       - backend_docs:/app/backend/docs
       - backend_logs:/app/backend/logs
+      - backend_temp:/app/backend/temp
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
       interval: 30s
@@ -41,3 +42,4 @@ services:
 volumes:
   backend_docs:
   backend_logs:
+  backend_temp:

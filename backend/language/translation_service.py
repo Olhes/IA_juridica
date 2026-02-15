@@ -31,9 +31,12 @@ class TranslationService:
         # Cache de traducciones
         self.translation_cache = {}
         
-        # Inicializar modelos si están disponibles
-        if TRANSFORMERS_AVAILABLE:
+        # Inicializar modelos solo si están disponibles Y habilitados
+        from config.settings import settings
+        if TRANSFORMERS_AVAILABLE and settings.TRANSLATION_ENABLED:
             self._initialize_translation_models()
+        elif not settings.TRANSLATION_ENABLED:
+            logger.info("Traducción NLLB deshabilitada (TRANSLATION_ENABLED=false)")
         
         logger.info("TranslationService inicializado")
     

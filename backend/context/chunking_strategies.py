@@ -8,6 +8,14 @@ import re
 from pathlib import Path
 from loguru import logger
 
+try:
+    import cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+
+from config.settings import settings
+
 class LegalChunkingStrategy:
     """Estrategia de chunking para documentos legales peruanos"""
     
@@ -272,11 +280,18 @@ class LegalChunkingStrategy:
         return any(indicator in section_lower for indicator in field_indicators)
 
 class ContextualChunker:
-    """Clase principal para chunking contextual"""
+    """Clase principal para chunking contextual con embeddings opcionales"""
     
     def __init__(self):
         self.strategy = LegalChunkingStrategy()
+        self._cohere_client = None
         logger.info("ContextualChunker inicializado")
+    
+    def _get_cohere_client(self):
+        """Lazy init del cliente Cohere async"""
+        if self._cohere_client is None and COHERE_AVAILABLE and settings.COHERE_API_KEY:
+            self._cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
+        return self._cohere_client
     
     def process_document(self, content: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -334,3 +349,54 @@ class ContextualChunker:
                 stats["legal_themes"][theme] = stats["legal_themes"].get(theme, 0) + 1
         
         return stats
+    
+    async def chunk_and_embed(
+        self,
+        content: str,
+        metadata: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """
+        Divide en chunks Y genera embeddings con Cohere.
+        
+        Args:
+            content: Contenido del documento
+            metadata: Metadatos del documento
+            
+        Returns:
+            Lista de chunks con embeddings adjuntos
+        """
+        # Primero chunking contextual
+        chunks = self.process_document(content, metadata)
+        
+        client = self._get_cohere_client()
+        if client is None:
+            logger.warning("Cohere no disponible, retornando chunks sin embeddings")
+            return chunks
+        
+        # Generar embeddings en batches
+        texts = [chunk['content'] for chunk in chunks]
+        batch_size = settings.EMBEDDING_BATCH_SIZE
+        all_embeddings = []
+        
+        try:
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                response = await client.embed(
+                    texts=batch,
+                    model=settings.COHERE_EMBED_MODEL,
+                    input_type="search_document",
+                    embedding_types=["float"],
+                )
+                all_embeddings.extend(response.embeddings.float_)
+            
+            # Adjuntar embeddings a chunks
+            for chunk, embedding in zip(chunks, all_embeddings):
+                chunk['embedding'] = embedding
+            
+            logger.info(f"Generados embeddings para {len(chunks)} chunks (dim={settings.EMBEDDING_DIM})")
+            
+        except Exception as e:
+            logger.error(f"Error generando embeddings: {e}")
+            # Retornar chunks sin embeddings como fallback
+        
+        return chunks

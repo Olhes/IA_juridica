@@ -4,16 +4,13 @@ from enum import Enum
 from datetime import datetime
 import asyncio
 from loguru import logger
-import os
-from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv()
+from config.settings import settings
 
 try:
     from pydantic_ai import Agent, RunContext
-    from pydantic_ai.models.openai import OpenAIModel
-    from pydantic_ai.providers.openai import OpenAIProvider
+    from pydantic_ai.models.cohere import CohereModel
+    from pydantic_ai.providers.cohere import CohereProvider
     PYDANTIC_AI_AVAILABLE = True
 except ImportError:
     logger.warning("Pydantic AI no disponible. Usando implementación simulada.")
@@ -119,19 +116,21 @@ class LegalAgent:
     def _initialize_pydantic_agent(self):
         """Inicializa el agente con Pydantic AI"""
         
-        # Configurar modelo OpenAI - usando gpt-4o-mini (más accesible y económico)
-        model = OpenAIModel('gpt-4o-mini', provider=OpenAIProvider(api_key=os.getenv('OPENAI_API_KEY')))
-        
+        # Configurar modelo Cohere via settings centralizado
+        model = CohereModel(
+            settings.COHERE_LLM_MODEL,
+            provider=CohereProvider(api_key=settings.COHERE_API_KEY)
+        )
         # Definir dependencias
         deps_type = type('Deps', (), {
             'translation_service': None,  # Inyectar servicio de traducción
             'rag_engine': None,           # Inyectar motor RAG
         })()
         
-        # Crear agente para violencia familiar
+        # Crear agente para violencia familiar (result_type=str — Cohere no soporta $ref en schemas)
         self.violence_agent = Agent(
             model,
-            result_type=ViolenceResponse,
+            result_type=str,
             system_prompt="""Eres un asistente legal especializado en violencia familiar en Perú.
             
             Tu objetivo es proporcionar ayuda inmediata y orientación legal clara.
@@ -140,16 +139,18 @@ class LegalAgent:
             1. Prioriza la seguridad de la persona
             2. Proporciona recursos concretos y locales
             3. Incluye advertencias sobre seguridad
-            4. Cita fuentes legales específicas
+            4. Cita fuentes legales específicas (Ley 30364, etc.)
             5. Sé claro y directo
+            6. Incluye los pasos para denunciar
+            7. Menciona líneas de ayuda (Línea 113, CEM)
             
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            Responde en texto plano con secciones claras."""
         )
         
-        # Crear agente para pensión de alimentos
+        # Crear agente para pensión de alimentos (result_type=str — Cohere no soporta $ref en schemas)
         self.pension_agent = Agent(
             model,
-            result_type=PensionResponse,
+            result_type=str,
             system_prompt="""Eres un asistente legal especializado en pensión de alimentos en Perú.
             
             Tu objetivo es guiar en el proceso de solicitud de pensión.
@@ -159,28 +160,33 @@ class LegalAgent:
             2. Detalla los documentos necesarios
             3. Menciona los plazos importantes
             4. Proporciona recursos útiles
-            5. Cita la legislación aplicable
+            5. Cita la legislación aplicable (Código Civil Arts. 472-485, etc.)
             
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            Responde en texto plano con secciones claras."""
         )
         
-        # Crear agente general
+        # Crear agente general (result_type=str — Cohere no soporta $ref en schemas)
         self.general_agent = Agent(
             model,
-            result_type=GeneralLegalResponse,
+            result_type=str,
             system_prompt="""Eres un asistente legal bilingüe especializado en derecho familiar peruano.
             
             Tu objetivo es proporcionar orientación legal clara en español y quechua.
             
             IMPORTANTE:
-            1. Responde en ambos idiomas
+            1. Responde en ambos idiomas (español y quechua)
             2. Usa lenguaje sencillo y comprensible
             3. Proporciona pasos concretos
-            4. Incluye recursos locales
+            4. Incluye recursos locales (comisarías, CEM, Línea 113)
             5. Añade advertencias importantes
-            6. Cita fuentes legales
+            6. Cita fuentes legales relevantes
             
-            Responde siempre con la estructura definida por el modelo Pydantic."""
+            Responde en texto plano con las siguientes secciones:
+            - RESPUESTA EN ESPAÑOL: (tu respuesta completa)
+            - RESPUESTA EN QUECHUA: (traducción al quechua)
+            - PASOS RECOMENDADOS: (lista numerada)
+            - RECURSOS: (instituciones y contactos)
+            - FUENTES LEGALES: (leyes y artículos citados)"""
         )
         
         logger.info("Agentes Pydantic AI inicializados correctamente")
@@ -190,11 +196,11 @@ class LegalAgent:
         
         try:
             if PYDANTIC_AI_AVAILABLE and self.violence_agent:
-                # Usar Pydantic AI
+                # Cohere devuelve texto plano, lo envolvemos en el modelo Pydantic
                 result = await self.violence_agent.run(query, deps=context)
-                return result.data
+                text_response = result.data
+                return self._build_violence_response(text_response, query)
             else:
-                # Implementación fallback
                 return await self._fallback_violence_response(query, context)
                 
         except Exception as e:
@@ -206,8 +212,10 @@ class LegalAgent:
         
         try:
             if PYDANTIC_AI_AVAILABLE and self.pension_agent:
+                # Cohere devuelve texto plano, lo envolvemos en el modelo Pydantic
                 result = await self.pension_agent.run(query, deps=context)
-                return result.data
+                text_response = result.data
+                return self._build_pension_response(text_response)
             else:
                 return await self._fallback_pension_response(query, context)
                 
@@ -215,13 +223,23 @@ class LegalAgent:
             logger.error(f"Error en respuesta de pensión: {str(e)}")
             raise
     
-    async def respond_general(self, query: str, context: Dict[str, Any], language: str = "spanish") -> GeneralLegalResponse:
-        """Responde a consultas legales generales"""
+    async def respond_general(self, query: str, context: Dict[str, Any], language: str = "spanish", enriched_prompt: Optional[str] = None) -> GeneralLegalResponse:
+        """Responde a consultas legales generales
+        
+        Args:
+            query: Consulta del usuario
+            context: Contexto RAG (sources, answer, etc.)
+            language: Idioma de respuesta
+            enriched_prompt: Prompt enriquecido por ContextEngineer (opcional)
+        """
         
         try:
             if PYDANTIC_AI_AVAILABLE and self.general_agent:
-                result = await self.general_agent.run(query, deps=context)
-                return result.data
+                # Si hay prompt enriquecido, usarlo como mensaje al agente
+                agent_input = enriched_prompt if enriched_prompt else query
+                result = await self.general_agent.run(agent_input, deps=context)
+                text_response = result.data
+                return self._build_general_response(text_response, query)
             else:
                 return await self._fallback_general_response(query, context, language)
                 
@@ -229,6 +247,152 @@ class LegalAgent:
             logger.error(f"Error en respuesta general: {str(e)}")
             raise
     
+    # ── Builders: texto plano → modelo Pydantic ──────────────────────
+
+    def _detect_urgency(self, text: str) -> UrgencyLevel:
+        """Detecta urgencia a partir del texto."""
+        t = text.lower()
+        if any(w in t for w in ["peligro", "emergencia", "urgente", "inmediato", "crítico"]):
+            return UrgencyLevel.CRITICO
+        if any(w in t for w in ["alto riesgo", "amenaza", "grave"]):
+            return UrgencyLevel.ALTO
+        if any(w in t for w in ["medio", "moderado"]):
+            return UrgencyLevel.MEDIO
+        return UrgencyLevel.BAJO
+
+    def _detect_violence_types(self, text: str) -> List[ViolenceType]:
+        """Detecta tipos de violencia mencionados en el texto."""
+        t = text.lower()
+        types = []
+        if any(w in t for w in ["física", "golpe", "lesión"]):
+            types.append(ViolenceType.FISICA)
+        if any(w in t for w in ["psicológica", "emocional", "insulto", "humilla"]):
+            types.append(ViolenceType.PSICOLOGICA)
+        if any(w in t for w in ["sexual", "acoso sexual", "violación"]):
+            types.append(ViolenceType.SEXUAL)
+        if any(w in t for w in ["económica", "patrimoni"]):
+            types.append(ViolenceType.ECONOMICA)
+        return types or [ViolenceType.FISICA]
+
+    def _detect_topic(self, text: str) -> LegalTopic:
+        """Detecta tema legal del texto."""
+        t = text.lower()
+        if "violencia" in t or "golpe" in t or "agresión" in t:
+            return LegalTopic.VIOLENCIA_FAMILIAR
+        if "pensión" in t or "alimento" in t:
+            return LegalTopic.PENSION_ALIMENTOS
+        if "protección" in t or "medida" in t:
+            return LegalTopic.MEDIDAS_PROTECCION
+        if "visita" in t or "régimen" in t:
+            return LegalTopic.REGIMEN_VISITAS
+        return LegalTopic.DENUNCIAS_PROCESOS
+
+    def _extract_section(self, text: str, header: str, next_headers: List[str] | None = None) -> str:
+        """Extrae una sección del texto por encabezado."""
+        import re
+        # Buscar el header (case-insensitive)
+        pattern = re.compile(re.escape(header) + r"[:\s]*(.*)", re.IGNORECASE | re.DOTALL)
+        match = pattern.search(text)
+        if not match:
+            return ""
+        content = match.group(1)
+        # Cortar en el siguiente header si existe
+        if next_headers:
+            for nh in next_headers:
+                idx = content.lower().find(nh.lower())
+                if idx > 0:
+                    content = content[:idx]
+                    break
+        return content.strip()
+
+    def _build_violence_response(self, text: str, query: str) -> ViolenceResponse:
+        """Construye ViolenceResponse a partir de texto plano de Cohere."""
+        return ViolenceResponse(
+            tipo_violencia=self._detect_violence_types(query + " " + text),
+            nivel_urgencia=self._detect_urgency(query + " " + text),
+            medidas_inmediatas=[text],  # Todo el texto como medida
+            pasos_denuncia=[
+                LegalStep(paso=1, descripcion=text[:500] if len(text) > 500 else text)
+            ],
+            recursos_disponibles=[
+                LegalResource(
+                    nombre="Línea 113",
+                    tipo="Línea de ayuda",
+                    contacto="113",
+                    horario="24/7",
+                    descripcion="Atención gratuita para mujeres"
+                )
+            ],
+            advertencias=[
+                LegalWarning(tipo="Seguridad", mensaje="Tu seguridad es lo primero", urgencia=UrgencyLevel.CRITICO)
+            ],
+            fuentes_legales=[
+                LegalSource(nombre="Ley 30364", tipo="Ley")
+            ],
+            confianza_respuesta=0.85
+        )
+
+    def _build_pension_response(self, text: str) -> PensionResponse:
+        """Construye PensionResponse a partir de texto plano de Cohere."""
+        return PensionResponse(
+            tipo_pension="Alimentos",
+            obligados=["Padres", "Abuelos (subsidiariamente)"],
+            calculo_basico=None,
+            pasos_proceso=[
+                LegalStep(paso=1, descripcion=text[:500] if len(text) > 500 else text)
+            ],
+            documentos_necesarios=["DNI", "Partida de nacimiento", "Pruebas de ingresos"],
+            plazos=["Proceso dura aprox. 6-12 meses"],
+            recursos=[
+                LegalResource(
+                    nombre="Juzgado de Familia",
+                    tipo="Institución judicial",
+                    descripcion="Competente en casos de alimentos"
+                )
+            ],
+            advertencias=[
+                LegalWarning(tipo="Proceso", mensaje="El proceso requiere paciencia", urgencia=UrgencyLevel.BAJO)
+            ],
+            fuentes_legales=[
+                LegalSource(nombre="Código Civil", tipo="Código", numero="Arts. 472-485")
+            ],
+            confianza_respuesta=0.85
+        )
+
+    def _build_general_response(self, text: str, query: str) -> GeneralLegalResponse:
+        """Construye GeneralLegalResponse a partir de texto plano de Cohere."""
+        # Intentar extraer secciones si el modelo las incluyó
+        spanish = self._extract_section(
+            text, "RESPUESTA EN ESPAÑOL",
+            ["RESPUESTA EN QUECHUA", "PASOS RECOMENDADOS", "RECURSOS", "FUENTES"]
+        ) or text
+        quechua = self._extract_section(
+            text, "RESPUESTA EN QUECHUA",
+            ["PASOS RECOMENDADOS", "RECURSOS", "FUENTES"]
+        ) or "(Traducción quechua no disponible)"
+
+        return GeneralLegalResponse(
+            tema=self._detect_topic(query + " " + text),
+            respuesta_espanol=spanish,
+            respuesta_quechua=quechua,
+            pasos_recomendados=[
+                LegalStep(paso=1, descripcion="Consulta con un abogado para tu caso específico")
+            ],
+            recursos=[
+                LegalResource(nombre="Línea 113", tipo="Línea de ayuda", descripcion="Atención gratuita 24/7"),
+                LegalResource(nombre="CEM", tipo="Centro de Emergencia Mujer", descripcion="Asesoría legal gratuita")
+            ],
+            advertencias=[
+                LegalWarning(tipo="Información", mensaje="Esta orientación no reemplaza asesoría legal profesional", urgencia=UrgencyLevel.BAJO)
+            ],
+            fuentes=[
+                LegalSource(nombre="Legislación peruana", tipo="Referencia")
+            ],
+            confianza=0.85,
+        )
+
+    # ── Fallbacks (sin Pydantic AI) ───────────────────────────────
+
     async def _fallback_violence_response(self, query: str, context: Dict[str, Any]) -> ViolenceResponse:
         """Implementación fallback para violencia"""
         
@@ -284,7 +448,6 @@ class LegalAgent:
                 LegalSource(
                     nombre="Ley 30364",
                     tipo="Ley",
-                    descripcion="Ley para prevenir, sancionar y erradicar la violencia"
                 )
             ],
             confianza_respuesta=0.7
@@ -331,7 +494,6 @@ class LegalAgent:
                     nombre="Código Civil",
                     tipo="Código",
                     numero="Artículos 472-485",
-                    descripcion="Obligación de alimentos"
                 )
             ],
             confianza_respuesta=0.6
@@ -384,7 +546,6 @@ class LegalAgent:
                 LegalSource(
                     nombre="Código Legal",
                     tipo="Referencia",
-                    descripcion="Legislación aplicable"
                 )
             ],
             confianza=0.5
