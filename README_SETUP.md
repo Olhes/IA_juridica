@@ -5,7 +5,7 @@
 - **Python 3.9+**
 - **Node.js 24 LTS**
 - **pnpm 10+**
-- **API Key de OpenAI** (obligatoria)
+- **API Key de Cohere** (obligatoria)
 - **PDFs legales** (opcional para empezar)
 
 ## ⚡ Configuración Automática (Recomendado)
@@ -30,8 +30,13 @@ El script configurará automáticamente:
 Edita el archivo `.env` creado:
 
 ```env
-# OpenAI (OBLIGATORIO)
-OPENAI_API_KEY=tu_api_key_de_openai_aqui
+# Cohere (OBLIGATORIO)
+COHERE_API_KEY=tu_api_key_de_cohere_aqui
+
+# Modelos Cohere (opcional, defaults recomendados)
+COHERE_EMBED_MODEL=embed-multilingual-v3.0
+COHERE_RERANK_MODEL=rerank-multilingual-v3.0
+COHERE_LLM_MODEL=command-r7b-12-2024
 
 # Seguridad
 SECRET_KEY=tu_secreto_unico_aqui
@@ -224,13 +229,13 @@ curl -X POST "http://localhost:8000/legal-query" \
 
 ## 🛠️ Solución de Problemas
 
-### ❌ Error: "OPENAI_API_KEY no configurada"
+### ❌ Error: "COHERE_API_KEY no configurada"
 
 **Solución:**
 ```bash
 # Editar .env
 nano .env
-# Agregar: OPENAI_API_KEY=tu_key_aqui
+# Agregar: COHERE_API_KEY=tu_key_aqui
 ```
 
 ### ❌ Error: "Docling no disponible"

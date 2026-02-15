@@ -181,7 +181,7 @@ Respuesta esperada:
 }
 ```
 
-Si `pydantic_ai` aparece como `"fallback"`, hay un problema de versión de dependencias. Ver [sección 9.3](#93-pydantic-ai-en-modo-fallback).
+Si `pydantic_ai` aparece como `"fallback"`, no bloquea el flujo principal actual. El backend usa Cohere directo para generación/streaming. Ver [sección 9.3](#93-cohere-no-inicializado-o-respuestas-basicas).
 
 ---
 
@@ -388,18 +388,21 @@ Luego reconstruir la imagen y reiniciar.
 
 ---
 
-### 9.3 Pydantic AI en modo fallback
+### 9.3 Cohere no inicializado o respuestas básicas
 
-El health check muestra `pydantic_ai: { status: "fallback" }` y las respuestas son genéricas.
+El health check muestra `cohere: { status: "not_configured" }` o las respuestas salen muy básicas.
 
-**Causa:** Incompatibilidad entre `pydantic-ai==0.4.3` y `cohere>=5.14`. La versión nueva de cohere renombró `TextAssistantMessageContentItem`, rompiendo el import.
+**Causa:** Falta `COHERE_API_KEY` o no se cargó correctamente el `.env` dentro del container.
 
-**Solución:** En `requirements.txt`, la versión está pineada:
+**Solución:**
+```powershell
+# 1) Verifica variable dentro del container
+docker exec <container_id> printenv COHERE_API_KEY
+
+# 2) Si está vacía, corrige backend/.env o .env.production
+# 3) Reconstruye y levanta de nuevo
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
-cohere==5.13.11
-```
-
-Si alguien la cambió, restaurarla y reconstruir la imagen.
 
 ---
 
@@ -445,19 +448,27 @@ docker run -p 8000:8000 --env-file backend\.env `
 
 ---
 
-### 9.6 `schema must not contain $ref keyword` (error 400 de Cohere)
+### 9.6 Error de streaming o chat con Cohere (400/401/429)
 
 ```
-BadRequestError: status_code: 400, body: {'message': 'schema must not contain $ref keyword'}
+Cohere API error: status_code: 401/429/400
 ```
 
-**Causa:** Los agentes Pydantic AI usaban `result_type=GeneralLegalResponse` (modelo Pydantic con tipos anidados). Pydantic genera schemas JSON con `$ref`, que Cohere no soporta.
+**Causa:**
+- `401`: API key inválida o revocada
+- `429`: límite/rate limit alcanzado
+- `400`: payload inválido o parámetros fuera de rango
 
-**Solución:** Ya corregido. Los agentes ahora usan `result_type=str` y los métodos `_build_*_response()` envuelven el texto en los modelos Pydantic:
+**Solución:**
+```powershell
+# Validar key
+docker exec <container_id> printenv COHERE_API_KEY
 
-```python
-self.general_agent = Agent(model, result_type=str, ...)  # ✅ texto plano
+# Revisar logs recientes
+docker compose -f docker-compose.prod.yml logs backend --tail=120
 ```
+
+Si es `429`, reduce concurrencia o espera ventana de rate limit.
 
 ---
 
@@ -538,8 +549,8 @@ docker exec ia-juridica python -m pytest tests/test_cohere_integration.py -v
                     └──────────┬───────────┘
                                │
                     ┌──────────▼───────────┐
-                    │  Pydantic AI Agent   │ ← Cohere LLM genera respuesta
-                    │  result_type=str     │   en texto plano
+                    │  LegalAgent (Cohere) │ ← Cohere LLM genera respuesta
+                    │  chat / chat_stream  │   en texto plano
                     └──────────┬───────────┘
                                │
                     ┌──────────▼───────────┐

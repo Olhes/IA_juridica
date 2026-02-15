@@ -20,7 +20,7 @@ cp env.production.example .env.production
 
 Then edit `.env.production` with real values, especially:
 
-- `OPENAI_API_KEY`
+- `COHERE_API_KEY`
 - `SECRET_KEY`
 - `CORS_ORIGINS`
 

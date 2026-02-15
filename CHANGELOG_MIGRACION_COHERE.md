@@ -3,7 +3,7 @@
 > **Fecha:** 14 de Febrero 2026  
 > **Última actualización:** 15 de Febrero 2026  
 > **Alcance:** Backend completo  
-> **Modelo LLM:** `command-r-plus-08-2024` (configurable via `COHERE_LLM_MODEL`)  
+> **Modelo LLM:** `command-r7b-12-2024` (configurable via `COHERE_LLM_MODEL`)  
 > **Embeddings:** `embed-multilingual-v3.0` (1024 dimensiones)  
 > **Reranking:** `rerank-multilingual-v3.0`
 
@@ -51,7 +51,7 @@ Esta migración reemplaza la infraestructura de embeddings falsos (hashes MD5 de
 **Problema detectado:**  
 El módulo `pydantic_agents.py` usaba `load_dotenv()` + `os.getenv("COHERE_API_KEY")`, ejecutándose fuera del sistema centralizado. Esto creaba una fuente de verdad dual: `.env` se leía dos veces con mecanismos distintos, haciendo difícil de auditar qué valor se usaba realmente.
 
-Además, existía un bug en `validate_configuration()` que referenciaba `self.OPENAI_MAX_TOKENS`, un campo que no existía — el campo real es `OPENAI_MAX_COMPLETION_TOKENS`.
+Además, existía un bug en `validate_configuration()` que referenciaba un campo legacy inexistente de tokens máximos.
 
 **Cambios realizados:**
 
@@ -71,8 +71,8 @@ Además, existía un bug en `validate_configuration()` que referenciaba `self.OP
 **Métodos añadidos:**
 
 - `get_cohere_config() → Dict`: Retorna diccionario con toda la configuración Cohere en un solo lugar.
-- `validate_configuration()`: Ahora verifica `COHERE_API_KEY` como **crítica** y `OPENAI_API_KEY` como **warning** (legacy). Alerta si `EMBEDDING_DIM != 1024`.
-- Bug fix: `self.OPENAI_MAX_TOKENS` → `self.OPENAI_MAX_COMPLETION_TOKENS`.
+- `validate_configuration()`: Ahora verifica `COHERE_API_KEY` como variable **crítica** y alerta si `EMBEDDING_DIM != 1024`.
+- Bug fix: se corrigió referencia a campo legacy de tokens máximos en validación.
 
 ### Archivos: `backend/.env` y `backend/.env.example`
 

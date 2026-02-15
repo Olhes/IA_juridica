@@ -7,7 +7,8 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 **Tecnologías Clave:**
 - **Docling**: Procesamiento avanzado de PDFs legales
 - **LightRAG**: Motor RAG con grafos de conocimiento
-- **Pydantic AI**: Agentes con respuestas estructuradas y validadas
+- **Cohere**: Embeddings, reranking y generación de respuestas legales
+- **Pydantic**: Validación estricta de respuestas estructuradas
 - **DeepEval**: Evaluación automática de calidad
 - **FastAPI**: API REST moderna
 
@@ -17,7 +18,7 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 - **Backend**: Python + FastAPI con servicios modulares
 - **Procesamiento**: Docling para PDFs legales complejos
 - **RAG**: LightRAG con grafos de conocimiento
-- **Agentes**: Pydantic AI con validación estricta
+- **Agentes**: Cohere + validación estricta con modelos Pydantic
 - **Evaluación**: DeepEval para calidad garantizada
 - **Frontend**: Next.js (App Router) con Tailwind CSS
 - **Arquitectura Frontend**: Clean Architecture (`domain` / `application` / `infrastructure` / `presentation`)
@@ -28,7 +29,7 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 ia-juridica/
 ├── backend/                       # 🚀 FastAPI + RAG + Docling
 │   ├── main.py                    # API principal
-│   ├── agents/                    # Agentes Pydantic AI
+│   ├── agents/                    # Agentes legales (Cohere + validación Pydantic)
 │   ├── ingestion/                 # Pipelines de procesamiento PDF
 │   ├── rag/                       # LightRAG y grafo de conocimiento
 │   ├── evaluation/                # DeepEval
@@ -61,14 +62,15 @@ ia-juridica/
 
 ### Sistema
 - **Python 3.9+**
-- **API Key de OpenAI** (obligatoria)
+- **API Key de Cohere** (obligatoria)
 - **8GB+ RAM** recomendado para procesamiento de PDFs
 
 ### Dependencias Principales
 - `fastapi` - API REST
 - `docling` - Procesamiento PDFs
 - `lightrag` - Motor RAG
-- `pydantic-ai` - Agentes validados
+- `cohere` - Provider principal (LLM, embeddings, rerank)
+- `pydantic` - Validación estructurada de respuestas
 - `deepeval` - Evaluación calidad
 
 ## � Configuración Rápida
@@ -82,7 +84,7 @@ python scripts/setup.py
 ### 2. Configurar Variables de Entorno
 ```bash
 # Editar .env
-OPENAI_API_KEY=tu_api_key_aqui
+COHERE_API_KEY=tu_api_key_aqui
 SECRET_KEY=tu_secreto_unico_aqui
 DEBUG=true
 ```
@@ -109,6 +111,7 @@ python main.py
 
 ### ⚖️ Consultas Legales
 - `POST /legal-query` - Consulta legal con RAG y agentes
+- `POST /legal-query-stream` - Consulta legal con streaming token a token
 - `POST /generate-pdf-report` - Generar informe PDF
 
 ### 🧪 Evaluación y Monitoreo
@@ -125,11 +128,13 @@ DEBUG=true
 HOST=0.0.0.0
 PORT=8000
 
-# OpenAI (OBLIGATORIO)
-OPENAI_API_KEY=tu_api_key_aqui
-OPENAI_MODEL=gpt-4
-OPENAI_MAX_TOKENS=1500
-OPENAI_TEMPERATURE=0.7
+# Cohere (OBLIGATORIO)
+COHERE_API_KEY=tu_api_key_cohere_aqui
+COHERE_EMBED_MODEL=embed-multilingual-v3.0
+COHERE_RERANK_MODEL=rerank-multilingual-v3.0
+COHERE_LLM_MODEL=command-r7b-12-2024
+COHERE_MAX_TOKENS=2048
+COHERE_TEMPERATURE=0.3
 
 # Base de Datos
 DATABASE_URL=sqlite:///./juridica.db
@@ -143,8 +148,9 @@ KNOWLEDGE_GRAPH_DIR=./backend/docs/knowledge_graph
 
 # RAG
 RAG_ENGINE=lightrag
-EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-EMBEDDING_DIM=768
+EMBEDDING_MODEL=embed-multilingual-v3.0
+EMBEDDING_DIM=1024
+EMBEDDING_BATCH_SIZE=96
 MAX_CHUNK_SIZE=1000
 
 # Evaluación
@@ -172,10 +178,11 @@ LOG_FILE=./logs/juridica.log
 - **Características:** OCR, detección de tablas, extracción de artículos/secciones
 - **Salida:** Markdown estructurado con metadatos legales
 
-### 🤖 PydanticAgents (`backend/agents/pydantic_agents.py`)
-**Propósito:** Generar respuestas legales estructuradas y validadas
+### 🤖 LegalAgent (`backend/agents/pydantic_agents.py`)
+**Propósito:** Generar respuestas legales con Cohere y validación estructurada
 - **Modelos:** `ViolenceResponse`, `PensionResponse`, `GeneralLegalResponse`
-- **Validación:** Estructura Pydantic estricta, sin alucinaciones
+- **LLM provider:** Cohere `command-r7b-12-2024`
+- **Validación:** Estructura Pydantic estricta
 - **Bilingüe:** Respuestas simultáneas en español y quechua
 
 ### 🔍 LightRAGEngine (`backend/rag/lightrag_engine.py`)
@@ -347,7 +354,7 @@ LOG_LEVEL=WARNING
 - **Python 3.9+**
 - **8GB+ RAM** (para procesamiento de PDFs)
 - **50GB+ Disco** (para documentos y grafo)
-- **OpenAI API Key** (obligatoria)
+- **Cohere API Key** (obligatoria)
 
 ### 🐳 Docker (Opcional)
 ```dockerfile
@@ -539,10 +546,10 @@ curl -X POST "http://localhost:8000/evaluate-system"
 
 ## 🔧 Solución de Problemas Comunes
 
-### ❌ "OPENAI_API_KEY no configurada"
+### ❌ "COHERE_API_KEY no configurada"
 ```bash
 # Editar .env
-OPENAI_API_KEY=sk-...
+COHERE_API_KEY=...
 # Reiniciar servidor
 python main.py
 ```
@@ -576,9 +583,9 @@ curl -X POST "http://localhost:8000/evaluate-system"
 - **Docling** - Guía de procesamiento PDF
 
 ### 🔗 Enlaces Útiles
-- **OpenAI API** - https://platform.openai.com/
+- **Cohere API** - https://dashboard.cohere.com/
 - **LightRAG** - https://github.com/HKUDS/LightRAG
-- **Pydantic AI** - https://pydantic-ai.github.io/
+- **Pydantic** - https://docs.pydantic.dev/
 - **FastAPI** - https://fastapi.tiangolo.com/
 
 ---
@@ -587,13 +594,13 @@ curl -X POST "http://localhost:8000/evaluate-system"
 
 ### 🔄 Arquitectura Actualizada
 - **Node.js → Python + FastAPI**
-- **OpenAI simple → Docling + LightRAG + Pydantic AI**
+- **LLM básico → Docling + LightRAG + Cohere (embed/rerank/chat) + validación Pydantic**
 - **Monolito básico → Monolito modular avanzado**
 
 ### 🚀 Nuevas Capacidades
 - **Procesamiento inteligente de PDFs** con Docling
 - **RAG con grafos de conocimiento** con LightRAG
-- **Agentes validados** con Pydantic AI
+- **Agentes validados** con modelos Pydantic
 - **Evaluación automática** con DeepEval
 - **Scripts de automatización** completos
 

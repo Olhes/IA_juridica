@@ -5,7 +5,6 @@ from datetime import datetime
 import asyncio
 from loguru import logger
 
-from config.settings import settings
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -13,27 +12,27 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+from config.settings import settings
+
 try:
     from pydantic_ai import Agent, RunContext
-    from pydantic_ai.models.cohere import CohereModel
-    from pydantic_ai.providers.cohere import CohereProvider
     PYDANTIC_AI_AVAILABLE = True
-except ImportError:
+except ImportError as import_error:
     Agent = None
     RunContext = None
-    OpenAIModel = None
-    OpenAIProvider = None
-    logger.warning("Pydantic AI no disponible. Usando implementación simulada.")
+    logger.warning(
+        f"Pydantic AI no disponible ({import_error}). Usando implementacion simulada."
+    )
     PYDANTIC_AI_AVAILABLE = False
 
 try:
-    from openai import AsyncOpenAI
-    OPENAI_SDK_AVAILABLE = True
+    import cohere
+    COHERE_SDK_AVAILABLE = True
 except ImportError:
-    AsyncOpenAI = None
-    OPENAI_SDK_AVAILABLE = False
+    cohere = None
+    COHERE_SDK_AVAILABLE = False
 
-OPENAI_MODEL_NAME = "gpt-5-mini"
+COHERE_MODEL_NAME = settings.COHERE_LLM_MODEL
 GLOBAL_SYSTEM_PROMPT = (
     os.getenv("SYSTEM_PROMPT")
     or os.getenv("LEGAL_SYSTEM_PROMPT")
@@ -174,142 +173,39 @@ class LegalAgent:
     """Agente legal con validación Pydantic"""
     
     def __init__(self):
-        self.model_name = OPENAI_MODEL_NAME
+        self.model_name = COHERE_MODEL_NAME
         self.violence_agent = None
         self.pension_agent = None
         self.general_agent = None
-        self.openai_client = None
+        self.cohere_client = None
 
-        if OPENAI_SDK_AVAILABLE and os.getenv('OPENAI_API_KEY'):
-            self.openai_client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        if COHERE_SDK_AVAILABLE and settings.COHERE_API_KEY:
+            self.cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
 
-        if PYDANTIC_AI_AVAILABLE:
+        # Nota: se mantiene el path de Pydantic AI como opcional/legacy.
+        if PYDANTIC_AI_AVAILABLE and self.cohere_client:
             self._initialize_pydantic_agent()
         else:
             self.agent = None
-            logger.warning("Agente Pydantic no inicializado - usando fallback")
+            logger.warning("Agente Pydantic no inicializado - usando Cohere directo/fallback")
     
     def _initialize_pydantic_agent(self):
-        """Inicializa el agente con Pydantic AI"""
-        if not Agent or not OpenAIModel or not OpenAIProvider:
-            logger.warning("Pydantic AI no disponible en runtime. Se usara modo fallback.")
+        """Inicializa el agente con Pydantic AI (deshabilitado en modo Cohere directo)."""
+        if not Agent:
+            logger.warning("Pydantic AI no disponible en runtime. Se usara modo Cohere directo.")
             return
 
-        api_key = os.getenv('OPENAI_API_KEY')
-        if not api_key:
-            logger.warning("OPENAI_API_KEY no configurada. Se usara modo fallback.")
-            return
-        
-        # Configurar modelo Cohere via settings centralizado
-        model = CohereModel(
-            settings.COHERE_LLM_MODEL,
-            provider=CohereProvider(api_key=settings.COHERE_API_KEY)
-        )
-        # Definir dependencias
-        deps_type = type('Deps', (), {
-            'translation_service': None,  # Inyectar servicio de traducción
-            'rag_engine': None,           # Inyectar motor RAG
-        })()
-        
-        # Crear agente para violencia familiar (result_type=str — Cohere no soporta $ref en schemas)
-        self.violence_agent = Agent(
-            model,
-            result_type=ViolenceResponse,
-            system_prompt=get_system_prompt("violence")
-        )
-        
-        # Crear agente para pensión de alimentos (result_type=str — Cohere no soporta $ref en schemas)
-        self.pension_agent = Agent(
-            model,
-            result_type=PensionResponse,
-            system_prompt=get_system_prompt("pension")
-        )
-        
-        # Crear agente general (result_type=str — Cohere no soporta $ref en schemas)
-        self.general_agent = Agent(
-            model,
-            result_type=GeneralLegalResponse,
-            system_prompt=get_system_prompt("general")
-        )
-        
-        logger.info("Agentes Pydantic AI inicializados correctamente")
+        # Se deja desactivado para evitar dependencias cruzadas entre versiones
+        # de pydantic-ai y cohere. El flujo principal usa self.cohere_client.
+        logger.info("Pydantic AI omitido: usando Cohere directo como proveedor principal")
     
-    async def respond_to_violence(self, query: str, context: Dict[str, Any]) -> ViolenceResponse:
-        """Responde a consultas sobre violencia familiar"""
-        
-        try:
-            if PYDANTIC_AI_AVAILABLE and self.violence_agent:
-                # Cohere devuelve texto plano, lo envolvemos en el modelo Pydantic
-                result = await self.violence_agent.run(query, deps=context)
-                text_response = result.data
-                return self._build_violence_response(text_response, query)
-            else:
-                return await self._fallback_violence_response(query, context)
-                
-        except Exception as e:
-            logger.error(f"Error en respuesta de violencia: {str(e)}")
-            raise
-    
-    async def respond_to_pension(self, query: str, context: Dict[str, Any]) -> PensionResponse:
-        """Responde a consultas sobre pensión de alimentos"""
-        
-        try:
-            if PYDANTIC_AI_AVAILABLE and self.pension_agent:
-                # Cohere devuelve texto plano, lo envolvemos en el modelo Pydantic
-                result = await self.pension_agent.run(query, deps=context)
-                text_response = result.data
-                return self._build_pension_response(text_response)
-            else:
-                return await self._fallback_pension_response(query, context)
-                
-        except Exception as e:
-            logger.error(f"Error en respuesta de pensión: {str(e)}")
-            raise
-    
-    async def respond_general(self, query: str, context: Dict[str, Any], language: str = "spanish", enriched_prompt: Optional[str] = None) -> GeneralLegalResponse:
-        """Responde a consultas legales generales
-        
-        Args:
-            query: Consulta del usuario
-            context: Contexto RAG (sources, answer, etc.)
-            language: Idioma de respuesta
-            enriched_prompt: Prompt enriquecido por ContextEngineer (opcional)
-        """
-        
-        try:
-            if PYDANTIC_AI_AVAILABLE and self.general_agent:
-                # Si hay prompt enriquecido, usarlo como mensaje al agente
-                agent_input = enriched_prompt if enriched_prompt else query
-                result = await self.general_agent.run(agent_input, deps=context)
-                text_response = result.data
-                return self._build_general_response(text_response, query)
-            else:
-                return await self._fallback_general_response(query, context, language)
-                
-        except Exception as e:
-            logger.error(f"Error en respuesta general: {str(e)}")
-            raise
-
-    async def stream_general_text(
-        self,
-        query: str,
-        context: Dict[str, Any],
-        language: str = "spanish"
-    ) -> AsyncGenerator[str, None]:
-        """Transmite respuesta legal en texto usando OpenAI streaming."""
+    def _build_user_prompt(self, query: str, context: Dict[str, Any], language: str) -> str:
         normalized_language = "quechua" if language == "quechua" else "spanish"
-
-        if not self.openai_client:
-            raise RuntimeError(
-                "OPENAI_API_KEY no configurada en backend para streaming."
-            )
-
         context_answer = str(context.get("answer", "")).strip()
         context_sources = context.get("sources", [])
         sources_text = ", ".join(str(source) for source in context_sources) if context_sources else "Sin fuentes"
 
-        system_prompt = get_system_prompt("stream")
-        user_prompt = (
+        return (
             f"Idioma de salida: {normalized_language}.\n"
             f"Consulta del usuario:\n{query}\n\n"
             f"Contexto recuperado por RAG:\n{context_answer}\n\n"
@@ -320,28 +216,121 @@ class LegalAgent:
             "3) No incluyas JSON ni markdown; devuelve solo texto plano."
         )
 
+    async def _generate_text_with_cohere(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        language: str,
+        prompt_variant: str,
+        enriched_prompt: Optional[str] = None
+    ) -> str:
+        if not self.cohere_client:
+            raise RuntimeError("COHERE_API_KEY no configurada en backend.")
+
+        user_query = enriched_prompt if enriched_prompt else query
+        user_prompt = self._build_user_prompt(user_query, context, language)
+
+        response = await self.cohere_client.chat(
+            message=user_prompt,
+            model=self.model_name,
+            preamble=get_system_prompt(prompt_variant),
+            temperature=settings.COHERE_TEMPERATURE,
+            max_tokens=settings.COHERE_MAX_TOKENS,
+        )
+
+        response_text = getattr(response, "text", "")
+        if not isinstance(response_text, str) or not response_text.strip():
+            raise RuntimeError("Cohere devolvio una respuesta vacia.")
+
+        return response_text
+
+    async def respond_to_violence(self, query: str, context: Dict[str, Any]) -> ViolenceResponse:
+        """Responde a consultas sobre violencia familiar"""
         try:
-            stream = await self.openai_client.chat.completions.create(
+            if self.cohere_client:
+                text_response = await self._generate_text_with_cohere(
+                    query,
+                    context,
+                    "spanish",
+                    "violence"
+                )
+                return self._build_violence_response(text_response, query)
+
+            return await self._fallback_violence_response(query, context)
+        except Exception as e:
+            logger.error(f"Error en respuesta de violencia: {str(e)}")
+            raise
+
+    async def respond_to_pension(self, query: str, context: Dict[str, Any]) -> PensionResponse:
+        """Responde a consultas sobre pensión de alimentos"""
+        try:
+            if self.cohere_client:
+                text_response = await self._generate_text_with_cohere(
+                    query,
+                    context,
+                    "spanish",
+                    "pension"
+                )
+                return self._build_pension_response(text_response)
+
+            return await self._fallback_pension_response(query, context)
+        except Exception as e:
+            logger.error(f"Error en respuesta de pensión: {str(e)}")
+            raise
+
+    async def respond_general(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        language: str = "spanish",
+        enriched_prompt: Optional[str] = None
+    ) -> GeneralLegalResponse:
+        """Responde a consultas legales generales"""
+        try:
+            if self.cohere_client:
+                text_response = await self._generate_text_with_cohere(
+                    query,
+                    context,
+                    language,
+                    "general",
+                    enriched_prompt=enriched_prompt,
+                )
+                return self._build_general_response(text_response, query)
+
+            return await self._fallback_general_response(query, context, language)
+        except Exception as e:
+            logger.error(f"Error en respuesta general: {str(e)}")
+            raise
+
+    async def stream_general_text(
+        self,
+        query: str,
+        context: Dict[str, Any],
+        language: str = "spanish"
+    ) -> AsyncGenerator[str, None]:
+        """Transmite respuesta legal en texto usando Cohere streaming."""
+        if not self.cohere_client:
+            raise RuntimeError("COHERE_API_KEY no configurada en backend para streaming.")
+
+        user_prompt = self._build_user_prompt(query, context, language)
+
+        try:
+            stream = self.cohere_client.chat_stream(
+                message=user_prompt,
                 model=self.model_name,
-                stream=True,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+                preamble=get_system_prompt("stream"),
+                temperature=settings.COHERE_TEMPERATURE,
+                max_tokens=settings.COHERE_MAX_TOKENS,
             )
 
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta
-                content = getattr(delta, "content", None)
-                if isinstance(content, str) and content:
-                    yield content
+            async for event in stream:
+                text_chunk = getattr(event, "text", None)
+                if isinstance(text_chunk, str) and text_chunk:
+                    yield text_chunk
         except Exception as e:
-            logger.error(f"Error en streaming general: {str(e)}")
+            logger.error(f"Error en streaming general (Cohere): {str(e)}")
             raise RuntimeError(
-                f"Fallo OpenAI streaming ({self.model_name}): {str(e)}"
+                f"Fallo Cohere streaming ({self.model_name}): {str(e)}"
             ) from e
     
     # ── Builders: texto plano → modelo Pydantic ──────────────────────
@@ -653,7 +642,7 @@ class LegalAgent:
         
         return {
             "pydantic_ai_available": PYDANTIC_AI_AVAILABLE,
-            "openai_streaming_available": self.openai_client is not None,
+            "cohere_streaming_available": self.cohere_client is not None,
             "model": self.model_name,
             "agents_configured": 3 if PYDANTIC_AI_AVAILABLE else 0,
             "response_types": [

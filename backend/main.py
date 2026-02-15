@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 import uvicorn
@@ -9,8 +9,12 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 import asyncio
+from dotenv import load_dotenv
 
 import traceback
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 # Rate limiting
 try:
@@ -31,7 +35,6 @@ from evaluation.deepeval_tests import LegalEvaluationSuite
 from context.context_engineering import ContextEngineer
 
 
-BASE_DIR = Path(__file__).resolve().parent
 DOCS_DIR = BASE_DIR / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
