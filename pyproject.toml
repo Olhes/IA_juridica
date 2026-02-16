@@ -1,75 +1,83 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ia-juridica"
-version = "2.0.0"
-description = "Asistente virtual bilingüe (quechua-español) para consultas de derecho digital"
-authors = [
-    {name = "IA Jurídica Team"}
-]
-license = {text = "MIT"}
-readme = "README.md"
-requires-python = ">=3.12.10"
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Legal Industry",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.12.10",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Office/Business :: Legal",
-]
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi==0.104.1",
-    "uvicorn[standard]==0.24.0",
-    "pydantic==2.5.0",
-    "pydantic-ai==0.0.14",
-    "docling==2.0.0",
-    "pypdf2==3.0.1",
-    "python-multipart==0.0.6",
-    "lightrag==0.1.0",
-    "graphiti==0.2.0",
-    "neo4j==5.15.0",
-    "chromadb==0.4.22",
-    "openai==1.6.1",
-    "anthropic==0.8.1",
-    "transformers==4.36.0",
-    "sentence-transformers==2.2.2",
-    "deepeval==0.20.0",
-    "opik==1.0.0",
-    "langchain==0.1.0",
-    "langchain-openai==0.0.5",
-    "sqlalchemy==2.0.23",
-    "chainlit==1.0.0",
-    "streamlit==1.29.0",
-    "python-dotenv==1.0.0",
-    "loguru==0.7.2",
-    "tqdm==4.66.1",
-    "rich==13.7.0",
-    "click==8.1.7",
+  "fastapi==0.129.0",
+  "uvicorn[standard]==0.40.0",
+
+  "pydantic==2.12.5",
+  "pydantic-settings==2.13.0",
+  "pydantic-ai==1.59.0",
+
+  "cohere==5.20.5",
+
+  "docling==2.73.1",
+  "pypdf==6.7.0",
+  "python-multipart==0.0.22",
+
+  "lightrag-hku==1.4.9.11",
+  "deepeval==3.8.4",
+
+  "SQLAlchemy==2.0.46",
+  "reportlab==4.4.10",
+
+  "numpy>=2.0,<3.0",
+
+  "slowapi==0.1.9",
+  "python-dotenv==1.2.1",
+  "loguru==0.7.3",
+  "tqdm==4.67.3",
+  "rich==14.3.2",
+  "click==8.2.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.3",
-    "black==23.11.0",
-    "flake8==6.1.0",
+  "pytest==9.0.2",
+  "pytest-asyncio==1.3.0",
+  "black==26.1.0",
+  "flake8==7.3.0",
 ]
 
+ml = [
+  # Cliente oficial openai
+  "openai>=2.21,<3",
+  "httpx>=0.27,<1",
+  "tenacity>=9.0,<10",
+]
+
+# OCR opcional: solo si realmente lo necesitas (scans)
+# Nota: Docling expone extras de OCR (easyocr/tesserocr/rapidocr/etc.)
+ocr = [
+  "docling[easyocr]==2.73.1",
+]
 [project.urls]
 Homepage = "https://github.com/ia-juridica/ia-juridica"
 Repository = "https://github.com/ia-juridica/ia-juridica"
 Documentation = "https://github.com/ia-juridica/ia-juridica/blob/main/DOCUMENTATION.md"
 
-[tool.black]
-line-length = 88
-target-version = ['py312']
+[tool.setuptools]
+# Evita que setuptools intente adivinar e incluya folders como frontend/node_modules/logs/etc.
+package-dir = {"" = "."}
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]
+exclude = [
+  "frontend*",
+  "node_modules*",
+  "logs*",
+  "temp*",
+  "templates*",
+  "evaluation*",
+  "database*",
+  "docs*",
+]
+
+[tool.setuptools.package-data]
+backend = ["**/*.yaml", "**/*.yml", "**/*.json", "**/*.md", "**/*.txt"]

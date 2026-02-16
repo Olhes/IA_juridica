@@ -1,51 +1,34 @@
-# Core API
 fastapi==0.129.0
 uvicorn[standard]==0.40.0
-
-# Data / Settings
 pydantic==2.12.5
 pydantic-settings==2.13.0
 pydantic-ai==1.59.0
-
-# LLM Providers
 cohere==5.20.5
-
-# Document Processing
 docling==2.73.1
 pypdf==6.7.0
 python-multipart==0.0.22
-
-# RAG and Knowledge Graphs
 lightrag-hku==1.4.9.11
-
-# Evaluation
 deepeval==3.8.4
-
-# Database
 SQLAlchemy==2.0.46
-
-# PDF Generation
 reportlab==4.4.10
-
-# Numeric (compat con ML moderno)
-numpy>=2.0,<3.0
-
-# Security & Rate Limiting
+numpy<3.0,>=2.0
 slowapi==0.1.9
-
-# Utilities
 python-dotenv==1.2.1
 loguru==0.7.3
 tqdm==4.67.3
 rich==14.3.2
 click==8.2.2
 
-# Optional: local translation / embeddings (pesado)
-transformers==5.1.0
-sentence-transformers==5.2.2
-
-# Dev
+[dev]
 pytest==9.0.2
 pytest-asyncio==1.3.0
 black==26.1.0
 flake8==7.3.0
+
+[ml]
+openai<3,>=2.21
+httpx<1,>=0.27
+tenacity<10,>=9.0
+
+[ocr]
+docling[easyocr]==2.73.1

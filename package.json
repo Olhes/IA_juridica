@@ -5,12 +5,13 @@
   "main": "backend/main.py",
   "scripts": {
     "dev": "pnpm run dev:full",
-    "dev:full": "concurrently -k -n BACKEND,FRONTEND -c green,blue \".\\.venv\\Scripts\\python.exe backend\\scripts\\run_dev_server.py\" \"pnpm run frontend:dev\"",
+    "dev:full": "concurrently -k -n BACKEND,FRONTEND -c green,blue \"pnpm run backend:dev:safe\" \"pnpm run frontend:dev\"",
     "frontend:dev": "pnpm --dir frontend dev",
     "frontend:build": "pnpm --dir frontend build",
     "frontend:start": "pnpm --dir frontend start",
-    "backend:dev": "python backend/main.py",
-    "backend:dev:safe": ".\\.venv\\Scripts\\python.exe backend\\scripts\\run_dev_server.py",
+    "backend:dev": "uv run python backend/main.py",
+    "backend:dev:safe": "uv run python backend/scripts/run_dev_server.py",
+    "backend:sync": "uv sync",
     "install-frontend": "pnpm --dir frontend install"
   },
   "keywords": ["ia", "juridico", "quechua", "espanol", "derecho-digital"],

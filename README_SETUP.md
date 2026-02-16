@@ -2,32 +2,39 @@
 
 ## 📋 Requisitos Previos
 
-- **Python 3.9+**
+- **Python 3.12**
+- **uv (gestor de Python y entornos)**
 - **Node.js 24 LTS**
 - **pnpm 10+**
 - **API Key de Cohere** (obligatoria)
 - **PDFs legales** (opcional para empezar)
 
-## ⚡ Configuración Automática (Recomendado)
+## ⚡ Configuración recomendada (pnpm + uv)
 
-### 1. Ejecutar Script de Configuración
+### 1. Instalar dependencias del proyecto
 
 ```bash
-cd ia-juridica/backend
-python scripts/setup.py
+cd ia-juridica
+pnpm install
+pnpm run install-frontend
+pnpm run backend:sync
 ```
 
-El script configurará automáticamente:
-- ✅ Validará la configuración
-- ✅ Creará todos los directorios necesarios
-- ✅ Instalará dependencias
-- ✅ Verificará componentes
-- ✅ Inicializará la base de datos
-- ✅ Configurará variables de entorno
+- `pnpm install` instala herramientas de scripts en la raíz.
+- `pnpm run install-frontend` instala dependencias reales de Next.js en `frontend/`.
+- `pnpm run backend:sync` sincroniza dependencias Python con `pyproject.toml` y `uv.lock`.
+
+### 1.1 Setup asistido (opcional)
+
+Si quieres ejecutar el setup asistido del backend:
+
+```bash
+uv run python backend/scripts/setup.py
+```
 
 ### 2. Configurar API Keys
 
-Edita el archivo `.env` creado:
+Edita el archivo `backend/.env` creado:
 
 ```env
 # Cohere (OBLIGATORIO)
@@ -49,7 +56,7 @@ LOG_LEVEL=INFO
 ### 3. Iniciar el Servidor
 
 ```bash
-python main.py
+pnpm run backend:dev:safe
 ```
 
 El servidor iniciará en: `http://localhost:8000`
@@ -57,9 +64,7 @@ El servidor iniciará en: `http://localhost:8000`
 ### 4. Frontend (Next.js)
 
 ```bash
-cd ../frontend
-pnpm install
-pnpm dev
+pnpm run frontend:dev
 ```
 
 Frontend disponible en: `http://localhost:3000`
@@ -71,6 +76,7 @@ Desde la raíz del proyecto:
 ```bash
 pnpm install
 pnpm run install-frontend
+pnpm run backend:sync
 pnpm dev
 ```
 
@@ -87,9 +93,10 @@ FASTAPI_BASE_URL=http://127.0.0.1:8000
 
 ### 5. Sobre `pnpm install` en raíz vs `frontend/`
 
-- `pnpm install` en `frontend/` instala dependencias reales de la UI (Next.js, React, Tailwind).
-- `pnpm install` en la raíz solo aplica si usas scripts del `package.json` raíz; no instala librerías del frontend.
-- Con la configuración actual, para trabajar solo en frontend basta con instalar una sola vez dentro de `frontend/`.
+- `pnpm install` en la raíz instala herramientas y scripts del `package.json` raíz.
+- `pnpm run install-frontend` instala dependencias reales de la UI (Next.js, React, Tailwind) en `frontend/`.
+- `pnpm run backend:sync` sincroniza las dependencias Python con `uv`.
+- Flujo recomendado de arranque: `pnpm install` + `pnpm run install-frontend` + `pnpm run backend:sync` + `pnpm dev`.
 
 ## 📁 Subir y Procesar PDFs
 
@@ -112,23 +119,23 @@ curl -X POST "http://localhost:8000/batch-process"
 
 ```bash
 # Procesar un archivo específico
-python scripts/process_pdfs.py process --file mi_documento.pdf
+uv run python backend/scripts/process_pdfs.py process --file mi_documento.pdf
 
 # Procesar todo el directorio
-python scripts/process_pdfs.py process-dir
+uv run python backend/scripts/process_pdfs.py process-dir
 
 # Ver estadísticas
-python scripts/process_pdfs.py stats
+uv run python backend/scripts/process_pdfs.py stats
 ```
 
 ### Método 3: Copiar Directamente
 
 ```bash
 # Copiar PDFs al directorio de procesamiento
-cp tus_pdfs/*.pdf docs/raw_pdfs/
+cp tus_pdfs/*.pdf backend/docs/raw_pdfs/
 
 # Luego ejecutar procesamiento batch
-python scripts/process_pdfs.py process-dir
+uv run python backend/scripts/process_pdfs.py process-dir
 ```
 
 ### Modo Cloud (recomendado para producción)
@@ -162,7 +169,8 @@ ia-juridica/
 ├── frontend/              # 🎨 Next.js + TypeScript
 │   ├── app/
 │   └── src/
-└── requirements.txt       # 📦 Dependencias
+├── pyproject.toml         # 📦 Dependencias Python (uv)
+└── uv.lock                # 🔒 Lockfile de Python
 ```
 
 ## 📚 Tipos de PDFs Recomendados
@@ -202,20 +210,20 @@ ia-juridica/
 
 ```bash
 # Ver markdown generados
-ls docs/processed/
+ls backend/docs/processed/
 
 # Revisar contenido de un archivo
-cat docs/processed/mi_documento.md
+cat backend/docs/processed/mi_documento.md
 ```
 
 ### 2. Validar Calidad
 
 ```bash
 # Ejecutar validación
-python scripts/process_pdfs.py validate
+uv run python backend/scripts/process_pdfs.py validate
 
 # Ver estadísticas completas
-python scripts/process_pdfs.py stats --verbose
+uv run python backend/scripts/process_pdfs.py stats --verbose
 ```
 
 ### 3. Probar API
@@ -233,8 +241,8 @@ curl -X POST "http://localhost:8000/legal-query" \
 
 **Solución:**
 ```bash
-# Editar .env
-nano .env
+# Editar backend/.env
+nano backend/.env
 # Agregar: COHERE_API_KEY=tu_key_aqui
 ```
 
@@ -243,7 +251,7 @@ nano .env
 **Solución:**
 ```bash
 # Reinstalar dependencias
-pip install -r requirements.txt --force-reinstall
+uv sync --reinstall
 ```
 
 ### ❌ Error: "Directorio no existe"
@@ -251,7 +259,7 @@ pip install -r requirements.txt --force-reinstall
 **Solución:**
 ```bash
 # Ejecutar setup nuevamente
-python scripts/setup.py
+uv run python backend/scripts/setup.py
 ```
 
 ### ❌ Error: "PDF corrupto"
@@ -259,7 +267,7 @@ python scripts/setup.py
 **Solución:**
 ```bash
 # Mover a failed y reprocesar
-python scripts/process_pdfs.py reprocess
+uv run python backend/scripts/process_pdfs.py reprocess
 ```
 
 ## 📊 Monitoreo y Evaluación
