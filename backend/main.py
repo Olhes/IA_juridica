@@ -88,7 +88,15 @@ async def lifespan(app: FastAPI):
         await app.state.rag_engine.initialize_storages()
         
         app.state.legal_agent = LegalAgent()
-        app.state.evaluation_suite = LegalEvaluationSuite()
+
+        # Inicializar evaluation solo si está disponible
+        try:
+            app.state.evaluation_suite = LegalEvaluationSuite()
+            print("Evaluation suite inicializado")
+        except Exception as e:
+            print("Evaluation deshabilitado:", e)
+            app.state.evaluation_suite = None
+        
         app.state.context_engineer = ContextEngineer()
 
         print("Componentes inicializados")
