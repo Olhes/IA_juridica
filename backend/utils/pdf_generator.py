@@ -32,6 +32,27 @@ LIGHT_BG = HexColor("#f7fafc")
 BORDER_COLOR = HexColor("#cbd5e0")
 
 
+def _normalize_response_data(response_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Normaliza payloads para soportar formatos planos y respuesta completa de /legal-query."""
+    if not isinstance(response_data, dict):
+        return {}
+
+    normalized = response_data
+
+    nested = normalized.get("response")
+    if isinstance(nested, dict):
+        normalized = nested
+
+    if not normalized.get("tema"):
+        metadata = response_data.get("metadata", {})
+        enriched_context = metadata.get("enriched_context", {}) if isinstance(metadata, dict) else {}
+        legal_topic = enriched_context.get("legal_topic") if isinstance(enriched_context, dict) else None
+        if legal_topic:
+            normalized = {**normalized, "tema": legal_topic}
+
+    return normalized
+
+
 def _build_styles() -> Dict[str, ParagraphStyle]:
     """Estilos personalizados para el reporte legal"""
     base = getSampleStyleSheet()
@@ -121,6 +142,7 @@ def generate_legal_pdf(
     )
 
     story = []
+    response_data = _normalize_response_data(response_data)
 
     # ---- Header ----
     story.append(Paragraph("IA Jurídica — Reporte Legal", styles["title"]))
@@ -143,7 +165,7 @@ def generate_legal_pdf(
     story.append(Paragraph(f"<b>Tema identificado:</b> {tema}", styles["body"]))
 
     # ---- Respuesta en español ----
-    spanish = response_data.get("respuesta_espanol", response_data.get("spanish", ""))
+    spanish = response_data.get("respuesta_espanol", "")
     if spanish:
         story.append(Paragraph("Respuesta en Español", styles["heading"]))
         # Dividir por párrafos para mejor formato
@@ -153,7 +175,7 @@ def generate_legal_pdf(
                 story.append(Paragraph(para, styles["body"]))
 
     # ---- Respuesta en quechua ----
-    quechua = response_data.get("respuesta_quechua", response_data.get("quechua", ""))
+    quechua = response_data.get("respuesta_quechua", "")
     if quechua:
         story.append(Spacer(1, 6))
         story.append(Paragraph("Quechua Simipi Respuesta", styles["heading"]))
