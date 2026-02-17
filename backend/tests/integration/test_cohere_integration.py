@@ -13,7 +13,7 @@ import numpy as np
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Asegurar que el directorio backend está en el path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 # ---------------------------------------------------------------------------
