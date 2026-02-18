@@ -370,9 +370,10 @@ class ContextEngineer:
                 enriched_context['location_info'] = self.cultural_db['communities'][detected_location]
             
             # Obtener prompt apropiado
+            language_for_prompt = "quechua" if query_language == "qu" else query_language
             prompt = self.prompt_manager.get_system_prompt(
                 agent_type=agent_type,
-                language=query_language,
+                language=language_for_prompt,
                 context=enriched_context
             )
             
@@ -406,7 +407,7 @@ class ContextEngineer:
         try:
             # 1. Detectar idioma de la consulta
             query_language = self.language_detector.detect_language(query)
-            if query_language == "quechua":
+            if query_language == "qu":
                 language = "quechua"
             
             # 2. Clasificar tipo de consulta

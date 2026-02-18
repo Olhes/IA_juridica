@@ -80,12 +80,18 @@ async def lifespan(app: FastAPI):
 
         # Inicializar componentes UNA sola vez
         app.state.pdf_processor = LegalPDFProcessor()
-        app.state.ingestion_pipeline = LegalIngestionPipeline()
         app.state.rag_engine = LegalRAGEngine()
         
         # ⚠️ CRÍTICO: Inicializar storages de LightRAG (async)
         # Sin esto, obtendrás StorageNotInitializedError
         await app.state.rag_engine.initialize_storages()
+        
+        # Cargar documentos procesados existentes que no estén en el store
+        loaded = await app.state.rag_engine.load_processed_documents(str(PROCESSED_DIR))
+        print(f"Documentos en memoria: {len(app.state.rag_engine.documents)} ({loaded} nuevos desde disco)")
+        
+        # Pipeline de ingesta con el engine compartido
+        app.state.ingestion_pipeline = LegalIngestionPipeline(rag_engine=app.state.rag_engine)
         
         app.state.legal_agent = LegalAgent()
 

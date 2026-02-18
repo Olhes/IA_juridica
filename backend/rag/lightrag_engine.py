@@ -25,6 +25,8 @@ except Exception as e:
 class LegalRAGEngine:
     """Motor RAG especializado para documentos legales con LightRAG + Cohere"""
     
+    _DOCUMENTS_STORE_FILENAME = "documents_store.json"
+    
     def __init__(self, working_dir: str = "./docs/knowledge_graph"):
         self.working_dir = Path(working_dir)
         self.working_dir.mkdir(parents=True, exist_ok=True)
@@ -33,6 +35,9 @@ class LegalRAGEngine:
         self.embeddings = {}
         self.rag = None
         self._storages_initialized = False
+        
+        # Cargar documentos persistidos del disco
+        self._load_documents_from_disk()
         
         # Inicializar cliente Cohere
         self.cohere_client = None
@@ -45,8 +50,85 @@ class LegalRAGEngine:
         if LIGHTRAG_AVAILABLE:
             self._initialize_lightrag()
     
-        logger.info(f"LegalRAG Engine inicializado en {working_dir}")
+        logger.info(f"LegalRAG Engine inicializado en {working_dir} ({len(self.documents)} documentos cargados del disco)")
 
+    # ── Persistencia de documentos en disco ──────────────────────────────
+    
+    @property
+    def _documents_store_path(self) -> Path:
+        return self.working_dir / self._DOCUMENTS_STORE_FILENAME
+    
+    def _load_documents_from_disk(self):
+        """Carga self.documents desde el archivo JSON persistido"""
+        store_path = self._documents_store_path
+        if store_path.exists():
+            try:
+                with open(store_path, "r", encoding="utf-8") as f:
+                    self.documents = json.load(f)
+                logger.info(f"Cargados {len(self.documents)} documentos desde {store_path}")
+            except Exception as e:
+                logger.error(f"Error cargando documentos persistidos: {e}")
+                self.documents = {}
+        else:
+            logger.info("No se encontró archivo de documentos persistidos, iniciando vacío")
+    
+    def _save_documents_to_disk(self):
+        """Persiste self.documents a disco como JSON"""
+        store_path = self._documents_store_path
+        try:
+            with open(store_path, "w", encoding="utf-8") as f:
+                json.dump(self.documents, f, ensure_ascii=False, indent=2)
+            logger.debug(f"Documentos persistidos: {len(self.documents)} docs en {store_path}")
+        except Exception as e:
+            logger.error(f"Error persistiendo documentos: {e}")
+    
+    async def load_processed_documents(self, processed_dir: str = "./docs/processed"):
+        """
+        Carga documentos .md ya procesados que no estén en self.documents.
+        Útil para sincronizar el estado tras despliegues o migraciones.
+        """
+        processed_path = Path(processed_dir)
+        if not processed_path.exists():
+            logger.warning(f"Directorio de procesados no existe: {processed_path}")
+            return 0
+        
+        md_files = list(processed_path.glob("**/*.md"))
+        loaded = 0
+        for md_file in md_files:
+            doc_id = md_file.stem
+            if doc_id in self.documents:
+                continue  # Ya está cargado
+            
+            try:
+                content = md_file.read_text(encoding="utf-8")
+                if len(content.strip()) < 50:
+                    continue  # Archivo vacío o casi vacío
+                
+                metadata = {
+                    "filename": md_file.name,
+                    "title": doc_id,
+                    "document_type": "legal_document",
+                    "source": "disk_reload",
+                }
+                
+                self.documents[doc_id] = {
+                    "content": content,
+                    "metadata": metadata,
+                    "chunks": self._chunk_content(content),
+                }
+                loaded += 1
+            except Exception as e:
+                logger.warning(f"Error cargando {md_file}: {e}")
+        
+        if loaded > 0:
+            self._save_documents_to_disk()
+            logger.info(f"Cargados {loaded} documentos nuevos desde {processed_path}")
+        else:
+            logger.info("No hay documentos nuevos por cargar desde disco")
+        
+        return loaded
+
+    # ── LightRAG initialization ─────────────────────────────────────────
     
     def _initialize_lightrag(self):
         """Inicializa LightRAG con Cohere embeddings y LLM reales"""
@@ -159,6 +241,9 @@ class LegalRAGEngine:
             
             if not LIGHTRAG_AVAILABLE or self.rag is None:
                 logger.info(f"Documento {document_id} guardado localmente (modo fallback)")
+            
+            # Persistir a disco
+            self._save_documents_to_disk()
                 
         except Exception as e:
             logger.error(f"Error agregando documento {document_id}: {str(e)}")
@@ -168,6 +253,7 @@ class LegalRAGEngine:
                 "metadata": metadata,
                 "chunks": self._chunk_content(content)
             }
+            self._save_documents_to_disk()
             logger.info(f"Documento {document_id} guardado en modo fallback debido a error")
     
     async def query(self, question: str, param: str = "naive") -> Dict[str, Any]:
