@@ -68,7 +68,7 @@ ia-juridica/
 ## 📋 Requisitos
 
 ### Sistema
-- **Python 3.12** (requerido por UV)
+- **Python 3.12**
 - **UV** - Gestor de dependencias ultrarrápido
 - **Docker & Docker Compose** - Para producción
 - **API Key de Cohere** (obligatoria)
