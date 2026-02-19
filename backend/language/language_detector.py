@@ -104,14 +104,20 @@ class LanguageDetector:
             if len(clean_text) < self.config.MIN_TEXT_LENGTH_FOR_DETECTION:
                 return self._simple_detection(clean_text, fallback)
             
-            # Usar detección automática si está disponible
+            # Priorizar detección rule-based para Quechua
+            # (langdetect NO soporta quechua, así que ejecutamos reglas primero)
+            rule_result = self._rule_based_detection(clean_text, fallback)
+            if rule_result == "qu":
+                return "qu"
+            
+            # Usar detección automática para español y otros idiomas
             if LANGDETECT_AVAILABLE:
                 auto_result = self._automatic_detection(clean_text)
                 if auto_result:
                     return auto_result
             
-            # Usar detección basada en reglas
-            return self._rule_based_detection(clean_text, fallback)
+            # Fallback a resultado de reglas
+            return rule_result
             
         except Exception as e:
             logger.error(f"Error detectando idioma: {str(e)}")

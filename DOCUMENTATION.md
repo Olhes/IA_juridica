@@ -11,6 +11,8 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 - **Pydantic**: Validación estricta de respuestas estructuradas
 - **DeepEval**: Evaluación automática de calidad
 - **FastAPI**: API REST moderna
+- **UV**: Gestión de dependencias ultrarrápida
+- **Docker**: Contenerización para producción
 
 ## 🏗️ Arquitectura Técnica v2.0
 
@@ -35,6 +37,7 @@ ia-juridica/
 │   ├── evaluation/                # DeepEval
 │   ├── config/                    # Settings y perfiles
 │   ├── scripts/                   # Automatización CLI
+│   ├── Dockerfile                 # Configuración Docker con UV
 │   └── docs/                      # Artefactos locales (dev)
 │       ├── raw_pdfs/
 │       ├── processed/
@@ -52,7 +55,11 @@ ia-juridica/
 │   │   ├── infrastructure/        # Adaptadores HTTP/FastAPI
 │   │   └── presentation/          # UI + componentes
 │   └── package.json
-├── requirements.txt
+├── pyproject.toml                 # Configuración UV y dependencias
+├── uv.lock                        # Lock file UV (reproducción exacta)
+├── requirements.txt               # Compatibilidad con pip
+├── docker-compose.prod.yml         # Docker Compose producción
+├── Dockerfile.temp                # Docker temporal (pip fallback)
 ├── package.json                   # Scripts raíz (frontend/backend)
 ├── README_SETUP.md
 └── CLOUD_PDF_PIPELINE.md          # Arquitectura cloud para PDFs
@@ -61,7 +68,9 @@ ia-juridica/
 ## 📋 Requisitos
 
 ### Sistema
-- **Python 3.12**
+- **Python 3.12** (requerido por UV)
+- **UV** - Gestor de dependencias ultrarrápido
+- **Docker & Docker Compose** - Para producción
 - **API Key de Cohere** (obligatoria)
 - **8GB+ RAM** recomendado para procesamiento de PDFs
 
@@ -73,15 +82,20 @@ ia-juridica/
 - `pydantic` - Validación estructurada de respuestas
 - `deepeval` - Evaluación calidad
 
-## � Configuración Rápida
+## ⚡ Configuración Rápida con UV
 
-### 1. Setup Automático
+### 1. Instalar UV
 ```bash
-cd ia-juridica/backend
-python scripts/setup.py
+pip install uv
 ```
 
-### 2. Configurar Variables de Entorno
+### 2. Setup Automático
+```bash
+cd ia-juridica
+uv sync  # Instala todas las dependencias
+```
+
+### 3. Configurar Variables de Entorno
 ```bash
 # Editar .env
 COHERE_API_KEY=tu_api_key_aqui
@@ -89,17 +103,45 @@ SECRET_KEY=tu_secreto_unico_aqui
 DEBUG=true
 ```
 
-### 3. Procesar PDFs
+### 4. Iniciar Desarrollo
 ```bash
-# Colocar PDFs en backend/docs/raw_pdfs/
-python scripts/process_pdfs.py process-dir
+cd backend
+uv run uvicorn main:app --reload --port 8000
 ```
 
-### 4. Iniciar Servidor
+### 5. Procesar PDFs
 ```bash
-python main.py
-# Acceder: http://localhost:8000
+# Colocar PDFs en backend/docs/raw_pdfs/
+uv run python scripts/process_pdfs.py process-dir
 ```
+
+### 6. Iniciar Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+# Acceder: http://localhost:3000
+```
+
+## 🐳 Docker Producción
+
+### Build y Deploy
+```bash
+# Construir imágenes
+docker-compose -f docker-compose.prod.yml build
+
+# Iniciar servicios
+docker-compose -f docker-compose.prod.yml up -d
+
+# Ver logs
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+### Arquitectura Docker
+- **Backend**: Python 3.12-slim + UV + dependencias CPU-only
+- **Frontend**: Next.js optimizado para producción
+- **Volumes**: Persistencia para documentos y logs
+- **Health checks**: Monitoreo automático de servicios
 
 ## 📡 Endpoints API v2.0
 
@@ -187,9 +229,11 @@ LOG_FILE=./logs/juridica.log
 
 ### 🔍 LightRAGEngine (`backend/rag/lightrag_engine.py`)
 **Propósito:** Motor RAG con grafos de conocimiento
-- **Funciones:** `query()`, `add_document()`, `get_knowledge_graph()`
+- **Funciones:** `query()`, `add_document()`, `get_knowledge_graph()`, `_extract_relevant_fragment()`
 - **Características:** Búsqueda semántica + relaciones entre conceptos
 - **Indexación:** Automática con embeddings y metadatos
+- **Modo Fallback:** Búsqueda por palabras clave cuando LightRAG no está disponible
+- **Fuentes:** Extracción de metadatos desde `doc_storage` de LightRAG
 
 ### 🧪 DeepEvalTests (`backend/evaluation/deepeval_tests.py`)
 **Propósito:** Evaluación automática de calidad de respuestas
@@ -202,6 +246,13 @@ LOG_FILE=./logs/juridica.log
 - **Validación:** Automática de variables críticas
 - **Tipado:** Pydantic para seguridad de tipos
 - **Entornos:** Desarrollo y producción diferenciados
+
+### ⚡ UV Integration
+**Propósito:** Gestión de dependencias ultrarrápida
+- **pyproject.toml:** Configuración moderna de dependencias
+- **uv.lock:** Reproducción exacta de ambientes
+- **Rendimiento:** 10x más rápido que pip tradicional
+- **Docker:** Integración nativa para contenedores ligeros
 
 ## 📊 Flujo de Datos Completo
 
@@ -219,6 +270,14 @@ Usuario → Next.js UI → Use Case/Gateway → API Route Next (BFF) → FastAPI
 Render UI   Validación TS   /api/legal/*    Normalización payload   RAG + Agente + fuentes
 
 Respuesta FastAPI → API Route Next → UI bilingüe (spanish/quechua)
+```
+
+### ⚡ Flujo UV + Docker
+```
+Desarrollo: uv sync → uv run uvicorn → Desarrollo rápido
+Producción: Docker build → uv sync --frozen → Contenedor optimizado
+    ↓              ↓                    ↓
+pyproject.toml → .venv/ → Imagen Docker ligera
 ```
 
 ## 📋 Temas Legales Soportados

@@ -12,9 +12,9 @@ from config.settings import settings
 class LegalIngestionPipeline:
     """Pipeline completo para ingesta de documentos legales"""
     
-    def __init__(self):
+    def __init__(self, rag_engine=None):
         self.pdf_processor = LegalPDFProcessor()
-        self.rag_engine = LegalRAGEngine()
+        self.rag_engine = rag_engine or LegalRAGEngine()
         self.file_utils = FileUtils()
         
         # Directorios
