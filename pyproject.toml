@@ -5,18 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ia-juridica"
 version = "0.1.0"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi==0.129.0",
-  "uvicorn[standard]==0.40.0",
+  "uvicorn[standard]==0.41.0",
 
   "pydantic==2.12.5",
   "pydantic-settings==2.13.0",
-  "pydantic-ai==1.59.0",
+  "pydantic-ai-slim[google,cohere]>=1.62.0,<2",
 
   "cohere==5.20.5",
 
-  "docling==2.73.1",
+  "docling>=2.74",
   "pypdf==6.7.0",
   "python-multipart==0.0.22",
 
@@ -26,7 +26,7 @@ dependencies = [
   "SQLAlchemy==2.0.46",
   "reportlab==4.4.10",
 
-  "numpy>=2.0,<3.0",
+  "numpy>=2.4.2,<3.0",
 
   "slowapi==0.1.9",
   "python-dotenv==1.2.1",
@@ -45,8 +45,6 @@ dev = [
 ]
 
 ml = [
-  # Cliente oficial openai
-  "openai>=2.21,<3",
   "httpx>=0.27,<1",
   "tenacity>=9.0,<10",
 ]
@@ -54,7 +52,7 @@ ml = [
 # OCR opcional: solo si realmente lo necesitas (scans)
 # Nota: Docling expone extras de OCR (easyocr/tesserocr/rapidocr/etc.)
 ocr = [
-  "docling[easyocr]==2.73.1",
+  "docling[easyocr]>=2.74",
 ]
 [project.urls]
 Homepage = "https://github.com/ia-juridica/ia-juridica"
