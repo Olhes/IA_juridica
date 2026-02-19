@@ -61,7 +61,7 @@ ia-juridica/
 ## 📋 Requisitos
 
 ### Sistema
-- **Python 3.9+**
+- **Python 3.12**
 - **API Key de Cohere** (obligatoria)
 - **8GB+ RAM** recomendado para procesamiento de PDFs
 
@@ -351,7 +351,7 @@ LOG_LEVEL=WARNING
 ```
 
 ### 📦 Requisitos de Producción
-- **Python 3.9+**
+- **Python 3.12**
 - **8GB+ RAM** (para procesamiento de PDFs)
 - **50GB+ Disco** (para documentos y grafo)
 - **Cohere API Key** (obligatoria)
