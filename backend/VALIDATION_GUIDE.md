@@ -259,39 +259,62 @@ cd ~/Documentos/IA_juridica/backend
 uv add pytest pytest-asyncio pytest-mock pytest-cov --dev
 ```
 
+### ⚠️ Importante — PYTHONPATH
+
+pytest necesita saber que los módulos (`validation/`, `optimization/`) viven en `backend/`.
+Tienes dos opciones, elige una:
+
+**Opción A — Escribirlo en cada comando (más simple):**
+
+```bash
+PYTHONPATH=. uv run pytest
+```
+
+**Opción B — Configurarlo una sola vez (recomendado):**
+Crea el archivo `backend/conftest.py` en la raíz (no dentro de `tests/`):
+
+```python
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+```
+
+Después de esto, `uv run pytest` funciona directamente sin prefijo.
+
+---
+
 ### Verificar que los módulos importan bien (hacer esto primero)
 
 ```bash
-uv run python -c "from validation import ResponseValidator; print('OK')"
-uv run python -c "from optimization import LLMOptimizer; print('OK')"
+PYTHONPATH=. uv run python -c "from validation import ResponseValidator; print('OK')"
+PYTHONPATH=. uv run python -c "from optimization import LLMOptimizer; print('OK')"
 ```
 
 ### Correr tests por módulo (de menor a mayor complejidad)
 
 ```bash
 # 1. Optimizer (sin dependencias externas, más rápido)
-uv run pytest tests/unit/test_llm_optimizer.py -v
+PYTHONPATH=. uv run pytest tests/unit/test_llm_optimizer.py -v
 
 # 2. Anti-hallucination (solo regex, offline)
-uv run pytest tests/unit/test_anti_hallucination.py -v
+PYTHONPATH=. uv run pytest tests/unit/test_anti_hallucination.py -v
 
 # 3. Cross-checker (usa corpus en memoria)
-uv run pytest tests/unit/test_cross_checker.py -v
+PYTHONPATH=. uv run pytest tests/unit/test_cross_checker.py -v
 
 # 4. Self-correction (usa mock de Cohere)
-uv run pytest tests/unit/test_self_correction.py -v
+PYTHONPATH=. uv run pytest tests/unit/test_self_correction.py -v
 
 # 5. Todos los unitarios juntos
-uv run pytest tests/unit/ -v
+PYTHONPATH=. uv run pytest tests/unit/ -v
 
 # 6. Integración (pipeline completo con mocks)
-uv run pytest tests/integration/ -v
+PYTHONPATH=. uv run pytest tests/integration/ -v
 ```
 
 ### Ver cobertura de código
 
 ```bash
-uv run pytest tests/unit/ --cov=validation --cov=optimization --cov-report=term-missing
+PYTHONPATH=. uv run pytest tests/unit/ --cov=validation --cov=optimization --cov-report=term-missing
 ```
 
 La columna `MISS` indica qué líneas no están siendo probadas.
@@ -300,11 +323,11 @@ La columna `MISS` indica qué líneas no están siendo probadas.
 
 ```bash
 # Por nombre del test
-uv run pytest tests/unit/test_anti_hallucination.py::TestAntiHallucinationLayer::test_good_response_has_low_risk -v
+PYTHONPATH=. uv run pytest tests/unit/test_anti_hallucination.py::TestAntiHallucinationLayer::test_good_response_has_low_risk -v
 
 # Por marcador
-uv run pytest -m unit -v
-uv run pytest -m integration -v
+PYTHONPATH=. uv run pytest -m unit -v
+PYTHONPATH=. uv run pytest -m integration -v
 ```
 
 ---
@@ -313,12 +336,16 @@ uv run pytest -m integration -v
 
 ### `ModuleNotFoundError: No module named 'validation'`
 
-```bash
-# Verificar que estás en la carpeta correcta
-pwd  # debe mostrar .../backend
+Este es el error más común. pytest no encuentra los módulos porque no sabe
+que debe buscar desde `backend/`. Solución:
 
-# Verificar que el venv está activo
-which python  # debe apuntar al .venv del proyecto
+```bash
+# Opción rápida: prefijo PYTHONPATH
+PYTHONPATH=. uv run pytest
+
+# Opción permanente: crear backend/conftest.py (en la raíz, no en tests/)
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
 ```
 
 ### `fixture not found: mock_cohere_client`

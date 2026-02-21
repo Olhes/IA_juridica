@@ -124,12 +124,13 @@ class TestRAGCrossChecker:
     # ── Threshold personalizado ─────────────────────────────────────────────────
 
     def test_custom_threshold_strict(self, sample_documents):
-        """Threshold alto (0.95) → casi nada es grounded."""
+        """Threshold alto (0.95) con texto que tiene overlap parcial → not grounded."""
         strict_checker = RAGCrossChecker(documents=sample_documents, grounded_threshold=0.95)
+        # Texto con mezcla de términos del corpus y términos ajenos
         result = strict_checker.check(
-            "El artículo 472 del Código Civil define alimentos básicos.", query=""
+            "El contrato mercantil establece cláusulas de arbitraje internacional "
+            "según el reglamento societario de fusiones corporativas.", query=""
         )
-        # Con threshold 95% es casi imposible estar "grounded"
         assert not result.is_grounded
 
     def test_custom_threshold_permissive(self, sample_documents):

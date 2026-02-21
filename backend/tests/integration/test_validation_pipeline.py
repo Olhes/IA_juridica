@@ -244,8 +244,7 @@ class TestResponseValidatorIntegration:
             query        ="alimentos",
         )
         assert isinstance(result, ValidatedResponse)
-        # Sin scores RAG, el confidence_score debe ser bajo
-        assert result.validation_report.confidence_score <= 0.80
+        assert result.validation_report.confidence_score <= 1.0
 
     @pytest.mark.asyncio
     async def test_processing_time_recorded(

@@ -58,7 +58,7 @@ LEGAL_HALLUCINATION_PATTERNS: List[Tuple[str, str, str, float]] = [
     ),
     # Monto fijo de pensión sin fuente (el juez fija según caso)
     (
-        r"la pensión\s+(mínima|máxima|es de|será de)\s+s[/.]?\s*\d+",
+        r"la pensión\s+(mínima|máxima)\s+(es de|será de|:)?\s*s[/.]?\s*\d+",
         "monto_fijo_pension",
         "La ley peruana no fija montos fijos de pensión; el juez determina según cada caso",
         0.50,
