@@ -37,6 +37,7 @@ requerimientos.md
 /backend/docs/processed/**
 /backend/docs/knowledge_graph/**
 /backend/docs/failed/**
+kv_store_llm_response_cache.json
 !/backend/docs/raw_pdfs/.gitkeep
 !/backend/docs/processed/.gitkeep
 !/backend/docs/knowledge_graph/.gitkeep
