@@ -111,6 +111,20 @@ export interface ChatMessage {
   error?: string;
 }
 
+// ---- Chat Session (multi-thread) ----
+
+export interface ChatSessionMeta {
+  id: string;
+  /** Primer mensaje del usuario (truncado) — usado como título */
+  title: string;
+  /** Primer fragmento de la respuesta del asistente (truncado) */
+  preview: string;
+  language: SupportedLanguage;
+  createdAt: string;   // ISO string
+  updatedAt: string;   // ISO string
+  messageCount: number;
+}
+
 // ---- Legacy types kept for backward compat ----
 
 export interface LegalQueryContext {

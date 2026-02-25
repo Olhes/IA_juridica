@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
+import { loadSessionMessages, saveSessionMessages } from './useChatSessions';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -10,25 +11,49 @@ function newId() {
   return `msg-${Date.now()}-${msgCounter++}`;
 }
 
+interface UseChatOptions {
+  sessionId: string | null;
+  language: SupportedLanguage;
+  /** Llamado cuando el contenido de la sesión cambia (para actualizar sidebar) */
+  onSessionUpdated?: (patch: { title?: string; preview?: string; messageCount?: number }) => void;
+}
+
 /**
- * Core chat hook: handles streaming + full query + PDF download.
+ * Core chat hook con persistencia por sesión.
  *
- * Flow per message:
- *  1. POST /legal-query-stream → stream text into assistant bubble
- *  2. POST /legal-query       → get validation, sources, structured fields
- *  3. Merge both into the same chat message
+ * Flujo por mensaje:
+ *  1. POST /legal-query-stream → stream texto en la burbuja del asistente
+ *  2. POST /legal-query        → validación, fuentes y campos estructurados
+ *  3. Merge + guardado en localStorage bajo la clave de la sesión
  */
-export function useChat(language: SupportedLanguage) {
+export function useChat({ sessionId, language, onSessionUpdated }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
-
   const abortRef = useRef<AbortController | null>(null);
 
-  // ───────────────────────────────────────────────────────────────
-  // Helpers
-  // ───────────────────────────────────────────────────────────────
+  // ── Cargar mensajes cuando cambia la sesión activa ────────────────────────
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      setHydrated(true);
+      return;
+    }
+    const saved = loadSessionMessages(sessionId);
+    setMessages(saved);
+    setHydrated(true);
+  }, [sessionId]);
+
+  // ── Persistir cambios (solo post-hidratación y sin streaming) ─────────────
+  useEffect(() => {
+    if (!hydrated || !sessionId) return;
+    if (messages.some((m) => m.isStreaming || m.isLoadingFull)) return;
+    saveSessionMessages(sessionId, messages);
+  }, [messages, hydrated, sessionId]);
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
 
   const updateMessage = useCallback(
     (id: string, patch: Partial<ChatMessage>) => {
@@ -43,9 +68,7 @@ export function useChat(language: SupportedLanguage) {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  // ───────────────────────────────────────────────────────────────
-  // Health check (optional, run once on mount)
-  // ───────────────────────────────────────────────────────────────
+  // ─── Health check ──────────────────────────────────────────────────────────
 
   const checkHealth = useCallback(async () => {
     try {
@@ -57,22 +80,18 @@ export function useChat(language: SupportedLanguage) {
     }
   }, []);
 
-  // ───────────────────────────────────────────────────────────────
-  // Send a query
-  // ───────────────────────────────────────────────────────────────
+  // ─── Send query ────────────────────────────────────────────────────────────
 
   const sendQuery = useCallback(
     async (query: string) => {
-      if (isLoading || !query.trim()) return;
+      if (isLoading || !query.trim() || !sessionId) return;
 
-      // Abort any in-flight request
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-
       setIsLoading(true);
 
-      // Push user message
+      // Mensaje del usuario
       const userMsg: ChatMessage = {
         id: newId(),
         role: 'user',
@@ -81,9 +100,9 @@ export function useChat(language: SupportedLanguage) {
       };
       pushMessage(userMsg);
 
-      // Push placeholder assistant message
+      // Placeholder del asistente
       const assistantId = newId();
-      const assistantMsg: ChatMessage = {
+      pushMessage({
         id: assistantId,
         role: 'assistant',
         content: '',
@@ -91,10 +110,18 @@ export function useChat(language: SupportedLanguage) {
         isStreaming: true,
         isLoadingFull: true,
         timestamp: new Date(),
-      };
-      pushMessage(assistantMsg);
+      });
 
-      // ── 1. Stream response ──────────────────────────────────────
+      // Notificar al sidebar (título = primer mensaje del usuario)
+      setMessages((prev) => {
+        const userCount = prev.filter((m) => m.role === 'user').length;
+        if (userCount === 0) {
+          onSessionUpdated?.({ title: query.trim().slice(0, 60) });
+        }
+        return prev;
+      });
+
+      // ── 1. Stream ──────────────────────────────────────────────────────
       let streamedText = '';
       try {
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
@@ -104,44 +131,39 @@ export function useChat(language: SupportedLanguage) {
           signal: controller.signal,
         });
 
-        if (!streamRes.ok || !streamRes.body) {
-          throw new Error('No se pudo conectar con el servidor.');
-        }
+        if (!streamRes.ok || !streamRes.body) throw new Error('Error de conexión');
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
-
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          streamedText += chunk;
+          streamedText += decoder.decode(value, { stream: true });
           updateMessage(assistantId, { streamingContent: streamedText });
         }
         streamedText += decoder.decode();
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
+          const partial = streamedText || '(Respuesta interrumpida)';
           updateMessage(assistantId, {
             isStreaming: false,
             isLoadingFull: false,
-            content: streamedText || '(Respuesta interrumpida)',
+            content: partial,
             streamingContent: undefined,
           });
           setIsLoading(false);
           return;
         }
-        // Fall through to error handling after stream fails
       }
 
-      // Mark streaming done, keep isLoadingFull while we fetch validation
       updateMessage(assistantId, {
         isStreaming: false,
         content: streamedText,
         streamingContent: undefined,
       });
 
-      // ── 2. Full query for validation + sources ──────────────────
+      // ── 2. Validación completa ─────────────────────────────────────────
       try {
         const fullRes = await fetch(`${API_BASE}/legal-query`, {
           method: 'POST',
@@ -152,45 +174,46 @@ export function useChat(language: SupportedLanguage) {
 
         if (fullRes.ok) {
           const data = (await fullRes.json()) as LegalQueryApiResponse;
-          // Use the structured Spanish/Quechua text if available, else keep streamed
-          const structuredText =
+          const finalText =
             language === 'quechua'
               ? data.response?.respuesta_quechua || streamedText
               : data.response?.respuesta_espanol || streamedText;
 
           updateMessage(assistantId, {
-            content: structuredText,
+            content: finalText,
             apiResponse: data,
             isLoadingFull: false,
           });
+
+          // Actualizar preview del sidebar con la respuesta del asistente
+          onSessionUpdated?.({ preview: finalText.slice(0, 80) });
         } else {
-          // Validation unavailable but we still have streamed text
           updateMessage(assistantId, { isLoadingFull: false });
         }
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          // Non-critical: we still have the streamed answer
-        }
+        if ((err as Error).name !== 'AbortError') { /* no crítico */ }
         updateMessage(assistantId, { isLoadingFull: false });
       }
 
+      // Actualizar conteo de mensajes en el sidebar
+      setMessages((prev) => {
+        onSessionUpdated?.({ messageCount: prev.length });
+        return prev;
+      });
+
       setIsLoading(false);
     },
-    [isLoading, language, pushMessage, updateMessage]
+    [isLoading, language, sessionId, pushMessage, updateMessage, onSessionUpdated]
   );
 
-  // ───────────────────────────────────────────────────────────────
-  // Abort
-  // ───────────────────────────────────────────────────────────────
+  // ─── Abort ─────────────────────────────────────────────────────────────────
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
     setIsLoading(false);
   }, []);
 
-  // ───────────────────────────────────────────────────────────────
-  // PDF Download
-  // ───────────────────────────────────────────────────────────────
+  // ─── PDF Download ──────────────────────────────────────────────────────────
 
   const downloadPdf = useCallback(async (msg: ChatMessage) => {
     if (!msg.apiResponse) return;
@@ -204,7 +227,6 @@ export function useChat(language: SupportedLanguage) {
           response: msg.apiResponse.response,
         }),
       });
-
       if (res.ok && res.headers.get('content-type')?.includes('application/pdf')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -214,22 +236,19 @@ export function useChat(language: SupportedLanguage) {
         a.click();
         URL.revokeObjectURL(url);
       }
-    } catch {
-      // Silently ignore
-    } finally {
-      setDownloadingPdfId(null);
-    }
+    } catch { /* noop */ }
+    finally { setDownloadingPdfId(null); }
   }, []);
 
-  // ───────────────────────────────────────────────────────────────
-  // Clear
-  // ───────────────────────────────────────────────────────────────
+  // ─── Clear current session ─────────────────────────────────────────────────
 
   const clearChat = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
     setIsLoading(false);
-  }, []);
+    if (sessionId) saveSessionMessages(sessionId, []);
+    onSessionUpdated?.({ title: 'Nueva consulta', preview: '', messageCount: 0 });
+  }, [sessionId, onSessionUpdated]);
 
   return {
     messages,

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import {
   Globe,
   Moon,
@@ -16,6 +17,8 @@ interface ChatHeaderProps {
   currentLanguage: SupportedLanguage;
   onLanguageChange: (lang: SupportedLanguage) => void;
   isOnline?: boolean;
+  /** Slot para el botón de toggle del sidebar (solo mobile) */
+  sidebarToggle?: ReactNode;
 }
 
 const i18n = {
@@ -70,6 +73,7 @@ export function ChatHeader({
   currentLanguage,
   onLanguageChange,
   isOnline,
+  sidebarToggle,
 }: ChatHeaderProps) {
   const t = i18n[currentLanguage];
   return (
@@ -81,22 +85,25 @@ export function ChatHeader({
     >
       <div className="max-w-4xl mx-auto flex items-center justify-between px-4 md:px-8 h-16 gap-3">
 
-        {/* ── Brand ── */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow">
-            <Scale className="w-5 h-5 text-white" />
-          </div>
-          <div className="leading-tight min-w-0">
-            <p className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
-              {t.appName}
-            </p>
-            <div className="flex items-center gap-1.5">
-              {isOnline === false
-                ? <WifiOff className="w-3 h-3 text-red-400" />
-                : <Wifi className="w-3 h-3 text-emerald-400" />}
-              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {isOnline === false ? t.offline : t.online}
-              </span>
+        {/* ── Sidebar toggle (mobile) + Brand ── */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          {sidebarToggle}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow">
+              <Scale className="w-5 h-5 text-white" />
+            </div>
+            <div className="leading-tight min-w-0">
+              <p className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
+                {t.appName}
+              </p>
+              <div className="flex items-center gap-1.5">
+                {isOnline === false
+                  ? <WifiOff className="w-3 h-3 text-red-400" />
+                  : <Wifi className="w-3 h-3 text-emerald-400" />}
+                <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {isOnline === false ? t.offline : t.online}
+                </span>
+              </div>
             </div>
           </div>
         </div>
