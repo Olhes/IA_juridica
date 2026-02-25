@@ -26,6 +26,7 @@ import type {
   LegalQueryApiResponse,
   ValidationReport,
 } from '../../../domain/legal/types';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -282,13 +283,7 @@ function FullDetails({
   );
 }
 
-// ─── Streaming cursor ─────────────────────────────────────────────────────────
-
-function StreamingCursor() {
-  return (
-    <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-0.5 align-middle animate-pulse" />
-  );
-}
+// StreamingCursor está ahora integrado en MarkdownRenderer (isStreaming prop)
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 
@@ -416,11 +411,11 @@ export function ChatMessage({
           </div>
         )}
 
-        {/* Main text */}
-        <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap text-slate-800">
-          {respText}
-          {message.isStreaming && <StreamingCursor />}
-        </p>
+        {/* Main text — renderizado como Markdown */}
+        <MarkdownRenderer
+          content={respText}
+          isStreaming={message.isStreaming}
+        />
 
         {/* Full details when we have the structured response */}
         {apiResp && !message.isStreaming && (
