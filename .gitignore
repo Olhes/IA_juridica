@@ -43,6 +43,7 @@ kv_store_llm_response_cache.json
 !/backend/docs/knowledge_graph/.gitkeep
 !/backend/docs/failed/.gitkeep
 /temp/pdfs
+/backend/temp/pdfs/**
 # production
 /build
 

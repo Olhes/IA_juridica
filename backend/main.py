@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 import uvicorn
@@ -447,17 +447,20 @@ async def legal_query_stream(payload: LegalQueryRequest):
 async def generate_pdf_report(payload: PDFReportRequest):
     """Genera reporte PDF legal con ReportLab."""
     try:
-        from utils.pdf_generator import generate_legal_pdf
+        from utils.pdf_generator import generate_legal_pdf_bytes
 
-        pdf_path = generate_legal_pdf(
+        pdf_bytes = generate_legal_pdf_bytes(
             query=payload.query,
             response_data=payload.response,
-            output_dir=settings.PDF_OUTPUT_DIR,
         )
-        return FileResponse(
-            path=pdf_path,
+
+        return Response(
+            content=pdf_bytes,
             media_type="application/pdf",
-            filename=Path(pdf_path).name,
+            headers={
+                "Content-Disposition": 'attachment; filename="reporte_legal.pdf"',
+                "Cache-Control": "no-store",
+            },
         )
     except ImportError:
         return {
@@ -502,6 +505,7 @@ async def list_documents():
 
 
 # ── Endpoint de estadísticas de validación ────────────────────────────
+
 
 @app.get("/validation-stats")
 async def get_validation_stats():

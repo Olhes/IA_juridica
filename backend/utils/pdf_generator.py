@@ -4,6 +4,7 @@ Usa ReportLab para generar PDFs bilingües (español/quechua)
 """
 
 import uuid
+import io
 import html
 import re
 from pathlib import Path
@@ -594,9 +595,29 @@ def generate_legal_pdf(
     pdf_path = out / filename
 
     styles = _build_styles()
+    doc = _build_pdf_doc(str(pdf_path))
+    story = _build_pdf_story(query=query, response_data=response_data, styles=styles)
+    doc.build(story)
+    logger.info(f"PDF generado: {pdf_path}")
+    return str(pdf_path.resolve())
 
-    doc = SimpleDocTemplate(
-        str(pdf_path),
+
+def generate_legal_pdf_bytes(query: str, response_data: Dict[str, Any]) -> bytes:
+    """Genera un PDF en memoria y retorna sus bytes."""
+    styles = _build_styles()
+    buffer = io.BytesIO()
+    doc = _build_pdf_doc(buffer)
+    story = _build_pdf_story(query=query, response_data=response_data, styles=styles)
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    logger.info(f"PDF generado en memoria ({len(pdf_bytes)} bytes)")
+    return pdf_bytes
+
+
+def _build_pdf_doc(target: Any) -> SimpleDocTemplate:
+    return SimpleDocTemplate(
+        target,
         pagesize=A4,
         leftMargin=2 * cm,
         rightMargin=2 * cm,
@@ -604,7 +625,13 @@ def generate_legal_pdf(
         bottomMargin=2 * cm,
     )
 
-    story = []
+
+def _build_pdf_story(
+    query: str,
+    response_data: Dict[str, Any],
+    styles: Dict[str, ParagraphStyle],
+) -> List[Any]:
+    story: List[Any] = []
     response_data = _normalize_response_data(response_data)
 
     # ---- Header ----
@@ -737,6 +764,4 @@ def generate_legal_pdf(
         )
     )
 
-    doc.build(story)
-    logger.info(f"PDF generado: {pdf_path}")
-    return str(pdf_path.resolve())
+    return story
