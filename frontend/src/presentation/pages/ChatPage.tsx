@@ -1,9 +1,8 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { SupportedLanguage } from '../../domain/legal/types';
 import { useChat } from '../../application/legal/use-cases/useChat';
+import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatInput } from '../components/chat/ChatInput';
 import { ChatMessage } from '../components/chat/ChatMessage';
@@ -14,7 +13,6 @@ const LANGUAGE_KEY = 'preferredLanguage';
 export function ChatPage() {
   const [language, setLanguage] = useState<SupportedLanguage>('spanish');
 
-  // Restore language preference
   useEffect(() => {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
@@ -37,12 +35,11 @@ export function ChatPage() {
     checkHealth,
   } = useChat(language);
 
-  // Health check on mount
   useEffect(() => {
     checkHealth();
   }, [checkHealth]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll al último mensaje
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,15 +51,18 @@ export function ChatPage() {
       : 'Escribe tu consulta legal aquí… (↵ para enviar)';
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-violet-50/20 overflow-hidden">
-      {/* Header */}
+    <div className="flex flex-col h-screen overflow-hidden
+      bg-gradient-to-br from-slate-50 via-indigo-50/30 to-violet-50/20
+      dark:bg-none dark:bg-gray-950
+      transition-colors duration-300"
+    >
       <ChatHeader
         currentLanguage={language}
         onLanguageChange={handleLanguageChange}
         isOnline={isOnline}
       />
 
-      {/* Messages area */}
+      {/* Messages */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto w-full">
           {messages.length === 0 ? (
@@ -84,28 +84,16 @@ export function ChatPage() {
         </div>
       </main>
 
-      {/* Input area */}
+      {/* Input */}
       <div className="max-w-4xl mx-auto w-full">
-        {/* Clear chat button (only visible when there are messages) */}
-        {messages.length > 0 && (
-          <div className="flex justify-end px-4 md:px-8 pt-1">
-            <button
-              id="clear-chat-btn"
-              type="button"
-              onClick={clearChat}
-              disabled={isLoading}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Limpiar chat
-            </button>
-          </div>
-        )}
         <ChatInput
           onSend={sendQuery}
           isLoading={isLoading}
           placeholder={placeholder}
           onAbort={abort}
+          onClearChat={clearChat}
+          hasMessages={messages.length > 0}
+          language={language}
         />
       </div>
     </div>

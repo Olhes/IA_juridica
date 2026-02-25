@@ -4,14 +4,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Global reset ───────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
+/* ── Design tokens (light) ───────────────────────────────────── */
+:root {
+  --bg-base:      #f8fafc;
+  --bg-surface:   #ffffff;
+  --text-primary: #1e293b;
+  --text-muted:   #64748b;
+  --border:       #e2e8f0;
 }
 
-html {
-  height: 100%;
-  scroll-behavior: smooth;
+/* ── Design tokens (dark) ────────────────────────────────────── */
+.dark {
+  --bg-base:      #030712;
+  --bg-surface:   #111827;
+  --text-primary: #f1f5f9;
+  --text-muted:   #94a3b8;
+  --border:       #1f2937;
 }
 
 body {
@@ -20,12 +28,9 @@ body {
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f8fafc;
-  color: #1e293b;
-}
-
-#__next {
-  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ── Focus styles ───────────────────────────────────────────────── */
@@ -36,21 +41,15 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
-/* ── Scrollbar ──────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+/* ── Scrollbar (light) ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Scrollbar (dark) ────────────────────────────────────────── */
+.dark ::-webkit-scrollbar-thumb { background: #374151; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
 
 /* ── Animations ─────────────────────────────────────────────────── */
 @keyframes fadeIn {
@@ -89,7 +88,6 @@ input:focus-visible {
 /* ── Line clamp utility ─────────────────────────────────────────── */
 .line-clamp-1 {
   display: -webkit-box;
-  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
