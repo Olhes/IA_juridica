@@ -103,7 +103,7 @@ export interface ChatMessage {
   content: string;
   /** Streaming text (progressively updated) */
   streamingContent?: string;
-  /** Final structured API response (available after /legal-query completes) */
+  /** Final structured API response (available at stream end event) */
   apiResponse?: LegalQueryApiResponse;
   isStreaming?: boolean;
   isLoadingFull?: boolean;

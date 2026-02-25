@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from loguru import logger
 
@@ -36,42 +36,44 @@ from loguru import logger
 @dataclass
 class TokenUsage:
     """Registro de uso de tokens para una llamada o sesión."""
-    prompt_tokens    : int = 0
-    response_tokens  : int = 0
-    total_tokens     : int = 0
-    cache_hits       : int = 0
-    cache_misses     : int = 0
+
+    prompt_tokens: int = 0
+    response_tokens: int = 0
+    total_tokens: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
     estimated_cost_usd: float = 0.0
 
     # Cohere command-r7b-12-2024 pricing aproximado (USD por 1M tokens)
-    _INPUT_COST_PER_M  : float = field(default=0.075, repr=False, compare=False)
-    _OUTPUT_COST_PER_M : float = field(default=0.300, repr=False, compare=False)
+    _INPUT_COST_PER_M: float = field(default=0.075, repr=False, compare=False)
+    _OUTPUT_COST_PER_M: float = field(default=0.300, repr=False, compare=False)
 
     def update(self, prompt_tokens: int, response_tokens: int) -> None:
-        self.prompt_tokens   += prompt_tokens
+        self.prompt_tokens += prompt_tokens
         self.response_tokens += response_tokens
-        self.total_tokens    += prompt_tokens + response_tokens
+        self.total_tokens += prompt_tokens + response_tokens
         self.estimated_cost_usd += (
-            (prompt_tokens   / 1_000_000) * self._INPUT_COST_PER_M +
-            (response_tokens / 1_000_000) * self._OUTPUT_COST_PER_M
-        )
+            prompt_tokens / 1_000_000
+        ) * self._INPUT_COST_PER_M + (
+            response_tokens / 1_000_000
+        ) * self._OUTPUT_COST_PER_M
 
     def to_dict(self) -> dict:
         return {
-            "prompt_tokens"     : self.prompt_tokens,
-            "response_tokens"   : self.response_tokens,
-            "total_tokens"      : self.total_tokens,
-            "cache_hits"        : self.cache_hits,
-            "cache_misses"      : self.cache_misses,
+            "prompt_tokens": self.prompt_tokens,
+            "response_tokens": self.response_tokens,
+            "total_tokens": self.total_tokens,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
             "estimated_cost_usd": round(self.estimated_cost_usd, 6),
-            "cache_hit_rate"    : round(
+            "cache_hit_rate": round(
                 self.cache_hits / max(self.cache_hits + self.cache_misses, 1), 4
             ),
         }
 
 
-# Tipo del caché interno: key → (response_text, timestamp)
-_CacheEntry = Tuple[str, float]
+# Tipo del caché interno: key → (response_payload, timestamp)
+_CacheEntry = Tuple[Any, float]
 
 
 class LLMOptimizer:
@@ -89,16 +91,16 @@ class LLMOptimizer:
 
     def __init__(
         self,
-        cache_ttl_seconds: int  = 3600,
-        max_cache_size   : int  = 500,
-        chars_per_token  : int  = 4,
+        cache_ttl_seconds: int = 3600,
+        max_cache_size: int = 500,
+        chars_per_token: int = 4,
     ):
-        self.ttl             = cache_ttl_seconds
-        self.max_cache_size  = max_cache_size
+        self.ttl = cache_ttl_seconds
+        self.max_cache_size = max_cache_size
         self.chars_per_token = chars_per_token
 
-        self._cache  : Dict[str, _CacheEntry] = {}
-        self._usage  = TokenUsage()
+        self._cache: Dict[str, _CacheEntry] = {}
+        self._usage = TokenUsage()
 
         logger.info(
             f"LLMOptimizer inicializado (ttl={cache_ttl_seconds}s, "
@@ -107,12 +109,12 @@ class LLMOptimizer:
 
     # ── Caché ──────────────────────────────────────────────────────────────────
 
-    def get_cached(self, prompt: str) -> Optional[str]:
+    def get_cached(self, prompt: str) -> Optional[Any]:
         """
         Busca una respuesta cacheada para el prompt dado.
 
         Returns:
-            Texto de respuesta si hay cache hit válido, None si no.
+            Payload cacheado si hay cache hit válido, None si no.
         """
         key = self._hash(prompt)
         entry = self._cache.get(key)
@@ -131,14 +133,16 @@ class LLMOptimizer:
         logger.debug("Cache HIT")
         return response_text
 
-    def cache_response(self, prompt: str, response: str) -> None:
+    def cache_response(self, prompt: str, response: Any) -> None:
         """Almacena una respuesta en caché."""
         if len(self._cache) >= self.max_cache_size:
             self._evict_oldest()
 
         key = self._hash(prompt)
         self._cache[key] = (response, time.time())
-        logger.debug(f"Respuesta cacheada (key={key[:8]}..., cache_size={len(self._cache)})")
+        logger.debug(
+            f"Respuesta cacheada (key={key[:8]}..., cache_size={len(self._cache)})"
+        )
 
     def invalidate(self, prompt: str) -> bool:
         """Elimina una entrada específica del caché."""
@@ -159,7 +163,7 @@ class LLMOptimizer:
 
     def compress_prompt(
         self,
-        prompt  : str,
+        prompt: str,
         max_chars: int = 5000,
         strategy: str = "center_cut",
     ) -> str:
@@ -215,9 +219,9 @@ class LLMOptimizer:
         self._usage.update(p_tokens, r_tokens)
 
         call_metrics = {
-            "call_prompt_tokens"  : p_tokens,
+            "call_prompt_tokens": p_tokens,
             "call_response_tokens": r_tokens,
-            "call_total_tokens"   : p_tokens + r_tokens,
+            "call_total_tokens": p_tokens + r_tokens,
         }
         logger.debug(f"Token usage tracked: {call_metrics}")
         return call_metrics

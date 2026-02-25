@@ -5,6 +5,7 @@ import type { ChatMessage, LegalQueryApiResponse, SupportedLanguage } from '../.
 import { loadSessionMessages, saveSessionMessages } from './useChatSessions';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const STREAM_FLUSH_MS = 60;
 
 let msgCounter = 0;
 function newId() {
@@ -22,9 +23,9 @@ interface UseChatOptions {
  * Core chat hook con persistencia por sesión.
  *
  * Flujo por mensaje:
- *  1. POST /legal-query-stream → stream texto en la burbuja del asistente
- *  2. POST /legal-query        → validación, fuentes y campos estructurados
- *  3. Merge + guardado en localStorage bajo la clave de la sesión
+ *  1. POST /legal-query-stream → stream de chunks NDJSON
+ *  2. En el mismo stream llega evento final con validación/fuentes/metadata
+ *  3. Persistencia en localStorage bajo la clave de la sesión
  */
 export function useChat({ sessionId, language, onSessionUpdated }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -67,6 +68,15 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
   const pushMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
   }, []);
+
+  const resolveFinalText = useCallback(
+    (payload: LegalQueryApiResponse, fallback: string): string => {
+      return language === 'quechua'
+        ? payload.response?.respuesta_quechua || fallback
+        : payload.response?.respuesta_espanol || fallback;
+    },
+    [language]
+  );
 
   // ─── Health check ──────────────────────────────────────────────────────────
 
@@ -121,8 +131,9 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         return prev;
       });
 
-      // ── 1. Stream ──────────────────────────────────────────────────────
+      // ── Stream + payload final (NDJSON) ───────────────────────────────
       let streamedText = '';
+      let gotFinalPayload = false;
       try {
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
           method: 'POST',
@@ -135,14 +146,84 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
-        // eslint-disable-next-line no-constant-condition
+        let buffer = '';
+        let lastFlushAt = 0;
+
+        const flushStreaming = (force = false) => {
+          const now = performance.now();
+          if (!force && now - lastFlushAt < STREAM_FLUSH_MS) return;
+          lastFlushAt = now;
+          updateMessage(assistantId, { streamingContent: streamedText });
+        };
+
+        const processLine = (line: string) => {
+          if (!line.trim()) return;
+          const event = JSON.parse(line) as {
+            type?: 'chunk' | 'final' | 'error';
+            delta?: string;
+            data?: LegalQueryApiResponse;
+            error?: string;
+          };
+
+          if (event.type === 'chunk') {
+            const delta = typeof event.delta === 'string' ? event.delta : '';
+            if (!delta) return;
+            streamedText += delta;
+            flushStreaming();
+            return;
+          }
+
+          if (event.type === 'final' && event.data) {
+            gotFinalPayload = true;
+            const finalText = resolveFinalText(event.data, streamedText);
+            streamedText = finalText;
+            updateMessage(assistantId, {
+              isStreaming: false,
+              streamingContent: undefined,
+              content: finalText,
+              apiResponse: event.data,
+              isLoadingFull: false,
+            });
+            onSessionUpdated?.({ preview: finalText.slice(0, 80) });
+            return;
+          }
+
+          if (event.type === 'error') {
+            throw new Error(event.error || 'Error procesando respuesta en streaming.');
+          }
+        };
+
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          streamedText += decoder.decode(value, { stream: true });
-          updateMessage(assistantId, { streamingContent: streamedText });
+          buffer += decoder.decode(value, { stream: true });
+
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+            processLine(line);
+            newlineIndex = buffer.indexOf('\n');
+          }
         }
-        streamedText += decoder.decode();
+
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processLine(buffer.trim());
+        }
+
+        if (!gotFinalPayload) {
+          flushStreaming(true);
+        }
+
+        if (!gotFinalPayload) {
+          updateMessage(assistantId, {
+            isStreaming: false,
+            content: streamedText,
+            streamingContent: undefined,
+            isLoadingFull: false,
+          });
+        }
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
           const partial = streamedText || '(Respuesta interrumpida)';
@@ -155,44 +236,13 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           setIsLoading(false);
           return;
         }
-      }
 
-      updateMessage(assistantId, {
-        isStreaming: false,
-        content: streamedText,
-        streamingContent: undefined,
-      });
-
-      // ── 2. Validación completa ─────────────────────────────────────────
-      try {
-        const fullRes = await fetch(`${API_BASE}/legal-query`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query.trim(), language }),
-          signal: controller.signal,
+        updateMessage(assistantId, {
+          isStreaming: false,
+          isLoadingFull: false,
+          content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
+          streamingContent: undefined,
         });
-
-        if (fullRes.ok) {
-          const data = (await fullRes.json()) as LegalQueryApiResponse;
-          const finalText =
-            language === 'quechua'
-              ? data.response?.respuesta_quechua || streamedText
-              : data.response?.respuesta_espanol || streamedText;
-
-          updateMessage(assistantId, {
-            content: finalText,
-            apiResponse: data,
-            isLoadingFull: false,
-          });
-
-          // Actualizar preview del sidebar con la respuesta del asistente
-          onSessionUpdated?.({ preview: finalText.slice(0, 80) });
-        } else {
-          updateMessage(assistantId, { isLoadingFull: false });
-        }
-      } catch (err) {
-        if ((err as Error).name !== 'AbortError') { /* no crítico */ }
-        updateMessage(assistantId, { isLoadingFull: false });
       }
 
       // Actualizar conteo de mensajes en el sidebar

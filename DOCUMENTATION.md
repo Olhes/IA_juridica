@@ -153,7 +153,7 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ### ⚖️ Consultas Legales
 - `POST /legal-query` - Consulta legal con RAG y agentes
-- `POST /legal-query-stream` - Consulta legal con streaming token a token
+- `POST /legal-query-stream` - Streaming NDJSON (chunks + evento final con validation/sources/metadata)
 - `POST /generate-pdf-report` - Generar informe PDF
 
 ### 🧪 Evaluación y Monitoreo
@@ -265,11 +265,12 @@ PDF (local o cloud) → Docling → Markdown estructurado → LightRAG → Grafo
 
 ### 🤖 Flujo de Consulta Legal v2.0 (con Context Engineering)
 ```
-Usuario → Next.js UI → Use Case/Gateway → API Route Next (BFF) → FastAPI /legal-query
-    ↓           ↓             ↓                 ↓                     ↓
-Render UI   Validación TS   /api/legal/*    Normalización payload   RAG + Agente + fuentes
+Usuario → Next.js UI (ChatPage/useChat) → FastAPI /legal-query-stream
+    ↓                 ↓                           ↓
+Render UI      Parseo NDJSON            RAG + Context + LLM + validación
 
-Respuesta FastAPI → API Route Next → UI bilingüe (spanish/quechua)
+Eventos `chunk` → texto incremental en UI
+Evento `final`  → payload estructurado (response + validation + sources + metadata)
 ```
 
 ### ⚡ Flujo UV + Docker

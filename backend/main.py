@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, Security
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.security import APIKeyHeader
@@ -7,7 +8,7 @@ import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
-import asyncio
+import json
 from dotenv import load_dotenv
 import traceback
 
@@ -94,6 +95,24 @@ class PDFReportRequest(BaseModel):
     query: str = Field(..., min_length=1)
     response: Dict[str, Any]
 
+def _ndjson_event(payload: Dict[str, Any]) -> str:
+    """Serializa eventos NDJSON manejando datetime/enums/modelos pydantic."""
+    serializable = jsonable_encoder(payload)
+    return json.dumps(serializable, ensure_ascii=False) + "\n"
+
+
+def _extract_streamable_text(response_payload: Dict[str, Any], language: str) -> str:
+    if language == "quechua":
+        return str(
+            response_payload.get("respuesta_quechua")
+            or response_payload.get("quechua")
+            or ""
+        )
+    return str(
+        response_payload.get("respuesta_espanol")
+        or response_payload.get("spanish")
+        or ""
+    )
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
@@ -327,12 +346,13 @@ async def legal_query(request: Request, payload: LegalQueryRequest):
         cache_key = f"{query}|{language}"
         cached_result = optimizer.get_cached(cache_key)
         if cached_result:
+            cached_payload = cached_result if isinstance(cached_result, dict) else {}
             return {
                 "success": True,
                 "query": query,
                 "language": language,
                 "cached": True,
-                **cached_result,
+                **cached_payload,
             }
 
         # 1. Búsqueda RAG con reranking
@@ -415,32 +435,140 @@ async def legal_query(request: Request, payload: LegalQueryRequest):
 
 @app.post("/legal-query-stream")
 async def legal_query_stream(payload: LegalQueryRequest):
-    """Stream de respuesta legal directamente desde Cohere."""
-    try:
-        query = payload.query.strip()
-        language = payload.language
+    """Stream NDJSON con chunks + payload final validado (1 sola llamada)."""
+    query = payload.query.strip()
+    language = payload.language
+    optimizer: LLMOptimizer = app.state.llm_optimizer
+    cache_key = f"{query}|{language}"
 
-        async def stream_generator():
-            context = await app.state.rag_engine.query(query)
-            async for chunk in app.state.legal_agent.stream_general_text(
-                query, context, language
-            ):
-                if chunk:
-                    for start in range(0, len(chunk), 24):
-                        yield chunk[start : start + 24]
-                        await asyncio.sleep(0)
+    cached_result = optimizer.get_cached(cache_key)
+    if cached_result:
+        cached_payload = cached_result if isinstance(cached_result, dict) else {}
+        response_payload = jsonable_encoder(cached_payload.get("response", {}))
+        cached_text = _extract_streamable_text(response_payload, language)
+
+        async def cached_stream_generator():
+            if cached_text:
+                yield _ndjson_event({"type": "chunk", "delta": cached_text})
+            yield _ndjson_event(
+                {
+                    "type": "final",
+                    "data": {
+                        "success": True,
+                        "query": query,
+                        "language": language,
+                        "cached": True,
+                        **cached_payload,
+                    },
+                }
+            )
 
         return StreamingResponse(
-            stream_generator(),
-            media_type="text/plain; charset=utf-8",
+            cached_stream_generator(),
+            media_type="application/x-ndjson",
             headers={
                 "Cache-Control": "no-cache, no-transform",
                 "X-Accel-Buffering": "no",
             },
         )
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"Legal query stream failed: {str(e)}")
+
+    async def stream_generator():
+        try:
+            streamed_text = ""
+
+            rag_result = await app.state.rag_engine.query_with_rerank(query)
+            documents = rag_result.get("documents", [])
+            enriched_prompt, enriched_context = (
+                app.state.context_engineer.build_legal_prompt(
+                    query=query,
+                    documents=documents,
+                    language=language,
+                )
+            )
+
+            async for chunk in app.state.legal_agent.stream_general_text(
+                query,
+                rag_result,
+                language,
+                enriched_prompt=enriched_prompt,
+            ):
+                if chunk:
+                    streamed_text += chunk
+                    yield _ndjson_event({"type": "chunk", "delta": chunk})
+
+            response = app.state.legal_agent.build_general_response_from_text(
+                text=streamed_text,
+                query=query,
+            )
+
+            if hasattr(response, "model_dump"):
+                response_payload = response.model_dump()
+            elif hasattr(response, "dict"):
+                response_payload = response.dict()
+            else:
+                response_payload = response
+
+            optimizer.track(enriched_prompt or query, str(response_payload))
+
+            validated = await app.state.response_validator.validate(
+                response_data=response_payload,
+                rag_result=rag_result,
+                query=query,
+                language=language,
+                enriched_context=enriched_context,
+            )
+
+            final_response = validated.answer_data
+            validation_meta = validated.validation_report.model_dump()
+
+            result_payload = {
+                "response": final_response,
+                "sources": validated.sources,
+                "validation": validation_meta,
+                "metadata": {
+                    "rerank_scores": rag_result.get("rerank_scores", []),
+                    "retrieval_method": rag_result.get("method", "unknown"),
+                    "total_candidates": rag_result.get("total_candidates", 0),
+                    "enriched_context": {
+                        "location": enriched_context.get("detected_location"),
+                        "legal_topic": enriched_context.get("legal_topic"),
+                        "urgency": enriched_context.get("urgency_level"),
+                    },
+                    "optimizer_stats": optimizer.get_session_stats(),
+                },
+            }
+
+            if validated.is_reliable:
+                optimizer.cache_response(cache_key, result_payload)
+
+            yield _ndjson_event(
+                {
+                    "type": "final",
+                    "data": {
+                        "success": True,
+                        "query": query,
+                        "language": language,
+                        "cached": False,
+                        **result_payload,
+                    },
+                }
+            )
+        except Exception as stream_error:
+            yield _ndjson_event(
+                {
+                    "type": "error",
+                    "error": f"Legal query stream failed: {str(stream_error)}",
+                }
+            )
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/generate-pdf-report")
