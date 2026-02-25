@@ -2,7 +2,6 @@
 from pathlib import Path
 import sys
 
-import torch  # noqa: F401
 import uvicorn
 from dotenv import load_dotenv
 
