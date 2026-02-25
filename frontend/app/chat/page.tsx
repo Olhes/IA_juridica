@@ -1,4 +1,4 @@
-import { LegalAssistantPage } from '../src/presentation/pages/LegalAssistantPage';
+import { ChatPage } from '../../src/presentation/pages/ChatPage';
 
 export const metadata = {
   title: 'IA Jurídica — Asistente Legal Bilingüe',
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function HomePage() {
-  return <LegalAssistantPage />;
+  return <ChatPage />;
 }

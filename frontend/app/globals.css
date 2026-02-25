@@ -1,17 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Global reset ───────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-button:focus,
-input:focus,
-textarea:focus {
-  outline: 2px solid #3b82f6;
+html {
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+#__next {
+  height: 100%;
+}
+
+/* ── Focus styles ───────────────────────────────────────────────── */
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid #6366f1;
   outline-offset: 2px;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  0%   { opacity: 0; transform: translateX(-16px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  0%   { opacity: 0; transform: translateX(16px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.animate-fade-in     { animation: fadeIn 0.4s ease-out both; }
+.animate-slide-left  { animation: slideInLeft 0.3s ease-out both; }
+.animate-slide-right { animation: slideInRight 0.3s ease-out both; }
+.animate-blink       { animation: blink 1s step-end infinite; }
+
+/* ── Chat bubble entrance ───────────────────────────────────────── */
+.chat-bubble-user {
+  animation: slideInRight 0.3s ease-out both;
+}
+.chat-bubble-assistant {
+  animation: slideInLeft 0.3s ease-out both;
+}
+
+/* ── Line clamp utility ─────────────────────────────────────────── */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Prose-like whitespace pre-wrap ─────────────────────────────── */
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
 }

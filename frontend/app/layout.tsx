@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'IA Jurídica',
-  description: 'Asistente legal bilingue para comunidades quechua-hablantes',
+  title: 'IA Jurídica — Asistente Legal Bilingüe',
+  description: 'Asistente legal bilingüe (Español / Quechua) para comunidades andinas.',
 };
 
 interface RootLayoutProps {
@@ -13,8 +13,8 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="es">
-      <body>{children}</body>
+    <html lang="es" className="h-full">
+      <body className="h-full">{children}</body>
     </html>
   );
 }
