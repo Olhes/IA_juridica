@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # PostgreSQL (local - no se ejecuta en Docker)
+  # Redis (local - no se ejecuta en Docker)
+  
+  # Weaviate (Docker)
+  weaviate:
+    image: semitechnologies/weaviate:1.19.0
+    container_name: ia_juridica_weaviate
+    restart: unless-stopped
+    ports:
+      - "8082:8080"  # HTTP
+      - "8083:8081"  # gRPC
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: "text2vec-cohere,generative-openai"
+      CLUSTER_HOSTNAME: "node1"
+    volumes:
+      - ./data:/var/lib/weaviate
+      - ./logs:/var/log/weaviate
+    networks:
+      - ia_juridica_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/.well-known/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Backend (Docker - opcional)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ia_juridica_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Usar variables del archivo .env
+      - POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-ia_juridica}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - REDIS_HOST=${REDIS_HOST:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_DB=${REDIS_DB:-0}
+      - WEAVIATE_URL=${WEAVIATE_URL:-http://weaviate:8080}
+      - WEAVIATE_GRPC_URL=${WEAVIATE_GRPC_URL:-grpc://weaviate:8081}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-cohere/multilingual-embed-v3.0}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1024}
+    volumes:
+      - ./backend:/app
+      - ./docs:/app/docs
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    networks:
+      - ia_juridica_network
+    depends_on:
+      weaviate:
+        condition: service_healthy
+    profiles:
+      - docker-backend
+
+  # Frontend (Docker - opcional)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ia_juridica_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NODE_ENV=${NODE_ENV:-production}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - ia_juridica_network
+    depends_on:
+      - backend
+    profiles:
+      - docker-frontend
+
+networks:
+  ia_juridica_network:
+    driver: bridge
+
+volumes:
+  weaviate_data:
+    driver: local
+  weaviate_logs:
+    driver: local
