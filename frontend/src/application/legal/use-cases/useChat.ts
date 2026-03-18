@@ -5,7 +5,7 @@ import type { ChatMessage, LegalQueryApiResponse, SupportedLanguage } from '../.
 import { loadSessionMessages, saveSessionMessages } from './useChatSessions';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const STREAM_FLUSH_MS = 60;
+const STREAM_FLUSH_MS = 60; // Flush de contenido en streaming cada 60ms para evitar demasiados renders, config. recomendada
 
 let msgCounter = 0;
 function newId() {

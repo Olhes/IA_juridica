@@ -1,4 +1,5 @@
 .venv/
+.atl/
 # env files (can opt-in for committing if needed)
 .env*
 __pycache__/
