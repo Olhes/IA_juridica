@@ -50,16 +50,15 @@ function UserIcon() {
 
 function ValidationBadge({ validation }: { validation: ValidationReport }) {
   const map = {
-    passed:    { icon: <ShieldCheck className="w-4 h-4" />, label: 'Validado',          cls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900' },
-    warned:    { icon: <Shield className="w-4 h-4" />,      label: 'Con advertencias',  cls: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900' },
-    corrected: { icon: <Shield className="w-4 h-4" />,      label: 'Auto-corregido',    cls: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900' },
-    failed:    { icon: <ShieldAlert className="w-4 h-4" />, label: 'No validado',       cls: 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900' },
+    passed: { icon: <ShieldCheck className="w-4 h-4" />, label: 'Validado', cls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900' },
+    warned: { icon: <Shield className="w-4 h-4" />, label: 'Con advertencias', cls: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900' },
+    corrected: { icon: <Shield className="w-4 h-4" />, label: 'Auto-corregido', cls: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900' },
+    failed: { icon: <ShieldAlert className="w-4 h-4" />, label: 'No validado', cls: 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900' },
   };
   const { icon, label, cls } = map[validation.status];
-  const pct = Math.round(validation.confidence_score * 100);
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cls}`}>
-      {icon}{label} · {pct}% confianza
+      {icon}{label}
     </span>
   );
 }
@@ -132,9 +131,9 @@ function ResourcesPanel({ response }: { response: GeneralLegalResponse }) {
 function WarningsPanel({ response }: { response: GeneralLegalResponse }) {
   if (!response.advertencias?.length) return null;
   const urgencyColor = {
-    bajo:    'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300',
-    medio:   'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400',
-    alto:    'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-400',
+    bajo: 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300',
+    medio: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400',
+    alto: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-400',
     critico: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900 text-red-700 dark:text-red-400',
   };
   return (
@@ -297,7 +296,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
   }
 
   // ── Burbuja asistente ────────────────────────────────────────────
-  const apiResp   = message.apiResponse;
+  const apiResp = message.apiResponse;
   const validation = apiResp?.validation;
   const showValidationWarning = validation?.status === 'failed' || validation?.confidence === 'low';
   const respText =

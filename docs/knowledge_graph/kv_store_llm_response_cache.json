@@ -1,0 +1,62 @@
+{
+  "hybrid:keywords:ecad8cd1a0af2cb51cf960bddc793996": {
+    "return": "{\"high_level_keywords\": [\"Child support\", \"Pension\", \"Legal process\"], \"low_level_keywords\": [\"Legal forms\", \"Court proceedings\", \"Financial assistance\", \"Child custody\", \"Parental rights\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo solicito pensión de alimentos para mis hijos?",
+    "queryparam": {
+      "mode": "hybrid",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1775505387,
+    "update_time": 1775505387,
+    "_id": "hybrid:keywords:ecad8cd1a0af2cb51cf960bddc793996"
+  },
+  "hybrid:keywords:9fefdff9d8abd38ba0c011e933a3c275": {
+    "return": "{\"high_level_keywords\": [\"Violence reporting\", \"Family violence\", \"Legal action\"], \"low_level_keywords\": [\"Domestic abuse\", \"Child protection\", \"Police report\", \"Legal aid\", \"Support services\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo puedo denunciar violencia familiar?",
+    "queryparam": {
+      "mode": "hybrid",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1775506878,
+    "update_time": 1775506878,
+    "_id": "hybrid:keywords:9fefdff9d8abd38ba0c011e933a3c275"
+  },
+  "hybrid:keywords:34049a5cabc7dbbb27807de91aa56194": {
+    "return": "{\"high_level_keywords\": [\"Denouncing sexual harassment\", \"Reporting sexual abuse\"], \"low_level_keywords\": [\"Sexual harassment\", \"Reporting mechanisms\", \"Legal procedures\", \"Support services\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "como puedo denunciar casos de acoso sexual?",
+    "queryparam": {
+      "mode": "hybrid",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1775506964,
+    "update_time": 1775506964,
+    "_id": "hybrid:keywords:34049a5cabc7dbbb27807de91aa56194"
+  }
+}
