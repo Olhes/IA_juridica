@@ -103,7 +103,7 @@ export interface ChatMessage {
   content: string;
   /** Streaming text (progressively updated) */
   streamingContent?: string;
-  /** Final structured API response (available after /legal-query completes) */
+  /** Final structured API response (available at stream end event) */
   apiResponse?: LegalQueryApiResponse;
   isStreaming?: boolean;
   isLoadingFull?: boolean;
@@ -123,41 +123,4 @@ export interface ChatSessionMeta {
   createdAt: string;   // ISO string
   updatedAt: string;   // ISO string
   messageCount: number;
-}
-
-// ---- Legacy types kept for backward compat ----
-
-export interface LegalQueryContext {
-  userAgent: string;
-  timestamp: string;
-}
-
-export interface LegalStructuredResponse {
-  spanish: string;
-  quechua: string;
-  [key: string]: unknown;
-}
-
-export interface LegalConsultationResult {
-  query: string;
-  language: string;
-  response: LegalStructuredResponse;
-  sources: unknown[];
-  [key: string]: unknown;
-}
-
-export interface LegalConsultationEnvelope {
-  success: boolean;
-  data?: LegalConsultationResult;
-  error?: string;
-  message?: string;
-}
-
-export interface PdfDownloadRequest {
-  query: string;
-  response: Record<string, unknown>;
-  userData: {
-    language: SupportedLanguage;
-    timestamp: string;
-  };
 }

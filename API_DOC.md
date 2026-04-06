@@ -2,7 +2,7 @@
 
 > **Base URL (desarrollo):** `http://localhost:8000`  
 > **Base URL (producción):** ajustar según entorno de despliegue  
-> **Content-Type:** `application/json` (salvo `/upload-pdf` que usa `multipart/form-data`)
+> **Content-Type:** `application/json` (salvo `/upload-pdf` = `multipart/form-data`, `/legal-query-stream` = `application/x-ndjson`)
 
 ---
 
@@ -107,7 +107,7 @@ Health check completo que reporta el estado de todos los componentes internos de
 
 ### 🔵 `POST /legal-query`
 
-**Endpoint principal para el chat.** Procesa una consulta legal con el pipeline completo:
+**Endpoint no-stream (respuesta única).** Procesa una consulta legal con el pipeline completo:
 1. Búsqueda RAG con reranking (Cohere)
 2. Context Engineering (enriquecimiento del prompt con contexto jurídico y cultural)
 3. Generación de respuesta con el LLM (Cohere `command-r7b-12-2024`)
@@ -303,7 +303,7 @@ validation.is_grounded === false  → Indicar que puede no estar respaldado por 
 
 ### 🔵 `POST /legal-query-stream`
 
-Versión **streaming** del chat. Devuelve la respuesta del LLM como texto plano en chunks progresivos. **No incluye validación anti-alucinación** (para mantener baja latencia de tiempo a primer token).
+Endpoint **streaming principal** del chat. Ejecuta el pipeline completo (RAG + Context Engineering + LLM + validación) y responde en **NDJSON** con eventos incrementales.
 
 **Request body:** Idéntico a `/legal-query`
 
@@ -315,11 +315,38 @@ Versión **streaming** del chat. Devuelve la respuesta del LLM como texto plano 
 ```
 
 **Response:**
-- **Content-Type:** `text/plain; charset=utf-8`
+- **Content-Type:** `application/x-ndjson`
 - **Transfer-Encoding:** `chunked`
 - **Headers:** `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`
 
-Los chunks se envían en fragmentos de hasta 24 bytes a medida que el LLM genera texto.
+Cada línea del stream es un JSON independiente (`\n` delimitado):
+
+1. Evento de texto parcial:
+```json
+{"type":"chunk","delta":"...texto incremental..."}
+```
+
+2. Evento final (payload estructurado completo):
+```json
+{
+  "type": "final",
+  "data": {
+    "success": true,
+    "query": "...",
+    "language": "spanish",
+    "cached": false,
+    "response": {"tema": "...", "respuesta_espanol": "...", "fecha_respuesta": "2026-02-25T01:00:00"},
+    "sources": [],
+    "validation": {"status": "warned"},
+    "metadata": {}
+  }
+}
+```
+
+3. Evento de error (si falla durante el stream):
+```json
+{"type":"error","error":"Legal query stream failed: ..."}
+```
 
 **Ejemplo de consumo en el frontend (JavaScript):**
 ```javascript
@@ -331,15 +358,30 @@ const response = await fetch('http://localhost:8000/legal-query-stream', {
 
 const reader = response.body.getReader();
 const decoder = new TextDecoder();
+let buffer = '';
 let fullText = '';
 
 while (true) {
   const { done, value } = await reader.read();
   if (done) break;
-  const chunk = decoder.decode(value, { stream: true });
-  fullText += chunk;
-  // Actualizar UI con chunk parcial
-  setResponseText(prev => prev + chunk);
+
+  buffer += decoder.decode(value, { stream: true });
+  let nl = buffer.indexOf('\n');
+
+  while (nl !== -1) {
+    const line = buffer.slice(0, nl);
+    buffer = buffer.slice(nl + 1);
+    if (line.trim()) {
+      const event = JSON.parse(line);
+      if (event.type === 'chunk') {
+        fullText += event.delta || '';
+      }
+      if (event.type === 'final') {
+        // event.data contiene validation, sources, metadata y response
+      }
+    }
+    nl = buffer.indexOf('\n');
+  }
 }
 ```
 
@@ -347,9 +389,9 @@ while (true) {
 
 | Código | Situación |
 |---|---|
-| `500` | Error al iniciar el stream o conectar con Cohere |
+| `500` | Error al iniciar el stream antes de enviar eventos |
 
-> **Nota:** Para el chat del frontend se recomienda usar `/legal-query-stream` para UX fluida y `/legal-query` cuando se quiera mostrar el informe de validación y las fuentes.
+> **Nota:** El evento `final` ya incluye `validation`, `sources` y `metadata`; no hace falta una segunda llamada para completar la respuesta del chat.
 
 ---
 
@@ -458,7 +500,7 @@ Genera un reporte PDF de una respuesta legal y lo devuelve como descarga directa
 
 **Response `200 OK`:**
 - **Content-Type:** `application/pdf`
-- **Content-Disposition:** `attachment; filename="reporte_YYYYMMDD_HHMMSS.pdf"`
+- **Content-Disposition:** `attachment; filename="reporte_legal.pdf"`
 - Body: bytes del archivo PDF
 
 **Errores:**
@@ -619,11 +661,11 @@ Usuario escribe consulta
         │
         ▼
 POST /legal-query-stream          ← Para respuesta inmediata (streaming)
-  ├── Mostrar texto a medida que llega
-  └── Al completar, POST /legal-query  ← Para obtener validation + sources + metadata
+  ├── Eventos `chunk` → Mostrar texto a medida que llega
+  └── Evento `final`  → Obtener validation + sources + metadata
           │
           ├── validation.status === "failed"  → Advertencia prominente
-          ├── validation.confidence === "low" → Disclaimer  
+          ├── validation.confidence === "low" → Disclaimer
           ├── sources[]                        → Lista de fuentes citadas
           └── response.pasos_recomendados[]   → Renderizar como lista numerada
                     │
@@ -646,4 +688,4 @@ POST /legal-query-stream          ← Para respuesta inmediata (streaming)
 
 ---
 
-*Última actualización: 2026-02-22 — IA Jurídica v2.1*
+*Última actualización: 2026-02-25 — IA Jurídica v2.1*
