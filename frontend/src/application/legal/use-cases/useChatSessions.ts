@@ -2,112 +2,35 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ChatMessage, ChatSessionMeta, SupportedLanguage } from '../../../domain/legal/types';
+import { apiService, type Conversation as BackendConversation, type Message as BackendMessage } from '../services/apiService';
 
-// ─── Claves de almacenamiento ──────────────────────────────────────────────────
+// ─── Helpers de conversión ──────────────────────────────────────────────────
 
-const SESSIONS_META_KEY = 'ia_juridica_sessions_v1';
-const sessionMessagesKey = (id: string) => `ia_juridica_session_${id}_v1`;
-
-/** Clave del chat único anterior (pre-sidebar) — se migra automáticamente */
-const LEGACY_KEY = 'ia_juridica_chat_v1';
-
-// ─── Helpers de serialización ──────────────────────────────────────────────────
-
-function loadSessionsMeta(): ChatSessionMeta[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(SESSIONS_META_KEY);
-    return raw ? (JSON.parse(raw) as ChatSessionMeta[]) : [];
-  } catch {
-    return [];
-  }
+function backendToSessionMeta(conv: BackendConversation): ChatSessionMeta {
+  return {
+    id: conv.id,
+    title: conv.title || 'Conversación',
+    preview: '', // Se actualizará con el primer mensaje
+    language: conv.language as SupportedLanguage,
+    createdAt: conv.created_at,
+    updatedAt: conv.updated_at || conv.created_at,
+    messageCount: 0, // Se actualizará al cargar mensajes
+  };
 }
 
-function saveSessionsMeta(sessions: ChatSessionMeta[]) {
-  try {
-    localStorage.setItem(SESSIONS_META_KEY, JSON.stringify(sessions));
-  } catch { /* storage lleno */ }
-}
-
-export function loadSessionMessages(sessionId: string): ChatMessage[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(sessionMessagesKey(sessionId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<ChatMessage & { timestamp: string }>;
-    return parsed.map((m) => ({
-      ...m,
-      timestamp: new Date(m.timestamp),
-      isStreaming: false,
-      isLoadingFull: false,
-      streamingContent: undefined,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-export function saveSessionMessages(sessionId: string, messages: ChatMessage[]) {
-  try {
-    const stable = messages
-      .filter((m) => !m.isStreaming && !m.isLoadingFull)
-      .map((m) => ({
-        ...m,
-        timestamp: m.timestamp.toISOString(),
-        streamingContent: undefined,
-        content: m.content || '(Respuesta interrumpida)',
-      }));
-    localStorage.setItem(sessionMessagesKey(sessionId), JSON.stringify(stable));
-  } catch { /* noop */ }
-}
-
-function deleteSessionMessages(sessionId: string) {
-  try {
-    localStorage.removeItem(sessionMessagesKey(sessionId));
-  } catch { /* noop */ }
-}
-
-function generateId() {
-  return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+function backendToChatMessage(msg: BackendMessage): ChatMessage {
+  return {
+    id: msg.id,
+    role: msg.role as 'user' | 'assistant',
+    content: msg.content,
+    timestamp: new Date(msg.created_at),
+    metadata: msg.metadata,
+  };
 }
 
 function truncate(text: string, max = 60): string {
   const clean = text.trim();
   return clean.length > max ? `${clean.slice(0, max)}…` : clean;
-}
-
-// ─── Migración de datos legacy ─────────────────────────────────────────────────
-
-function migrateLegacyChat(): ChatSessionMeta | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(LEGACY_KEY);
-    if (!raw) return null;
-    const msgs = JSON.parse(raw) as Array<ChatMessage & { timestamp: string }>;
-    if (!msgs?.length) return null;
-
-    const id = generateId();
-    const firstUser = msgs.find((m) => m.role === 'user');
-    const firstAssistant = msgs.find((m) => m.role === 'assistant');
-
-    const meta: ChatSessionMeta = {
-      id,
-      title: truncate(firstUser?.content ?? 'Consulta importada'),
-      preview: truncate(firstAssistant?.content ?? ''),
-      language: 'spanish',
-      createdAt: firstUser?.timestamp ?? new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messageCount: msgs.length,
-    };
-
-    // Mover mensajes a la nueva clave
-    localStorage.setItem(sessionMessagesKey(id), raw);
-    localStorage.removeItem(LEGACY_KEY);
-
-    return meta;
-  } catch {
-    return null;
-  }
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
@@ -116,124 +39,169 @@ export function useChatSessions() {
   const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // ── Cargar sesiones al montar ──────────────────────────────────────────────
+  // ── Cargar sesiones desde el backend al montar ─────────────────────────────
   useEffect(() => {
-    let loaded = loadSessionsMeta();
+    const loadSessions = async () => {
+      setLoading(true);
+      try {
+        const response = await apiService.listConversations(50, true);
+        if (response.success && response.data) {
+          const backendSessions = response.data.conversations;
+          const sessionMetas = backendSessions.map(backendToSessionMeta);
+          setSessions(sessionMetas);
 
-    // Migrar datos del chat anterior (single-thread)
-    if (!loaded.length) {
-      const migrated = migrateLegacyChat();
-      if (migrated) {
-        loaded = [migrated];
-        saveSessionsMeta(loaded);
+          // Restaurar la sesión activa (la más reciente)
+          if (sessionMetas.length > 0) {
+            const mostRecent = [...sessionMetas].sort(
+              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            )[0];
+            setActiveSessionId(mostRecent.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+      } finally {
+        setLoading(false);
+        setHydrated(true);
       }
-    }
-
-    setSessions(loaded);
-
-    // Restaurar la sesión activa (la más reciente)
-    if (loaded.length > 0) {
-      const mostRecent = [...loaded].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      )[0];
-      setActiveSessionId(mostRecent.id);
-    }
-
-    setHydrated(true);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Crear nueva sesión ──────────────────────────────────────────────────────
-  const createSession = useCallback((language: SupportedLanguage = 'spanish'): string => {
-    const id = generateId();
-    const now = new Date().toISOString();
-    const meta: ChatSessionMeta = {
-      id,
-      title: 'Nueva consulta',
-      preview: '',
-      language,
-      createdAt: now,
-      updatedAt: now,
-      messageCount: 0,
     };
-    setSessions((prev) => {
-      const updated = [meta, ...prev];
-      saveSessionsMeta(updated);
-      return updated;
-    });
-    setActiveSessionId(id);
-    return id;
+
+    loadSessions();
+  }, []);
+
+  // ── Crear nueva sesión en el backend ────────────────────────────────────────
+  const createSession = useCallback(async (language: SupportedLanguage = 'spanish'): Promise<string> => {
+    try {
+      const response = await apiService.createConversation(language, 'Nueva consulta', 'demo-user');
+      if (response.success && response.data) {
+        const newSession = backendToSessionMeta(response.data);
+        setSessions((prev) => [newSession, ...prev]);
+        setActiveSessionId(newSession.id);
+        return newSession.id;
+      }
+      throw new Error('Failed to create session');
+    } catch (error) {
+      console.error('Error creating session:', error);
+      throw error;
+    }
   }, []);
 
   // ── Actualizar metadata de una sesión ──────────────────────────────────────
   const updateSessionMeta = useCallback(
-    (id: string, patch: Partial<Pick<ChatSessionMeta, 'title' | 'preview' | 'messageCount' | 'updatedAt' | 'language'>>) => {
+    async (id: string, patch: Partial<Pick<ChatSessionMeta, 'title' | 'preview' | 'messageCount' | 'updatedAt' | 'language'>>) => {
+      // Actualizar localmente primero para respuesta inmediata
       setSessions((prev) => {
         const updated = prev.map((s) =>
           s.id === id ? { ...s, ...patch, updatedAt: new Date().toISOString() } : s
         );
-        saveSessionsMeta(updated);
         return updated;
       });
+
+      // Luego actualizar en el backend
+      try {
+        await apiService.updateConversation(id, {
+          title: patch.title,
+          metadata: { preview: patch.preview, messageCount: patch.messageCount },
+        });
+      } catch (error) {
+        console.error('Error updating session meta:', error);
+      }
     },
     []
   );
 
-  // ── Eliminar una sesión ────────────────────────────────────────────────────
+  // ── Eliminar una sesión del backend ───────────────────────────────────────────
   const deleteSession = useCallback(
-    (id: string) => {
-      deleteSessionMessages(id);
-      setSessions((prev) => {
-        const updated = prev.filter((s) => s.id !== id);
-        saveSessionsMeta(updated);
+    async (id: string) => {
+      try {
+        await apiService.deleteConversation(id);
+        setSessions((prev) => {
+          const updated = prev.filter((s) => s.id !== id);
 
-        // Si se eliminó la activa, pasar a la más reciente
-        if (activeSessionId === id) {
-          if (updated.length > 0) {
-            const next = [...updated].sort(
-              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            )[0];
-            setActiveSessionId(next.id);
-          } else {
-            setActiveSessionId(null);
+          // Si se eliminó la activa, pasar a la más reciente
+          if (activeSessionId === id) {
+            if (updated.length > 0) {
+              const next = [...updated].sort(
+                (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+              )[0];
+              setActiveSessionId(next.id);
+            } else {
+              setActiveSessionId(null);
+            }
           }
-        }
-        return updated;
-      });
+          return updated;
+        });
+      } catch (error) {
+        console.error('Error deleting session:', error);
+        throw error;
+      }
     },
     [activeSessionId]
   );
 
   // ── Limpiar mensajes de la sesión activa (sin eliminarla) ──────────────────
-  const clearActiveSession = useCallback(() => {
+  const clearActiveSession = useCallback(async () => {
     if (!activeSessionId) return;
-    deleteSessionMessages(activeSessionId);
-    updateSessionMeta(activeSessionId, {
-      title: 'Nueva consulta',
-      preview: '',
-      messageCount: 0,
-    });
+    try {
+      // Actualizar título en el backend
+      await apiService.updateConversation(activeSessionId, {
+        title: 'Nueva consulta',
+        metadata: { messageCount: 0 },
+      });
+      updateSessionMeta(activeSessionId, {
+        title: 'Nueva consulta',
+        preview: '',
+        messageCount: 0,
+      });
+    } catch (error) {
+      console.error('Error clearing session:', error);
+    }
   }, [activeSessionId, updateSessionMeta]);
 
   // ── Eliminar todas las sesiones ────────────────────────────────────────────
-  const clearAllSessions = useCallback(() => {
-    setSessions((prev) => {
-      for (const s of prev) deleteSessionMessages(s.id);
-      saveSessionsMeta([]);
-      return [];
-    });
-    setActiveSessionId(null);
+  const clearAllSessions = useCallback(async () => {
+    try {
+      // Eliminar cada sesión del backend
+      for (const session of sessions) {
+        await apiService.deleteConversation(session.id);
+      }
+      setSessions([]);
+      setActiveSessionId(null);
+    } catch (error) {
+      console.error('Error clearing all sessions:', error);
+    }
+  }, [sessions]);
+
+  // ── Recargar sesiones desde el backend ───────────────────────────────────────
+  const reloadSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await apiService.listConversations(50, true);
+      if (response.success && response.data) {
+        const backendSessions = response.data.conversations;
+        const sessionMetas = backendSessions.map(backendToSessionMeta);
+        setSessions(sessionMetas);
+      }
+    } catch (error) {
+      console.error('Error reloading sessions:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   return {
     sessions,
     activeSessionId,
     hydrated,
+    loading,
     setActiveSessionId,
     createSession,
     updateSessionMeta,
     deleteSession,
     clearActiveSession,
     clearAllSessions,
+    reloadSessions,
   };
 }

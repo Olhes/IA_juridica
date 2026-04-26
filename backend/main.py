@@ -31,6 +31,9 @@ from ingestion.pipeline import LegalIngestionPipeline
 from rag.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
+from database.redis_adapter import redis_adapter
+from services.chat_service import chat_service
+from routes.chat_routes import router as chat_router
 
 # ── Módulos de validación y optimización ──────────────────────────────
 from validation.response_validator import ResponseValidator, ValidationConfig
@@ -89,6 +92,8 @@ class LegalQueryRequest(BaseModel):
     query: str = Field(..., min_length=1)
     language: str = Field(default="spanish")
     context: Optional[Dict[str, Any]] = None
+    conversation_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class PDFReportRequest(BaseModel):
@@ -120,6 +125,22 @@ def _extract_streamable_text(response_payload: Dict[str, Any], language: str) ->
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Inicializando IA Jurídica v2.1...")
+
+    # Inicializar Redis adapter
+    try:
+        await redis_adapter.initialize()
+        print("Redis adapter inicializado correctamente")
+    except Exception as e:
+        print(f"Error inicializando Redis: {e}")
+        print("Continuando sin Redis...")
+    
+    # Inicializar chat service
+    try:
+        await chat_service.initialize()
+        print("Chat service inicializado correctamente")
+    except Exception as e:
+        print(f"Error inicializando chat service: {e}")
+        print("Continuando sin chat persistente...")
 
     if not hasattr(app.state, "rag_engine"):
         RAW_PDFS_DIR.mkdir(parents=True, exist_ok=True)
@@ -173,6 +194,13 @@ async def lifespan(app: FastAPI):
     yield
 
     print("Cerrando IA Jurídica...")
+    
+    # Cerrar Redis adapter
+    try:
+        await redis_adapter.close()
+        print("Redis adapter cerrado correctamente")
+    except Exception as e:
+        print(f"Error cerrando Redis: {e}")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -195,6 +223,9 @@ app.add_middleware(
     allow_methods=settings.CORS_ALLOW_METHODS,
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
+
+# Registrar rutas de chat persistente
+app.include_router(chat_router)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -246,7 +277,18 @@ async def health_check():
     components["llm_optimizer"] = (
         "ready" if getattr(app.state, "llm_optimizer", None) else "unavailable"
     )
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Health check de Redis ──────────────────────────────────────────────────
+    try:
+        redis_health = await redis_adapter.health_check()
+        components["redis"] = redis_health.get("status", "unknown")
+    except Exception:
+        components["redis"] = "error"
+    # ── Health check de Chat Service ──────────────────────────────────────────
+    try:
+        chat_health = await chat_service.redis.health_check()
+        components["chat_service"] = chat_health.get("status", "unknown")
+    except Exception:
+        components["chat_service"] = "error"
 
     critical_ok = all(
         components.get(c) in ("ready", "fallback")
@@ -435,11 +477,29 @@ async def legal_query(request: Request, payload: LegalQueryRequest):
 
 @app.post("/legal-query-stream")
 async def legal_query_stream(payload: LegalQueryRequest):
-    """Stream NDJSON con chunks + payload final validado (1 sola llamada)."""
+    """Stream NDJSON con chunks + payload final validado (1 sola llamada).
+    
+    Si se proporciona conversation_id y user_id, guarda los mensajes en PostgreSQL.
+    """
     query = payload.query.strip()
     language = payload.language
+    conversation_id = payload.conversation_id
+    user_id = payload.user_id or "demo-user"
     optimizer: LLMOptimizer = app.state.llm_optimizer
     cache_key = f"{query}|{language}"
+
+    # Guardar mensaje del usuario si se proporciona conversation_id
+    if conversation_id:
+        try:
+            await chat_service.create_message(
+                conversation_id=conversation_id,
+                content=query,
+                role="user",
+                language=language
+            )
+        except Exception as e:
+            print(f"Error guardando mensaje de usuario: {e}")
+            # Continuar sin persistencia si falla
 
     cached_result = optimizer.get_cached(cache_key)
     if cached_result:
@@ -540,6 +600,21 @@ async def legal_query_stream(payload: LegalQueryRequest):
 
             if validated.is_reliable:
                 optimizer.cache_response(cache_key, result_payload)
+
+            # Guardar respuesta del asistente si se proporciona conversation_id
+            if conversation_id:
+                try:
+                    # Convertir la respuesta completa a JSON para guardarla en metadata
+                    assistant_content = final_response.get("answer", "") if isinstance(final_response, dict) else str(final_response)
+                    await chat_service.create_message(
+                        conversation_id=conversation_id,
+                        content=assistant_content,
+                        role="assistant",
+                        language=language,
+                        metadata={"sources": validated.sources, "validation": validation_meta}
+                    )
+                except Exception as e:
+                    print(f"Error guardando mensaje de asistente: {e}")
 
             yield _ndjson_event(
                 {

@@ -23,6 +23,8 @@ deepeval==3.8.4
 
 # Database
 SQLAlchemy==2.0.46
+asyncpg==0.29.0
+redis==5.2.1
 
 # PDF Generation
 reportlab==4.4.10

@@ -109,6 +109,9 @@ export interface ChatMessage {
   isLoadingFull?: boolean;
   timestamp: Date;
   error?: string;
+  language?: SupportedLanguage;
+  tokens?: number;
+  metadata?: Record<string, any>;
 }
 
 // ---- Chat Session (multi-thread) ----

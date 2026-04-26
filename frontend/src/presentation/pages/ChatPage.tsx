@@ -74,7 +74,7 @@ export function ChatPage() {
   useEffect(() => {
     if (!sessionsHydrated) return;
     if (sessions.length === 0) {
-      createSession(language);
+      createSession(language).catch(console.error);
     }
   }, [sessionsHydrated, sessions.length, createSession, language]);
 
@@ -122,8 +122,8 @@ export function ChatPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  const handleNewSession = () => {
-    createSession(language);
+  const handleNewSession = async () => {
+    await createSession(language);
     setSidebarOpen(false);
   };
 

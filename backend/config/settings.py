@@ -25,8 +25,28 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
     # Configuración de Base de Datos
-    DATABASE_URL: str = "sqlite:///./juridica.db"
-    DATABASE_PATH: str = "./database/juridica.db"
+    DATABASE_HOST: str = os.getenv("DATABASE_HOST", "localhost")
+    DATABASE_PORT: int = int(os.getenv("DATABASE_PORT", "5433"))
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "juridica_db")
+    DATABASE_USER: str = os.getenv("DATABASE_USER", "postgres")
+    DATABASE_PASSWORD: str = os.getenv("DATABASE_PASSWORD", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
+    
+    # Configuración de SQLAlchemy para PostgreSQL (chat persistente)
+    # Usando psycopg en lugar de asyncpg por compatibilidad con Windows
+    SQLALCHEMY_DATABASE_URL: str = os.getenv("SQLALCHEMY_DATABASE_URL", f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
+    
+    # Configuración de Redis
+    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: Optional[str] = None
+    
+    # Configuración de SQLAlchemy
+    SQLALCHEMY_ECHO: bool = False
+    SQLALCHEMY_POOL_SIZE: int = 10
+    SQLALCHEMY_MAX_OVERFLOW: int = 20
     
     # Configuración de OpenAI (legacy)
     OPENAI_API_KEY: str = ""
@@ -126,7 +146,6 @@ class Settings(BaseSettings):
             self.PROCESSED_DIR,
             self.KNOWLEDGE_GRAPH_DIR,
             self.FAILED_DIR,
-            self.DATABASE_PATH.rsplit('/', 1)[0],
             self.LOG_FILE.rsplit('/', 1)[0],
             self.PDF_OUTPUT_DIR,
             self.PDF_TEMPLATE_DIR

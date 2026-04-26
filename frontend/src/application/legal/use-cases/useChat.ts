@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
-import { loadSessionMessages, saveSessionMessages } from './useChatSessions';
+import { apiService, type Message as BackendMessage } from '../services/apiService';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const STREAM_FLUSH_MS = 60; // Flush de contenido en streaming cada 60ms para evitar demasiados renders, config. recomendada
@@ -20,12 +20,12 @@ interface UseChatOptions {
 }
 
 /**
- * Core chat hook con persistencia por sesión.
+ * Core chat hook con persistencia en backend (PostgreSQL + Redis).
  *
  * Flujo por mensaje:
  *  1. POST /legal-query-stream → stream de chunks NDJSON
  *  2. En el mismo stream llega evento final con validación/fuentes/metadata
- *  3. Persistencia en localStorage bajo la clave de la sesión
+ *  3. Persistencia en backend via chat_service
  */
 export function useChat({ sessionId, language, onSessionUpdated }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -35,24 +35,38 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ── Cargar mensajes cuando cambia la sesión activa ────────────────────────
+  // ── Cargar mensajes desde el backend cuando cambia la sesión activa ────────
   useEffect(() => {
-    if (!sessionId) {
-      setMessages([]);
-      setHydrated(true);
-      return;
-    }
-    const saved = loadSessionMessages(sessionId);
-    setMessages(saved);
-    setHydrated(true);
-  }, [sessionId]);
+    const loadMessages = async () => {
+      if (!sessionId) {
+        setMessages([]);
+        setHydrated(true);
+        return;
+      }
 
-  // ── Persistir cambios (solo post-hidratación y sin streaming) ─────────────
-  useEffect(() => {
-    if (!hydrated || !sessionId) return;
-    if (messages.some((m) => m.isStreaming || m.isLoadingFull)) return;
-    saveSessionMessages(sessionId, messages);
-  }, [messages, hydrated, sessionId]);
+      try {
+        const response = await apiService.getConversation(sessionId);
+        if (response.success && response.data) {
+          const backendMessages = response.data.messages;
+          const chatMessages = backendMessages.map((msg: BackendMessage) => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            metadata: msg.metadata,
+          }));
+          setMessages(chatMessages);
+        }
+      } catch (error) {
+        console.error('Error loading messages:', error);
+        setMessages([]);
+      } finally {
+        setHydrated(true);
+      }
+    };
+
+    loadMessages();
+  }, [sessionId]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -134,11 +148,21 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       // ── Stream + payload final (NDJSON) ───────────────────────────────
       let streamedText = '';
       let gotFinalPayload = false;
+      let finalPayload: LegalQueryApiResponse | null = null;
       try {
+        // Intentar obtener conversation_id del backend si existe
+        let conversationId = sessionId;
+        let userId = 'demo-user';
+
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query.trim(), language }),
+          body: JSON.stringify({
+            query: query.trim(),
+            language,
+            conversation_id: conversationId,
+            user_id: userId
+          }),
           signal: controller.signal,
         });
 
@@ -175,6 +199,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
           if (event.type === 'final' && event.data) {
             gotFinalPayload = true;
+            finalPayload = event.data;
             const finalText = resolveFinalText(event.data, streamedText);
             streamedText = finalText;
             updateMessage(assistantId, {
@@ -251,9 +276,12 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         return prev;
       });
 
+      // Nota: Los mensajes se persisten automáticamente en el backend
+      // via el endpoint /legal-query-stream cuando se envía conversation_id
+
       setIsLoading(false);
     },
-    [isLoading, language, sessionId, pushMessage, updateMessage, onSessionUpdated]
+    [isLoading, language, sessionId, pushMessage, updateMessage, onSessionUpdated, resolveFinalText]
   );
 
   // ─── Abort ─────────────────────────────────────────────────────────────────
@@ -296,9 +324,9 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     abortRef.current?.abort();
     setMessages([]);
     setIsLoading(false);
-    if (sessionId) saveSessionMessages(sessionId, []);
+    // Los mensajes se limpian en el backend via useChatSessions.clearActiveSession
     onSessionUpdated?.({ title: 'Nueva consulta', preview: '', messageCount: 0 });
-  }, [sessionId, onSessionUpdated]);
+  }, [onSessionUpdated]);
 
   return {
     messages,
