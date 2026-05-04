@@ -40,7 +40,7 @@ export function useChatMigration() {
       const response = await apiService.createConversation(
         firstUserMessage?.content?.includes('quechua') ? 'quechua' : 'spanish',
         `Migrado: ${firstUserMessage?.content?.slice(0, 30) || 'Sin título'}`,
-        'demo-user'
+        'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af'
       );
 
       if (!response.success || !response.data) {

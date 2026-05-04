@@ -74,7 +74,7 @@ export function useChatSessions() {
   // ── Crear nueva sesión en el backend ────────────────────────────────────────
   const createSession = useCallback(async (language: SupportedLanguage = 'spanish'): Promise<string> => {
     try {
-      const response = await apiService.createConversation(language, 'Nueva consulta', 'demo-user');
+      const response = await apiService.createConversation(language, 'Nueva consulta', 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af');
       if (response.success && response.data) {
         const newSession = backendToSessionMeta(response.data);
         setSessions((prev) => [newSession, ...prev]);
@@ -101,10 +101,17 @@ export function useChatSessions() {
 
       // Luego actualizar en el backend
       try {
-        await apiService.updateConversation(id, {
-          title: patch.title,
-          metadata: { preview: patch.preview, messageCount: patch.messageCount },
-        });
+        // Filtrar valores nulos/undefined
+        const updateData: any = {};
+        if (patch.title !== undefined) updateData.title = patch.title;
+        if (patch.preview !== undefined || patch.messageCount !== undefined) {
+          updateData.metadata = { 
+            preview: patch.preview, 
+            messageCount: patch.messageCount 
+          };
+        }
+        
+        await apiService.updateConversation(id, updateData);
       } catch (error) {
         console.error('Error updating session meta:', error);
       }

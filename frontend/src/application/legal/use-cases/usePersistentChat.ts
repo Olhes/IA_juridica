@@ -41,7 +41,7 @@ interface ChatState {
 export function usePersistentChat({
   conversationId,
   language = 'spanish',
-  userId = 'demo-user',
+  userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af',
   onConversationUpdated
 }: UsePersistentChatOptions) {
   const [state, setState] = useState<ChatState>({

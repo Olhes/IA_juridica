@@ -484,18 +484,21 @@ async def legal_query_stream(payload: LegalQueryRequest):
     query = payload.query.strip()
     language = payload.language
     conversation_id = payload.conversation_id
-    user_id = payload.user_id or "demo-user"
+    user_id = payload.user_id or "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"
     optimizer: LLMOptimizer = app.state.llm_optimizer
     cache_key = f"{query}|{language}"
 
     # Guardar mensaje del usuario si se proporciona conversation_id
     if conversation_id:
         try:
-            await chat_service.create_message(
+            from models.chat_models import MessageCreate, MessageRole
+            await chat_service.add_message(
                 conversation_id=conversation_id,
-                content=query,
-                role="user",
-                language=language
+                message_data=MessageCreate(
+                    content=query,
+                    role=MessageRole.USER,
+                    language=language
+                )
             )
         except Exception as e:
             print(f"Error guardando mensaje de usuario: {e}")
@@ -606,12 +609,15 @@ async def legal_query_stream(payload: LegalQueryRequest):
                 try:
                     # Convertir la respuesta completa a JSON para guardarla en metadata
                     assistant_content = final_response.get("answer", "") if isinstance(final_response, dict) else str(final_response)
-                    await chat_service.create_message(
+                    from models.chat_models import MessageCreate, MessageRole
+                    await chat_service.add_message(
                         conversation_id=conversation_id,
-                        content=assistant_content,
-                        role="assistant",
-                        language=language,
-                        metadata={"sources": validated.sources, "validation": validation_meta}
+                        message_data=MessageCreate(
+                            content=assistant_content,
+                            role=MessageRole.ASSISTANT,
+                            language=language,
+                            metadata={"sources": validated.sources, "validation": validation_meta}  # JSON serializable
+                        )
                     )
                 except Exception as e:
                     print(f"Error guardando mensaje de asistente: {e}")

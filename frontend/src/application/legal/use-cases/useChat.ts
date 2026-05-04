@@ -152,7 +152,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       try {
         // Intentar obtener conversation_id del backend si existe
         let conversationId = sessionId;
-        let userId = 'demo-user';
+        let userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af';
 
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
           method: 'POST',

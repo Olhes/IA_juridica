@@ -21,7 +21,7 @@ interface BackendChatOptions {
  * Hook simplificado para chat con backend
  * Funciona sin errores de TypeScript complejos
  */
-export function useBackendChat({ language = 'spanish', userId = 'demo-user' }: BackendChatOptions) {
+export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af' }: BackendChatOptions) {
   const [state, setState] = useState<BackendChatState>({
     messages: [],
     conversationId: null,

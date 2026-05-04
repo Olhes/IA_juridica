@@ -50,6 +50,10 @@ class PostgreSQLAdapter:
                             password="",
                             connect_timeout=10
                         )
+                        # Configurar search path para usar múltiples schemas
+                        with conn.cursor() as cursor:
+                            cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
+                            conn.commit()
                         print(f"  ✅ Conexión exitosa para: {actual_user}")
                         return conn
                     except Exception as e:
@@ -129,7 +133,7 @@ class PostgreSQLAdapter:
         return self.conn is not None
     
     # ── Métodos para Context Engineering ─────────────────────────────────────
-    async def create_conversation(self, language: str, title: str = None) -> Dict[str, Any]:
+    async def create_conversation(self, user_id: str, title: str = None, language: str = "spanish") -> Dict[str, Any]:
         """Crear una nueva conversación"""
         if not self.conn:
             raise Exception("PostgreSQL no conectado")
@@ -138,36 +142,30 @@ class PostgreSQLAdapter:
         
         def create_sync():
             with self.conn.cursor() as cursor:
-                # Crear tabla si no existe (con la estructura correcta)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS conversations (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        user_id UUID DEFAULT gen_random_uuid(),
-                        title VARCHAR(255) NOT NULL,
-                        language VARCHAR(10) DEFAULT 'spanish',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        metadata JSONB DEFAULT '{}',
-                        is_active BOOLEAN DEFAULT true
-                    )
-                """)
-                
-                # Insertar conversación
-                cursor.execute("""
-                    INSERT INTO conversations (title, language)
-                    VALUES (%s, %s)
-                    RETURNING id, title, language, created_at
-                """, (title or f"Conversación en {language}", language))
-                
-                result = cursor.fetchone()
-                self.conn.commit()
-                
-                return {
-                    'id': str(result[0]),
-                    'title': result[1],
-                    'language': result[2],
-                    'created_at': result[3].isoformat()
-                }
+                try:
+                    # Insertar conversación en conversations_schema
+                    cursor.execute("""
+                        INSERT INTO conversations_schema.conversations (user_id, title, language)
+                        VALUES (%s, %s, %s)
+                        RETURNING id, user_id, title, language, created_at
+                    """, (user_id, title or f"Conversación en {language}", language))
+                    
+                    result = cursor.fetchone()
+                    self.conn.commit()
+                    
+                    return {
+                        'id': str(result[0]),
+                        'user_id': str(result[1]),
+                        'title': result[2],
+                        'language': result[3],
+                        'created_at': result[4].isoformat(),
+                        'updated_at': result[4].isoformat(),
+                        'metadata': {},
+                        'is_active': True
+                    }
+                except Exception as e:
+                    self.conn.rollback()
+                    raise e
         
         return await loop.run_in_executor(None, create_sync)
     
@@ -182,7 +180,7 @@ class PostgreSQLAdapter:
             with self.conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT id, title, language, created_at, updated_at
-                    FROM conversations
+                    FROM conversations_schema.conversations
                     WHERE id = %s
                 """, (conversation_id,))
                 
@@ -209,39 +207,45 @@ class PostgreSQLAdapter:
         
         def create_sync():
             with self.conn.cursor() as cursor:
-                # Crear tabla si no existe (con estructura completa)
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS messages (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                        role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-                        content TEXT NOT NULL,
-                        language VARCHAR(10) DEFAULT 'spanish',
-                        tokens_used INTEGER DEFAULT 0,
-                        model_used VARCHAR(100),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        metadata JSONB DEFAULT '{}'
-                    )
-                """)
-                
-                # Insertar mensaje
-                cursor.execute("""
-                    INSERT INTO messages (conversation_id, content, role, metadata)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id, conversation_id, content, role, metadata, created_at
-                """, (conversation_id, content, role, metadata or {}))
-                
-                result = cursor.fetchone()
-                self.conn.commit()
-                
-                return {
-                    'id': str(result[0]),
-                    'conversation_id': str(result[1]),
-                    'content': result[2],
-                    'role': result[3],
-                    'metadata': result[4] or {},
-                    'created_at': result[5].isoformat()
-                }
+                try:
+                    # Insertar mensaje en conversations_schema
+                    import json
+                    from datetime import datetime
+                    
+                    def serialize_metadata(obj):
+                        """Serializa metadata a JSON, manejando datetime y otros objetos no serializables"""
+                        if isinstance(obj, datetime):
+                            return obj.isoformat()
+                        elif isinstance(obj, dict):
+                            return {k: serialize_metadata(v) for k, v in obj.items()}
+                        elif isinstance(obj, list):
+                            return [serialize_metadata(item) for item in obj]
+                        else:
+                            return obj
+                    
+                    cursor.execute("""
+                        INSERT INTO conversations_schema.messages (conversation_id, content, role, metadata)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id, conversation_id, content, role, metadata, created_at
+                    """, (conversation_id, content, role, json.dumps(serialize_metadata(metadata or {}))))
+                    
+                    result = cursor.fetchone()
+                    self.conn.commit()
+                    
+                    return {
+                        'id': str(result[0]),
+                        'conversation_id': str(result[1]),
+                        'content': result[2],
+                        'role': result[3],
+                        'metadata': result[4] or {},
+                        'message_type': 'text',  # Valor por defecto
+                        'tokens_used': 0,        # Valor por defecto
+                        'model_used': None,      # Valor por defecto
+                        'created_at': result[5].isoformat()
+                    }
+                except Exception as e:
+                    self.conn.rollback()
+                    raise e
         
         return await loop.run_in_executor(None, create_sync)
     
@@ -256,7 +260,7 @@ class PostgreSQLAdapter:
             with self.conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT id, conversation_id, content, role, metadata, created_at
-                    FROM messages
+                    FROM conversations_schema.messages
                     WHERE conversation_id = %s
                     ORDER BY created_at ASC
                 """, (conversation_id,))
@@ -336,8 +340,8 @@ class PostgreSQLAdapter:
             with self.conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT id, title, language, created_at, updated_at,
-                           (SELECT COUNT(*) FROM messages WHERE conversation_id = conversations.id) as message_count
-                    FROM conversations
+                           (SELECT COUNT(*) FROM conversations_schema.messages WHERE conversation_id = conversations_schema.conversations.id) as message_count
+                    FROM conversations_schema.conversations
                     ORDER BY updated_at DESC
                     LIMIT %s OFFSET %s
                 """, (limit, offset))
@@ -356,6 +360,181 @@ class PostgreSQLAdapter:
                 ]
         
         return await loop.run_in_executor(None, list_sync)
+    
+    async def get_user_conversations(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Obtener conversaciones de un usuario específico"""
+        if not self.conn:
+            return []
+        
+        loop = asyncio.get_event_loop()
+        
+        def get_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, user_id, title, language, created_at, updated_at, metadata, is_active,
+                           (SELECT COUNT(*) FROM conversations_schema.messages WHERE conversation_id = conversations_schema.conversations.id) as message_count
+                    FROM conversations_schema.conversations
+                    WHERE user_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT %s
+                """, (user_id, limit))
+                
+                results = cursor.fetchall()
+                return [
+                    {
+                        'id': str(row[0]),
+                        'user_id': str(row[1]),
+                        'title': row[2],
+                        'language': row[3],
+                        'created_at': row[4].isoformat(),
+                        'updated_at': row[5].isoformat() if row[5] else None,
+                        'metadata': row[6] or {},
+                        'is_active': row[7],
+                        'message_count': row[8] or 0
+                    }
+                    for row in results
+                ]
+        
+        return await loop.run_in_executor(None, get_sync)
+    
+    async def update_conversation(self, conversation_id: str, update_data: Dict[str, Any]) -> bool:
+        """Actualizar metadata de conversación"""
+        if not self.conn:
+            return False
+        
+        loop = asyncio.get_event_loop()
+        
+        def update_sync():
+            with self.conn.cursor() as cursor:
+                # Convertir objeto Pydantic a diccionario y filtrar valores nulos
+                update_dict = update_data.model_dump() if hasattr(update_data, 'model_dump') else dict(update_data)
+                filtered_data = {k: v for k, v in update_dict.items() if v is not None}
+                print(f"DEBUG update_conversation: update_data original = {update_data}")
+                print(f"DEBUG update_conversation: update_dict = {update_dict}")
+                print(f"DEBUG update_conversation: filtered_data = {filtered_data}")
+                
+                # Construir consulta dinámica basada en los campos a actualizar
+                set_clauses = []
+                values = []
+                
+                if filtered_data.get('title') is not None:
+                    set_clauses.append("title = %s")
+                    values.append(filtered_data['title'])
+                
+                if filtered_data.get('metadata') is not None:
+                    set_clauses.append("metadata = %s")
+                    import json
+                    from datetime import datetime
+                    
+                    def serialize_metadata(obj):
+                        """Serializa metadata a JSON, manejando datetime y otros objetos no serializables"""
+                        if isinstance(obj, datetime):
+                            return obj.isoformat()
+                        elif isinstance(obj, dict):
+                            return {k: serialize_metadata(v) for k, v in obj.items()}
+                        elif isinstance(obj, list):
+                            return [serialize_metadata(item) for item in obj]
+                        else:
+                            return obj
+                    
+                    values.append(json.dumps(serialize_metadata(filtered_data['metadata'])))
+                
+                if filtered_data.get('is_active') is not None:
+                    set_clauses.append("is_active = %s")
+                    values.append(filtered_data['is_active'])
+                
+                if not set_clauses:
+                    return False  # Nada que actualizar
+                
+                # Agregar updated_at
+                set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+                
+                # Agregar conversation_id al final para el WHERE
+                values.append(conversation_id)
+                
+                try:
+                    sql = f"UPDATE conversations_schema.conversations SET {', '.join(set_clauses)} WHERE id = %s RETURNING id"
+                    print(f"DEBUG update_conversation: SQL = {sql}")
+                    print(f"DEBUG update_conversation: values = {values}")
+                    cursor.execute(sql, values)
+                    
+                    result = cursor.fetchone()
+                    self.conn.commit()
+                    print(f"DEBUG update_conversation: UPDATE exitoso, result={result}")
+                    return result is not None
+                except Exception as e:
+                    self.conn.rollback()
+                    print(f"DEBUG update_conversation: ERROR en SQL = {e}")
+                    print(f"DEBUG update_conversation: set_clauses = {set_clauses}")
+                    print(f"DEBUG update_conversation: values = {values}")
+                    raise e
+        
+        return await loop.run_in_executor(None, update_sync)
+    
+    async def delete_conversation(self, conversation_id: str, user_id: str = None) -> bool:
+        """Eliminar una conversación"""
+        if not self.conn:
+            return False
+        
+        loop = asyncio.get_event_loop()
+        
+        def delete_sync():
+            with self.conn.cursor() as cursor:
+                # Si se proporciona user_id, verificar que la conversación pertenezca al usuario
+                if user_id:
+                    cursor.execute("""
+                        DELETE FROM conversations_schema.conversations
+                        WHERE id = %s AND user_id = %s
+                        RETURNING id
+                    """, (conversation_id, user_id))
+                else:
+                    cursor.execute("""
+                        DELETE FROM conversations_schema.conversations
+                        WHERE id = %s
+                        RETURNING id
+                    """, (conversation_id,))
+                
+                result = cursor.fetchone()
+                self.conn.commit()
+                return result is not None
+        
+        return await loop.run_in_executor(None, delete_sync)
+    
+    async def search_conversations(self, user_id: str, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Buscar conversaciones por contenido de mensajes"""
+        if not self.conn:
+            return []
+        
+        loop = asyncio.get_event_loop()
+        
+        def search_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT c.id, c.user_id, c.title, c.language, c.created_at, c.updated_at, c.metadata, c.is_active
+                    FROM conversations_schema.conversations c
+                    INNER JOIN conversations_schema.messages m ON c.id = m.conversation_id
+                    WHERE c.user_id = %s
+                    AND (c.title ILIKE %s OR m.content ILIKE %s)
+                    ORDER BY c.updated_at DESC
+                    LIMIT %s
+                """, (user_id, f"%{query}%", f"%{query}%", limit))
+                
+                results = cursor.fetchall()
+                return [
+                    {
+                        'id': str(row[0]),
+                        'user_id': str(row[1]),
+                        'title': row[2],
+                        'language': row[3],
+                        'created_at': row[4].isoformat(),
+                        'updated_at': row[5].isoformat() if row[5] else None,
+                        'metadata': row[6] or {},
+                        'is_active': row[7]
+                    }
+                    for row in results
+                ]
+        
+        return await loop.run_in_executor(None, search_sync)
 
 
 # Instancia global del adaptador

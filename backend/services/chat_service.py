@@ -12,7 +12,7 @@ import json
 from models.chat_models import (
     MessageCreate, MessageResponse, ConversationCreate, ConversationResponse,
     ConversationUpdate, ChatRequest, ChatResponse, CachedConversation,
-    UserSession, ConversationContext, ContextSummary
+    UserSession, ConversationContext, ContextSummary, MessageType
 )
 from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
@@ -75,28 +75,49 @@ class ChatService:
             language=language
         )
         
-        # Guardar en base de datos
-        db_conversation = await self.db.create_conversation(conversation_data)
+        # Guardar en base de datos (pasar parámetros individuales)
+        db_conversation = await self.db.create_conversation(
+            user_id=user_id,
+            title=conversation_data.title,
+            language=language
+        )
+        
+        # Construir respuesta desde el dict del adapter
+        conversation_response = ConversationResponse(
+            id=db_conversation['id'],
+            user_id=db_conversation['user_id'],
+            title=db_conversation['title'],
+            language=db_conversation['language'],
+            metadata=db_conversation.get('metadata', {}),
+            created_at=db_conversation['created_at'] if isinstance(db_conversation['created_at'], datetime) else datetime.fromisoformat(db_conversation['created_at']),
+            updated_at=db_conversation.get('updated_at', db_conversation['created_at']) if isinstance(db_conversation.get('updated_at', db_conversation['created_at']), datetime) else datetime.fromisoformat(db_conversation.get('updated_at', db_conversation['created_at'])),
+            is_active=db_conversation.get('is_active', True),
+            message_count=0,
+            last_message=None
+        )
         
         # Cache en Redis
-        cached_conv = CachedConversation(
-            id=db_conversation.id,
-            user_id=db_conversation.user_id,
-            title=db_conversation.title,
-            language=db_conversation.language,
-            messages=[],
-            metadata=db_conversation.metadata,
-            created_at=db_conversation.created_at,
-            updated_at=db_conversation.updated_at
-        )
+        try:
+            cached_conv = CachedConversation(
+                id=conversation_response.id,
+                user_id=conversation_response.user_id,
+                title=conversation_response.title,
+                language=conversation_response.language,
+                messages=[],
+                metadata=conversation_response.metadata,
+                created_at=conversation_response.created_at,
+                updated_at=conversation_response.updated_at
+            )
+            
+            await self.redis.set_cache(
+                f"conversation:{conversation_response.id}",
+                cached_conv.to_redis_format(),
+                self.cache_ttl['conversation']
+            )
+        except Exception as e:
+            print(f"⚠️ Error caching conversation: {e}")
         
-        await self.redis.set_cache(
-            f"conversation:{db_conversation.id}",
-            cached_conv.to_redis_format(),
-            self.cache_ttl['conversation']
-        )
-        
-        return ConversationResponse.model_validate(db_conversation)
+        return conversation_response
     
     async def get_conversation(self, conversation_id: str, user_id: str) -> Optional[ConversationResponse]:
         """Obtener conversación con mensajes"""
@@ -119,56 +140,102 @@ class ChatService:
                 )
         
         # Si no está en cache, buscar en base de datos
-        db_conversation = await self.db.get_conversation(conversation_id, user_id)
+        db_conversation = await self.db.get_conversation(conversation_id)
         if not db_conversation:
             return None
         
         # Obtener mensajes
         messages = await self.db.get_conversation_messages(conversation_id)
-        message_responses = [MessageResponse.model_validate(msg) for msg in messages]
+        message_responses = []
+        for msg in messages:
+            try:
+                message_responses.append(MessageResponse(
+                    id=msg['id'],
+                    conversation_id=msg.get('conversation_id', conversation_id),
+                    role=msg['role'],
+                    content=msg['content'],
+                    language=msg.get('language', 'spanish'),
+                    metadata=msg.get('metadata', {}),
+                    message_type=MessageType.TEXT,
+                    tokens_used=msg.get('tokens_used', 0),
+                    model_used=msg.get('model_used'),
+                    created_at=msg['created_at'] if isinstance(msg['created_at'], datetime) else datetime.fromisoformat(msg['created_at'])
+                ))
+            except Exception as e:
+                print(f"⚠️ Error parsing message: {e}")
+                continue
         
-        # Actualizar cache
-        cached_conv = CachedConversation(
-            id=db_conversation.id,
-            user_id=db_conversation.user_id,
-            title=db_conversation.title,
-            language=db_conversation.language,
-            messages=message_responses,
-            metadata=db_conversation.metadata,
-            created_at=db_conversation.created_at,
-            updated_at=db_conversation.updated_at
-        )
-        
-        await self.redis.set_cache(
-            f"conversation:{conversation_id}",
-            cached_conv.to_redis_format(),
-            self.cache_ttl['conversation']
-        )
-        
-        return ConversationResponse(
-            id=db_conversation.id,
-            user_id=db_conversation.user_id,
-            title=db_conversation.title,
-            language=db_conversation.language,
-            metadata=db_conversation.metadata,
-            created_at=db_conversation.created_at,
-            updated_at=db_conversation.updated_at,
-            is_active=db_conversation.is_active,
+        # Construir respuesta
+        conversation_response = ConversationResponse(
+            id=db_conversation['id'],
+            user_id=db_conversation.get('user_id', ''),
+            title=db_conversation['title'],
+            language=db_conversation['language'],
+            metadata=db_conversation.get('metadata', {}),
+            created_at=db_conversation['created_at'] if isinstance(db_conversation['created_at'], datetime) else datetime.fromisoformat(db_conversation['created_at']),
+            updated_at=db_conversation.get('updated_at', db_conversation['created_at']) if isinstance(db_conversation.get('updated_at', db_conversation['created_at']), datetime) else datetime.fromisoformat(db_conversation.get('updated_at', db_conversation['created_at'])),
+            is_active=db_conversation.get('is_active', True),
             message_count=len(message_responses),
             last_message=message_responses[-1] if message_responses else None
         )
+        
+        # Actualizar cache
+        try:
+            cached_conv = CachedConversation(
+                id=conversation_response.id,
+                user_id=conversation_response.user_id,
+                title=conversation_response.title,
+                language=conversation_response.language,
+                messages=message_responses,
+                metadata=conversation_response.metadata,
+                created_at=conversation_response.created_at,
+                updated_at=conversation_response.updated_at
+            )
+            
+            await self.redis.set_cache(
+                f"conversation:{conversation_id}",
+                cached_conv.to_redis_format(),
+                self.cache_ttl['conversation']
+            )
+        except Exception as e:
+            print(f"⚠️ Error caching conversation: {e}")
+        
+        return conversation_response
     
     async def get_user_conversations(self, user_id: str, limit: int = 50) -> List[ConversationResponse]:
         """Obtener conversaciones de un usuario"""
         conversations = await self.db.get_user_conversations(user_id, limit)
-        return [ConversationResponse.model_validate(conv) for conv in conversations]
+        result = []
+        for conv in conversations:
+            try:
+                result.append(ConversationResponse(
+                    id=conv['id'],
+                    user_id=conv.get('user_id', ''),
+                    title=conv['title'],
+                    language=conv['language'],
+                    metadata=conv.get('metadata', {}),
+                    created_at=conv['created_at'] if isinstance(conv['created_at'], datetime) else datetime.fromisoformat(conv['created_at']),
+                    updated_at=conv.get('updated_at', conv['created_at']) if isinstance(conv.get('updated_at', conv['created_at']), datetime) else datetime.fromisoformat(conv.get('updated_at', conv['created_at'])),
+                    is_active=conv.get('is_active', True),
+                    message_count=conv.get('message_count', 0),
+                    last_message=None
+                ))
+            except Exception as e:
+                print(f"⚠️ Error parsing conversation: {e}")
+                continue
+        return result
     
     # === Gestión de Mensajes ===
     
     async def add_message(self, conversation_id: str, message_data: MessageCreate) -> MessageResponse:
         """Agregar mensaje a conversación"""
-        # Guardar en base de datos
-        db_message = await self.db.create_message(conversation_id, message_data)
+        # Guardar en base de datos (pasar parámetros individuales)
+        db_message = await self.db.create_message(
+            conversation_id=conversation_id,
+            content=message_data.content,
+            role=message_data.role,
+            metadata=message_data.metadata
+        )
         message_response = MessageResponse.model_validate(db_message)
         
         # Actualizar cache en Redis
@@ -194,8 +261,8 @@ class ChatService:
             cached_conv = CachedConversation.from_redis_format(cached)
             return cached_conv.messages[-limit:] if len(cached_conv.messages) > limit else cached_conv.messages
         
-        # Si no está en cache, buscar en DB
-        messages = await self.db.get_conversation_messages(conversation_id, limit)
+        # Si no está en cache, buscar en DB (el método del adapter no usa limit)
+        messages = await self.db.get_conversation_messages(conversation_id)
         return [MessageResponse.model_validate(msg) for msg in messages]
     
     # === Procesamiento de Chat ===
@@ -233,17 +300,96 @@ class ChatService:
         # 4. Obtener contexto de conversación
         context = await self._build_conversation_context(conversation_id, request.language)
         
-        # 5. Procesar con IA (aquí iría la lógica existente)
-        # TODO: Integrar con el pipeline existente de legal_query
+        # 5. Procesar con IA usando el pipeline existente
+        from main import LegalQueryRequest
+        import asyncio
         
-        # 6. Guardar respuesta del asistente
-        assistant_message = MessageCreate(
-            role="assistant",
-            content="Respuesta provisional del asistente",  # Reemplazar con lógica real
+        # Crear request para el pipeline existente
+        legal_request = LegalQueryRequest(
+            query=request.message,
             language=request.language,
-            model_used="command-r7b-12-2024",
-            tokens_used=150
+            context=request.context,
+            conversation_id=conversation_id,
+            user_id=user_id
         )
+        
+        # Obtener respuesta del pipeline existente
+        try:
+            # Importar aquí para evitar circular imports
+            from main import app
+            from context.context_engineering import ContextEngineer
+            from agents.pydantic_agents import LegalAgent
+            from rag.lightrag_engine import LegalRAGEngine
+            
+            # Obtener componentes del estado de la app
+            rag_engine = app.state.rag_engine
+            legal_agent = app.state.legal_agent
+            context_engineer = app.state.context_engineer
+            
+            # Procesar con RAG
+            rag_result = await rag_engine.query_with_rerank(request.message)
+            
+            # Construir prompt enriquecido
+            documents = rag_result.get("documents", [])
+            enriched_prompt, enriched_context = context_engineer.build_legal_prompt(
+                query=request.message,
+                documents=documents,
+                language=request.language,
+            )
+            
+            # Generar respuesta con Cohere
+            response = await legal_agent.respond_general(
+                query=request.message,
+                context=rag_result,
+                language=request.language,
+                enriched_prompt=enriched_prompt,
+            )
+            
+            # Extraer contenido de la respuesta
+            if hasattr(response, "model_dump"):
+                response_payload = response.model_dump()
+            elif hasattr(response, "dict"):
+                response_payload = response.dict()
+            else:
+                response_payload = response
+            
+            # Extraer el texto de respuesta según el idioma
+            if request.language == "quechua":
+                assistant_content = str(
+                    response_payload.get("respuesta_quechua")
+                    or response_payload.get("quechua")
+                    or response_payload.get("answer", "")
+                )
+            else:
+                assistant_content = str(
+                    response_payload.get("respuesta_espanol")
+                    or response_payload.get("spanish")
+                    or response_payload.get("answer", "")
+                )
+            
+            # Guardar respuesta del asistente
+            assistant_message = MessageCreate(
+                role="assistant",
+                content=assistant_content,
+                language=request.language,
+                model_used="command-r7b-12-2024",
+                metadata={
+                    "sources": rag_result.get("sources", []),
+                    "rag_result": rag_result,
+                    "enriched_context": enriched_context
+                }
+            )
+            
+        except Exception as e:
+            print(f"Error procesando con IA: {e}")
+            # Fallback a respuesta simple
+            assistant_message = MessageCreate(
+                role="assistant",
+                content="Lo siento, no pude procesar tu consulta en este momento. Por favor, intenta nuevamente.",
+                language=request.language,
+                model_used="fallback",
+                metadata={"error": str(e)}
+            )
         
         assistant_response = await self.add_message(conversation_id, assistant_message)
         

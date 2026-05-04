@@ -46,9 +46,22 @@ class RedisAdapter:
     async def set_cache(self, key: str, value: Any, ttl: int = None) -> bool:
         """Guardar valor en cache"""
         try:
+            from datetime import datetime
             ttl = ttl or settings.CACHE_TTL
+            
+            def serialize_for_redis(obj):
+                """Serializa objetos para Redis, manejando datetime y otros no serializables"""
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                elif isinstance(obj, dict):
+                    return {k: serialize_for_redis(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [serialize_for_redis(item) for item in obj]
+                else:
+                    return obj
+            
             if isinstance(value, (dict, list)):
-                value = json.dumps(value)
+                value = json.dumps(serialize_for_redis(value))
             
             result = await self.client.setex(key, ttl, value)
             return result

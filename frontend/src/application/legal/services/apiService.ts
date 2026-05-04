@@ -80,7 +80,7 @@ class ApiService {
     return this.request<Conversation>('/chat/conversations', {
       method: 'POST',
       body: JSON.stringify({ 
-        user_id: userId || 'demo-user',
+        user_id: userId || 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af',
         language, 
         title 
       }),

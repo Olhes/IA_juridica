@@ -42,7 +42,7 @@ async def send_message(request: ChatRequest):
     """
     try:
         # Para demostración, usar user_id fijo (en producción usar autenticación)
-        user_id = "demo-user"
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"
         
         response = await chat_service.process_chat_message(request, user_id)
         return response
@@ -66,7 +66,7 @@ async def get_user_conversations(
     - active_only: Solo conversaciones activas
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         conversations = await chat_service.get_user_conversations(user_id, limit)
         
@@ -95,7 +95,7 @@ async def get_conversation_history(conversation_id: str, limit: int = Query(defa
     - limit: Número máximo de mensajes (max: 200)
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         # Obtener conversación
         conversation = await chat_service.get_conversation(conversation_id, user_id)
@@ -167,7 +167,8 @@ async def update_conversation(conversation_id: str, update_data: ConversationUpd
     - is_active: Estado activo (opcional)
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        print(f"DEBUG: Actualizando conversación {conversation_id} con datos: {update_data}")
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         # Verificar que la conversación exists y pertenece al usuario
         conversation = await chat_service.get_conversation(conversation_id, user_id)
@@ -176,14 +177,13 @@ async def update_conversation(conversation_id: str, update_data: ConversationUpd
         
         # Actualizar en base de datos
         updated = await chat_service.db.update_conversation(conversation_id, update_data)
+        print(f"DEBUG: Resultado de actualización: {updated}")
         if not updated:
             raise HTTPException(status_code=400, detail="No se pudo actualizar la conversación")
         
-        # Invalidar cache
-        await chat_service.redis.delete_cache(f"conversation:{conversation_id}")
-        
-        # Retornar conversación actualizada
-        return await chat_service.get_conversation(conversation_id, user_id)
+        # Obtener conversación actualizada
+        updated_conversation = await chat_service.get_conversation(conversation_id, user_id)
+        return updated_conversation
         
     except HTTPException:
         raise
@@ -200,7 +200,7 @@ async def delete_conversation(conversation_id: str):
     - conversation_id: ID de la conversación a eliminar
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         success = await chat_service.delete_conversation(conversation_id, user_id)
         
@@ -230,7 +230,7 @@ async def search_conversations(
     - limit: Número máximo de resultados (max: 50)
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         conversations = await chat_service.search_conversations(user_id, q, limit)
         
@@ -261,7 +261,7 @@ async def get_conversation_stats(conversation_id: str):
     - Última actividad
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         stats = await chat_service.get_conversation_stats(conversation_id, user_id)
         
@@ -322,7 +322,7 @@ async def continue_conversation(conversation_id: str, message: str):
     - message: Nuevo mensaje para continuar la conversación
     """
     try:
-        user_id = "demo-user"  # En producción: obtener de auth
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
         
         # Verificar que la conversación exists
         conversation = await chat_service.get_conversation(conversation_id, user_id)
