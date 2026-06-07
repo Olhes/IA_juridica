@@ -487,6 +487,43 @@ async def legal_query_stream(payload: LegalQueryRequest):
     user_id = payload.user_id or "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"
     optimizer: LLMOptimizer = app.state.llm_optimizer
     cache_key = f"{query}|{language}"
+    
+    # Detectar idioma y traducir si es quechua
+    from language.language_detector import LanguageDetector
+    from language.translation_service import TranslationService
+    
+    print(f"🔍 Procesando mensaje: {query[:50]}...")
+    print(f"🌐 Idioma solicitado: {language}")
+    
+    detector = LanguageDetector()
+    detected_language = detector.detect_language(query)
+    print(f"🔎 Idioma detectado: {detected_language}")
+    
+    query_for_processing = query
+    original_language = language
+    
+    if detected_language == "qu" or language == "quechua":
+        print(f"🔄 Detectado quechua, iniciando traducción a español...")
+        translation_service = TranslationService()
+        translation_result = await translation_service.translate(
+            text=query,
+            source_lang="qu",
+            target_lang="es"
+        )
+        
+        print(f"📊 Resultado de traducción: {translation_result}")
+        
+        if translation_result.get("success"):
+            query_for_processing = translation_result["translated_text"]
+            original_language = "quechua"
+            print(f"✅ Traducción Quechua -> Español: {query} -> {query_for_processing}")
+        else:
+            query_for_processing = query
+            original_language = "quechua"
+            print(f"⚠️  Traducción falló, usando mensaje original")
+    
+    # Usar query_for_processing para el cache y procesamiento
+    cache_key = f"{query_for_processing}|{language}"
 
     # Guardar mensaje del usuario si se proporciona conversation_id
     if conversation_id:
@@ -539,18 +576,18 @@ async def legal_query_stream(payload: LegalQueryRequest):
         try:
             streamed_text = ""
 
-            rag_result = await app.state.rag_engine.query_with_rerank(query)
+            rag_result = await app.state.rag_engine.query_with_rerank(query_for_processing)
             documents = rag_result.get("documents", [])
             enriched_prompt, enriched_context = (
                 app.state.context_engineer.build_legal_prompt(
-                    query=query,
+                    query=query_for_processing,
                     documents=documents,
                     language=language,
                 )
             )
 
             async for chunk in app.state.legal_agent.stream_general_text(
-                query,
+                query_for_processing,
                 rag_result,
                 language,
                 enriched_prompt=enriched_prompt,
@@ -561,7 +598,7 @@ async def legal_query_stream(payload: LegalQueryRequest):
 
             response = app.state.legal_agent.build_general_response_from_text(
                 text=streamed_text,
-                query=query,
+                query=query_for_processing,
             )
 
             if hasattr(response, "model_dump"):
@@ -571,18 +608,59 @@ async def legal_query_stream(payload: LegalQueryRequest):
             else:
                 response_payload = response
 
-            optimizer.track(enriched_prompt or query, str(response_payload))
+            optimizer.track(enriched_prompt or query_for_processing, str(response_payload))
 
             validated = await app.state.response_validator.validate(
                 response_data=response_payload,
                 rag_result=rag_result,
-                query=query,
+                query=query_for_processing,
                 language=language,
                 enriched_context=enriched_context,
             )
 
             final_response = validated.answer_data
             validation_meta = validated.validation_report.model_dump()
+            
+            # Traducir respuesta de español a quechua si el idioma original era quechua
+            if original_language == "quechua":
+                print(f"🔄 Traduciendo respuesta de español a quechua...")
+                translation_service = TranslationService()
+                
+                # Extraer el texto de respuesta
+                if isinstance(final_response, dict):
+                    response_text = final_response.get("answer", "") or final_response.get("respuesta_espanol", "")
+                else:
+                    response_text = str(final_response)
+                
+                # Truncamiento forzado a 1000 caracteres (Google Translate maneja mejor que NLLB-200)
+                MAX_RESPONSE_LENGTH = 1000
+                if len(response_text) > MAX_RESPONSE_LENGTH:
+                    print(f"⚠️  Respuesta muy larga ({len(response_text)} chars), truncando a {MAX_RESPONSE_LENGTH}")
+                    response_text = response_text[:MAX_RESPONSE_LENGTH] + "..."
+                
+                print(f"📝 Texto a traducir (longitud {len(response_text)}): {response_text[:100]}...")
+                
+                translation_result = await translation_service.translate(
+                    text=response_text,
+                    source_lang="es",
+                    target_lang="qu"
+                )
+                
+                print(f"📊 Resultado de traducción: {translation_result}")
+                
+                if translation_result.get("success"):
+                    translated_text = translation_result["translated_text"]
+                    print(f"✅ Texto traducido (longitud {len(translated_text)}): {translated_text[:100]}...")
+                    # Actualizar la respuesta con el texto traducido
+                    if isinstance(final_response, dict):
+                        final_response["answer"] = translated_text
+                        final_response["respuesta_quechua"] = translated_text
+                        print(f"📝 final_response['answer'] actualizado: {final_response['answer'][:100]}...")
+                    else:
+                        final_response = translated_text
+                    print(f"✅ Traducción Español -> Quechua completada")
+                else:
+                    print(f"⚠️  Error traduciendo respuesta a quechua, usando español")
 
             result_payload = {
                 "response": final_response,

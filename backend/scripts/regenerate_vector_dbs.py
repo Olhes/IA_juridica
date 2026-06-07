@@ -11,11 +11,16 @@ Este script:
 
 Uso:
     cd backend
+    # Procesar todos los archivos
     python -m scripts.regenerate_vector_dbs
+    
+    # Procesar archivos específicos
+    python -m scripts.regenerate_vector_dbs --file archivo1.md --file archivo2.md
 """
 
 import asyncio
 import sys
+import argparse
 from pathlib import Path
 
 # Asegurar que backend/ esté en sys.path
@@ -29,15 +34,29 @@ from loguru import logger
 from rag.lightrag_engine import LegalRAGEngine
 
 
-async def regenerate():
+async def regenerate(specific_files=None):
     processed_dir = BACKEND_DIR / "docs" / "processed"
-    md_files = sorted(processed_dir.glob("**/*.md"))
+    
+    if specific_files:
+        # Procesar solo archivos específicos
+        md_files = []
+        for file_path in specific_files:
+            file_path = Path(file_path)
+            if not file_path.is_absolute():
+                file_path = processed_dir / file_path
+            if file_path.exists() and file_path.suffix == ".md":
+                md_files.append(file_path)
+            else:
+                logger.warning(f"Archivo no encontrado o no es .md: {file_path}")
+    else:
+        # Procesar todos los archivos
+        md_files = sorted(processed_dir.glob("**/*.md"))
     
     if not md_files:
-        logger.error("No se encontraron archivos .md en docs/processed/")
+        logger.error("No se encontraron archivos .md para procesar")
         return
     
-    logger.info(f"Encontrados {len(md_files)} documentos procesados")
+    logger.info(f"Encontrados {len(md_files)} documentos para procesar")
     
     engine = LegalRAGEngine(working_dir=str(BACKEND_DIR / "docs" / "knowledge_graph"))
     await engine.initialize_storages()
@@ -80,4 +99,9 @@ async def regenerate():
 
 
 if __name__ == "__main__":
-    asyncio.run(regenerate())
+    parser = argparse.ArgumentParser(description="Regenerar vector databases de LightRAG")
+    parser.add_argument("--file", "-f", action="append", help="Archivos específicos a procesar (puede usarse múltiples veces)")
+    
+    args = parser.parse_args()
+    
+    asyncio.run(regenerate(args.file))

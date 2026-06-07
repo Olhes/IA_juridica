@@ -346,6 +346,50 @@ async def continue_conversation(conversation_id: str, message: str):
         raise HTTPException(status_code=500, detail=f"Error continuando conversación: {str(e)}")
 
 
+@router.post("/clear-session")
+async def clear_user_session(session_token: Optional[str] = None):
+    """
+    Limpiar sesión de usuario activa
+    Útil cuando el frontend se refresca y necesita limpiar estado
+    
+    **Query params:**
+    - session_token: Token de sesión específico a limpiar (opcional)
+    """
+    try:
+        user_id = "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"  # UUID del usuario demo
+        
+        success = await chat_service.clear_user_session(user_id, session_token)
+        
+        return {
+            "success": True,
+            "message": "Sesión limpiada correctamente" if success else "No se encontró sesión activa"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error limpiando sesión: {str(e)}")
+
+
+@router.post("/invalidate-cache/{conversation_id}")
+async def invalidate_conversation_cache(conversation_id: str):
+    """
+    Invalidar cache de conversación específica
+    Útil para forzar recarga desde base de datos
+    
+    **Path params:**
+    - conversation_id: ID de la conversación a invalidar cache
+    """
+    try:
+        success = await chat_service.invalidate_conversation_cache(conversation_id)
+        
+        return {
+            "success": True,
+            "message": "Cache invalidado correctamente" if success else "No se encontró cache"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error invalidando cache: {str(e)}")
+
+
 @router.get("/health")
 async def chat_health_check():
     """
