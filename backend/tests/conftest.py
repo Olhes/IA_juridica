@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # ── Módulos del proyecto ───────────────────────────────────────────────────────
-from validation.anti_hallucination import AntiHallucinationLayer
-from validation.cross_checker import RAGCrossChecker
-from validation.self_correction import SelfCorrectionEngine
-from validation.response_validator import ResponseValidator, ValidationConfig
+from modules.validation.services.anti_hallucination import AntiHallucinationLayer
+from modules.validation.services.cross_checker import RAGCrossChecker
+from modules.validation.services.self_correction import SelfCorrectionEngine
+from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
 from optimization.llm_optimizer import LLMOptimizer
 
 

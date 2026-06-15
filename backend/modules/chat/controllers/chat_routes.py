@@ -12,7 +12,7 @@ from models.chat_models import (
     ChatRequest, ChatResponse, ConversationResponse, ConversationCreate,
     ConversationUpdate, ConversationList, ConversationHistory
 )
-from services.chat_service import chat_service
+from modules.chat.services.chat_service import chat_service
 from config.settings import settings
 
 router = APIRouter(prefix="/chat", tags=["chat"])

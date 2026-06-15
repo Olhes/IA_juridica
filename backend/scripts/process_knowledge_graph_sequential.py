@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv(BACKEND_DIR / ".env")
 
 from loguru import logger
-from rag.lightrag_engine import LegalRAGEngine
+from modules.rag.services.lightrag_engine import LegalRAGEngine
 
 
 async def process_sequential(specific_file=None, start_index=0):

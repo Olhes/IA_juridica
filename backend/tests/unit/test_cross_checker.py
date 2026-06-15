@@ -12,7 +12,7 @@ Cobertura:
 """
 
 import pytest
-from validation.cross_checker import RAGCrossChecker, CrossCheckResult
+from modules.validation.services.cross_checker import RAGCrossChecker, CrossCheckResult
 
 
 class TestRAGCrossChecker:

@@ -17,8 +17,8 @@ from models.chat_models import (
 from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 from config.settings import settings
-from language.language_detector import LanguageDetector
-from language.translation_service import TranslationService
+from modules.language.services.language_detector import LanguageDetector
+from modules.language.services.translation_service import TranslationService
 
 
 class ChatService:

@@ -10,7 +10,7 @@ from loguru import logger
 
 from .chunking_strategies import ContextualChunker
 from .prompt_templates import PromptManager, PromptType
-from language.language_detector import LanguageDetector
+from modules.language.services.language_detector import LanguageDetector
 
 # Mapeo de tipos de consulta a PromptType
 _QUERY_TYPE_TO_PROMPT: Dict[str, PromptType] = {

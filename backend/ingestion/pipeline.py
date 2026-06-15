@@ -4,7 +4,7 @@ from typing import Dict, List, Any
 from loguru import logger
 from tqdm import tqdm
 
-from rag.lightrag_engine import LegalRAGEngine
+from modules.rag.services.lightrag_engine import LegalRAGEngine
 from utils.file_utils import FileUtils
 from config.settings import settings
 

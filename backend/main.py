@@ -28,15 +28,15 @@ except ImportError:
 # Módulos del sistema
 from config.settings import settings
 from ingestion.pipeline import LegalIngestionPipeline
-from rag.lightrag_engine import LegalRAGEngine
+from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
 from database.redis_adapter import redis_adapter
-from services.chat_service import chat_service
-from routes.chat_routes import router as chat_router
+from modules.chat.services.chat_service import chat_service
+from modules.chat.controllers.chat_routes import router as chat_router
 
 # ── Módulos de validación y optimización ──────────────────────────────
-from validation.response_validator import ResponseValidator, ValidationConfig
+from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
 from optimization.llm_optimizer import LLMOptimizer
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -489,8 +489,8 @@ async def legal_query_stream(payload: LegalQueryRequest):
     cache_key = f"{query}|{language}"
     
     # Detectar idioma y traducir si es quechua
-    from language.language_detector import LanguageDetector
-    from language.translation_service import TranslationService
+    from modules.language.services.language_detector import LanguageDetector
+    from modules.language.services.translation_service import TranslationService
     
     print(f"🔍 Procesando mensaje: {query[:50]}...")
     print(f"🌐 Idioma solicitado: {language}")
