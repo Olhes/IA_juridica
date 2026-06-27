@@ -22,19 +22,21 @@ COPY pyproject.toml uv.lock /app/
 # Instalar dependencias con UV (CPU-only)
 RUN uv sync --frozen --no-dev --no-cache --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Copiar código fuente
-COPY backend /app/backend
+# Crear usuario de runtime antes de copiar el código para evitar
+# un chown recursivo sobre /app/.venv (duplica varios GB en una capa).
+RUN useradd --create-home appuser
 
-# Crear directorios necesarios
-RUN mkdir -p \
+# Copiar código fuente con ownership correcto desde el inicio
+COPY --chown=appuser:appuser backend /app/backend
+
+# Crear directorios necesarios con ownership correcto sin tocar /app/.venv
+RUN install -d -o appuser -g appuser \
     /app/backend/docs/raw_pdfs \
     /app/backend/docs/processed \
     /app/backend/docs/knowledge_graph \
     /app/backend/docs/failed \
     /app/backend/logs \
-    /app/backend/temp/pdfs && \
-    useradd --create-home appuser && \
-    chown -R appuser:appuser /app
+    /app/backend/temp/pdfs
 
 USER appuser
 WORKDIR /app/backend
