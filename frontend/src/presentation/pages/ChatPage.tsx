@@ -70,13 +70,7 @@ export function ChatPage() {
     deleteSession,
   } = useChatSessions();
 
-  // Crear primera sesión si no hay ninguna (post-hidratación)
-  useEffect(() => {
-    if (!sessionsHydrated) return;
-    if (sessions.length === 0) {
-      createSession(language).catch(console.error);
-    }
-  }, [sessionsHydrated, sessions.length, createSession, language]);
+  // NO crear sesión automáticamente - esperar a que el usuario haga clic en "Nueva consulta"
 
   // Callback para que useChat actualice la metadata del sidebar
   const onSessionUpdated = useCallback(

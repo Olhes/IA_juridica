@@ -115,6 +115,9 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       abortRef.current = controller;
       setIsLoading(true);
 
+      // No validar sesión aquí para evitar error 404
+      // sessionId es conversation_id, no session_id de Redis
+
       // Mensaje del usuario
       const userMsg: ChatMessage = {
         id: newId(),
@@ -262,12 +265,27 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           return;
         }
 
-        updateMessage(assistantId, {
-          isStreaming: false,
-          isLoadingFull: false,
-          content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
-          streamingContent: undefined,
-        });
+        // Manejar error de conversación no encontrada (Redis reiniciado)
+        const errorStr = (err as Error).toString().toLowerCase();
+        if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('conversation')) {
+          console.warn('Conversation not found, clearing state');
+          updateMessage(assistantId, {
+            isStreaming: false,
+            isLoadingFull: false,
+            content: 'La conversación ya no está disponible. Por favor, inicia una nueva consulta.',
+            streamingContent: undefined,
+          });
+          // Limpiar estado local
+          setMessages([]);
+          onSessionUpdated?.({ title: 'Nueva consulta', preview: '', messageCount: 0 });
+        } else {
+          updateMessage(assistantId, {
+            isStreaming: false,
+            isLoadingFull: false,
+            content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
+            streamingContent: undefined,
+          });
+        }
       }
 
       // Actualizar conteo de mensajes en el sidebar

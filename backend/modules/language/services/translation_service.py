@@ -14,13 +14,32 @@ except ImportError:
     logger.warning("transformers no disponible. Usando implementación simulada.")
     TRANSFORMERS_AVAILABLE = False
 
+try:
+    from googletrans import Translator
+    GOOGLE_TRANSLATE_AVAILABLE = True
+except ImportError:
+    logger.warning("googletrans no disponible. Google Translate API no estará disponible.")
+    GOOGLE_TRANSLATE_AVAILABLE = False
+
 from .language_config import LanguageConfig, LanguageCode
 from .language_detector import LanguageDetector
 
 class TranslationService:
-    """Servicio de traducción bilingüe especializado"""
+    """Servicio de traducción bilingüe especializado (Singleton)"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(TranslationService, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self):
+        if TranslationService._initialized:
+            return
+        
+        logger.info("🔄 Inicializando TranslationService (Singleton)...")
         self.config = LanguageConfig()
         self.detector = LanguageDetector()
         
@@ -31,37 +50,85 @@ class TranslationService:
         # Cache de traducciones
         self.translation_cache = {}
         
+        # Verificar disponibilidad de transformers
+        logger.info(f"📦 TRANSFORMERS_AVAILABLE: {TRANSFORMERS_AVAILABLE}")
+        logger.info(f"📦 GOOGLE_TRANSLATE_AVAILABLE: {GOOGLE_TRANSLATE_AVAILABLE}")
+        
+        # Inicializar Google Translate si está disponible
+        self.google_translate_available = GOOGLE_TRANSLATE_AVAILABLE
+        if self.google_translate_available:
+            try:
+                self.google_translator = Translator()
+                logger.info("✅ Google Translate inicializado")
+            except Exception as e:
+                logger.warning(f"⚠️  Error inicializando Google Translate: {e}")
+                self.google_translator = None
+                self.google_translate_available = False
+        else:
+            self.google_translator = None
+        
         # Inicializar modelos solo si están disponibles Y habilitados
         from config.settings import settings
-        if TRANSFORMERS_AVAILABLE and settings.TRANSLATION_ENABLED:
-            self._initialize_translation_models()
-        elif not settings.TRANSLATION_ENABLED:
-            logger.info("Traducción NLLB deshabilitada (TRANSLATION_ENABLED=false)")
+        logger.info(f"⚙️  TRANSLATION_ENABLED: {settings.TRANSLATION_ENABLED}")
+        logger.info(f"⚙️  TRANSLATION_METHOD: {settings.TRANSLATION_METHOD}")
         
-        logger.info("TranslationService inicializado")
+        if TRANSFORMERS_AVAILABLE and settings.TRANSLATION_ENABLED and settings.TRANSLATION_METHOD == "nllb":
+            logger.info("🚀 Inicializando modelos de traducción NLLB...")
+            self._initialize_translation_models()
+        elif settings.TRANSLATION_METHOD == "google_translate":
+            logger.info("🌐 Usando Google Translate como método de traducción principal")
+        elif not settings.TRANSLATION_ENABLED:
+            logger.warning("⚠️  Traducción deshabilitada (TRANSLATION_ENABLED=false)")
+        else:
+            logger.warning("⚠️  Transformers no disponible, usando traducción basada en reglas")
+        
+        TranslationService._initialized = True
+        logger.info("✅ TranslationService inicializado (Singleton)")
     
     def _initialize_translation_models(self):
         """Inicializa modelos de traducción"""
         try:
             # Modelo NLLB para traducción general
             nllb_model = self.config.TRANSLATION_MODELS.get("nllb")
+            logger.info(f"📥 Cargando modelo NLLB: {nllb_model}")
+            
+            # Configurar directorio de cache local para evitar errores de ruta
+            import os
+            from pathlib import Path
+            
+            # Usar directorio cache en el proyecto
+            cache_dir = Path(__file__).parent.parent.parent / "models" / "transformers_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"💾 Cache directory: {cache_dir}")
+            
             if nllb_model:
+                logger.info("⏳ Descargando tokenizer y modelo (puede tardar varios minutos)...")
                 self.translation_models["nllb"] = {
-                    "tokenizer": AutoTokenizer.from_pretrained(nllb_model),
-                    "model": AutoModelForSeq2SeqLM.from_pretrained(nllb_model)
+                    "tokenizer": AutoTokenizer.from_pretrained(nllb_model, cache_dir=str(cache_dir)),
+                    "model": AutoModelForSeq2SeqLM.from_pretrained(nllb_model, cache_dir=str(cache_dir))
                 }
-                logger.info("Modelo NLLB cargado")
+                logger.info("✅ Modelo NLLB cargado exitosamente")
+            else:
+                logger.warning("⚠️  No se encontró configuración del modelo NLLB")
             
             # Crear pipelines
             for model_name, model_data in self.translation_models.items():
+                logger.info(f"🔧 Creando pipeline para {model_name}...")
                 self.translation_pipelines[model_name] = pipeline(
                     "translation",
                     model=model_data["model"],
-                    tokenizer=model_data["tokenizer"]
+                    tokenizer=model_data["tokenizer"],
+                    max_length=1024,  # Aumentar max_length para traducciones largas
+                    device="cpu"
                 )
+                logger.info(f"✅ Pipeline {model_name} creado (max_length=1024)")
+            
+            logger.info(f"📊 Modelos disponibles: {list(self.translation_pipelines.keys())}")
             
         except Exception as e:
-            logger.warning(f"Error inicializando modelos de traducción: {e}")
+            logger.error(f"❌ Error inicializando modelos de traducción: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     async def translate(self, text: str, source_lang: str, target_lang: str, 
                        model: str = "nllb") -> Dict[str, Any]:
@@ -86,15 +153,29 @@ class TranslationService:
                     "original_text": text
                 }
             
+            # Truncar texto si es muy largo (max 1000 caracteres para NLLB)
+            MAX_TEXT_LENGTH = 1000
+            original_length = len(text)
+            if len(text) > MAX_TEXT_LENGTH:
+                logger.warning(f"⚠️  Texto muy largo ({len(text)} chars), truncando a {MAX_TEXT_LENGTH}")
+                text = text[:MAX_TEXT_LENGTH] + "..."
+            
             # Verificar cache
             cache_key = f"{source_lang}_{target_lang}_{hash(text)}"
             if cache_key in self.translation_cache:
                 logger.debug("Traducción encontrada en cache")
                 return self.translation_cache[cache_key]
             
-            # Realizar traducción
-            if TRANSFORMERS_AVAILABLE and model in self.translation_pipelines:
+            # Priorizar Google Translate para quechua (evita repeticiones de NLLB-200)
+            if target_lang in ["qu", "quy", "quz", "qul"] and self.google_translate_available:
+                logger.info("🌐 Usando Google Translate para quechua (mejor calidad que NLLB-200)")
+                result = await self._translate_with_google(text, source_lang, target_lang)
+            # Usar modelo NLLB para otros idiomas
+            elif TRANSFORMERS_AVAILABLE and model in self.translation_pipelines:
                 result = await self._translate_with_model(text, source_lang, target_lang, model)
+                if original_length > MAX_TEXT_LENGTH:
+                    result["truncated"] = True
+                    result["original_length"] = original_length
             else:
                 result = await self._translate_with_rules(text, source_lang, target_lang)
             
@@ -121,9 +202,13 @@ class TranslationService:
         """Usa modelo de transformers para traducción"""
         try:
             # Mapear códigos de idioma a códigos de modelo
+            # Usar Quechua Southern (quy_Latn) que tiene mejor soporte en NLLB-200
             lang_mapping = {
                 "es": "spa_Latn",
-                "qu": "quy_Latn", 
+                "qu": "quy_Latn",  # Quechua Southern (mejor soporte en NLLB-200)
+                "quy": "quy_Latn",  # Quechua Southern
+                "quz": "quz_Latn",  # Quechua Cuzqueño
+                "qul": "quy_Latn",  # Mapear a Southern por mejor soporte
                 "ay": "ayr_Latn"
             }
             
@@ -147,6 +232,46 @@ class TranslationService:
         except Exception as e:
             logger.error(f"Error en traducción con modelo: {str(e)}")
             # Fallback a traducción basada en reglas
+            return await self._translate_with_rules(text, source_lang, target_lang)
+    
+    async def _translate_with_google(self, text: str, source_lang: str, target_lang: str) -> Dict[str, Any]:
+        """Usa Google Translate API para traducción"""
+        try:
+            if not self.google_translator:
+                raise RuntimeError("Google Translate no disponible")
+            
+            # Mapeo de códigos de idioma para Google Translate
+            google_lang_mapping = {
+                "es": "es",
+                "qu": "qu",  # Google Translate usa "qu" para quechua
+                "quy": "qu",
+                "quz": "qu",
+                "qul": "qu",
+                "ay": "ay"
+            }
+            
+            src_lang = google_lang_mapping.get(source_lang, source_lang)
+            tgt_lang = google_lang_mapping.get(target_lang, target_lang)
+            
+            # Realizar traducción (googletrans es async en versión 4.0+)
+            result = await self.google_translator.translate(text, src=src_lang, dest=tgt_lang)
+            
+            return {
+                "success": True,
+                "translated_text": result.text,
+                "source_language": source_lang,
+                "target_language": target_lang,
+                "model_used": "google_translate",
+                "confidence": 0.90,  # Google Translate generalmente tiene buena calidad
+                "method": "google_translate"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error en traducción con Google Translate: {str(e)}")
+            # Fallback a traducción con modelo NLLB
+            if TRANSFORMERS_AVAILABLE and "nllb" in self.translation_pipelines:
+                return await self._translate_with_model(text, source_lang, target_lang, "nllb")
+            # Fallback a reglas
             return await self._translate_with_rules(text, source_lang, target_lang)
     
     async def _translate_with_rules(self, text: str, source_lang: str, target_lang: str) -> Dict[str, Any]:

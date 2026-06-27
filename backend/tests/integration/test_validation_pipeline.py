@@ -13,13 +13,13 @@ Convención:
 """
 
 import pytest
-from validation.schemas import (
+from modules.validation.services.schemas import (
     ConfidenceLevel,
     ValidatedResponse,
     ValidationReport,
     ValidationStatus,
 )
-from validation.response_validator import ResponseValidator, ValidationConfig
+from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
 
 
 pytestmark = pytest.mark.integration

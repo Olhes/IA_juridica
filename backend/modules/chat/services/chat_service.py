@@ -17,6 +17,8 @@ from models.chat_models import (
 from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 from config.settings import settings
+from modules.language.services.language_detector import LanguageDetector
+from modules.language.services.translation_service import TranslationService
 
 
 class ChatService:
@@ -30,6 +32,10 @@ class ChatService:
             'session': 86400,     # 24 horas
             'context': 1800       # 30 minutos
         }
+        
+        # Inicializar servicios de idioma
+        self.language_detector = LanguageDetector()
+        self.translation_service = TranslationService()
     
     async def initialize(self):
         """Inicializar servicio y conexiones"""
@@ -42,14 +48,22 @@ class ChatService:
         """Crear o recuperar sesión de usuario"""
         if session_token:
             # Intentar recuperar sesión existente
-            cached_session = await self.redis.get_cache(f"session:{session_token}")
-            if cached_session:
-                session = UserSession.from_redis_format(cached_session)
-                # Actualizar última actividad
-                session.last_activity = datetime.utcnow()
-                session.expires_at = datetime.utcnow() + timedelta(hours=24)
-                await self.redis.create_user_session(session_token, session.to_redis_format())
-                return session
+            try:
+                cached_session = await self.redis.get_cache(f"session:{session_token}")
+                if cached_session:
+                    session = UserSession.from_redis_format(cached_session)
+                    # Verificar que la sesión no esté expirada
+                    if session.expires_at > datetime.utcnow():
+                        # Actualizar última actividad
+                        session.last_activity = datetime.utcnow()
+                        session.expires_at = datetime.utcnow() + timedelta(hours=24)
+                        await self.redis.create_user_session(session_token, session.to_redis_format())
+                        return session
+                    else:
+                        print(f"⚠️ Session {session_token} expired, creating new one")
+            except Exception as e:
+                print(f"⚠️ Error retrieving session {session_token}: {e}")
+                # Continuar para crear nueva sesión
         
         # Crear nueva sesión
         session_id = str(uuid.uuid4())
@@ -268,17 +282,49 @@ class ChatService:
     # === Procesamiento de Chat ===
     
     async def process_chat_message(self, request: ChatRequest, user_id: str) -> ChatResponse:
-        """Procesar mensaje de chat con persistencia"""
-        # 1. Gestionar sesión
+        """Procesar mensaje de chat con persistencia y traducción automática"""
+        print(f"🔍 Procesando mensaje: {request.message[:50]}...")
+        print(f"🌐 Idioma solicitado: {request.language}")
+        
+        # 1. Detectar idioma del mensaje del usuario
+        detected_language = self.language_detector.detect_language(request.message)
+        print(f"🔎 Idioma detectado: {detected_language}")
+        
+        # 2. Si el idioma es quechua, traducir a español para procesamiento
+        query_for_processing = request.message
+        original_language = request.language
+        
+        if detected_language == "qu" or request.language == "quechua":
+            print(f"🔄 Detectado quechua, iniciando traducción a español...")
+            # Traducir consulta de quechua a español
+            translation_result = await self.translation_service.translate(
+                text=request.message,
+                source_lang="qu",
+                target_lang="es"
+            )
+            
+            print(f"📊 Resultado de traducción: {translation_result}")
+            
+            if translation_result.get("success"):
+                query_for_processing = translation_result["translated_text"]
+                original_language = "quechua"
+                print(f"✅ Traducción Quechua -> Español: {request.message} -> {query_for_processing}")
+            else:
+                # Fallback: usar mensaje original si falla traducción
+                query_for_processing = request.message
+                original_language = "quechua"
+                print(f"⚠️  Traducción falló, usando mensaje original")
+        
+        # 3. Gestionar sesión
         session = await self.create_or_get_session(user_id, request.session_token)
         
-        # 2. Determinar conversación
+        # 4. Determinar conversación
         conversation_id = request.conversation_id
         if not conversation_id:
             # Crear nueva conversación
             conversation = await self.create_conversation(
                 user_id=user_id,
-                language=request.language
+                language=original_language
             )
             conversation_id = conversation.id
         else:
@@ -287,27 +333,27 @@ class ChatService:
             if not conversation:
                 raise ValueError("Conversación no encontrada")
         
-        # 3. Guardar mensaje del usuario
+        # 5. Guardar mensaje del usuario (en idioma original)
         user_message = MessageCreate(
             role="user",
             content=request.message,
-            language=request.language,
+            language=original_language,
             metadata=request.context or {}
         )
         
         saved_message = await self.add_message(conversation_id, user_message)
         
-        # 4. Obtener contexto de conversación
-        context = await self._build_conversation_context(conversation_id, request.language)
+        # 6. Obtener contexto de conversación
+        context = await self._build_conversation_context(conversation_id, original_language)
         
-        # 5. Procesar con IA usando el pipeline existente
+        # 7. Procesar con IA usando el pipeline existente (en español)
         from main import LegalQueryRequest
         import asyncio
         
-        # Crear request para el pipeline existente
+        # Crear request para el pipeline existente (usando español para procesamiento)
         legal_request = LegalQueryRequest(
-            query=request.message,
-            language=request.language,
+            query=query_for_processing,
+            language="spanish",  # Procesar siempre en español
             context=request.context,
             conversation_id=conversation_id,
             user_id=user_id
@@ -326,22 +372,22 @@ class ChatService:
             legal_agent = app.state.legal_agent
             context_engineer = app.state.context_engineer
             
-            # Procesar con RAG
-            rag_result = await rag_engine.query_with_rerank(request.message)
+            # Procesar con RAG (en español)
+            rag_result = await rag_engine.query_with_rerank(query_for_processing)
             
-            # Construir prompt enriquecido
+            # Construir prompt enriquecido (en español)
             documents = rag_result.get("documents", [])
             enriched_prompt, enriched_context = context_engineer.build_legal_prompt(
-                query=request.message,
+                query=query_for_processing,
                 documents=documents,
-                language=request.language,
+                language="spanish",
             )
             
-            # Generar respuesta con Cohere
+            # Generar respuesta con Cohere (en español)
             response = await legal_agent.respond_general(
-                query=request.message,
+                query=query_for_processing,
                 context=rag_result,
-                language=request.language,
+                language="spanish",
                 enriched_prompt=enriched_prompt,
             )
             
@@ -353,25 +399,34 @@ class ChatService:
             else:
                 response_payload = response
             
-            # Extraer el texto de respuesta según el idioma
-            if request.language == "quechua":
-                assistant_content = str(
-                    response_payload.get("respuesta_quechua")
-                    or response_payload.get("quechua")
-                    or response_payload.get("answer", "")
-                )
-            else:
-                assistant_content = str(
-                    response_payload.get("respuesta_espanol")
-                    or response_payload.get("spanish")
-                    or response_payload.get("answer", "")
-                )
+            # Extraer el texto de respuesta en español
+            assistant_content = str(
+                response_payload.get("respuesta_espanol")
+                or response_payload.get("spanish")
+                or response_payload.get("answer", "")
+            )
             
-            # Guardar respuesta del asistente
+            # 8. Si el idioma original es quechua, traducir la respuesta de español a quechua
+            if original_language == "quechua":
+                translation_result = await self.translation_service.translate(
+                    text=assistant_content,
+                    source_lang="es",
+                    target_lang="qu"
+                )
+                
+                if translation_result.get("success"):
+                    assistant_content = translation_result["translated_text"]
+                    print(f"🔄 Traducción Español -> Quechua completada")
+                else:
+                    # Fallback: mantener respuesta en español si falla traducción
+                    print(f"⚠️ Error traduciendo respuesta a quechua, usando español")
+                    assistant_content = assistant_content
+            
+            # Guardar respuesta del asistente (en idioma original del usuario)
             assistant_message = MessageCreate(
                 role="assistant",
                 content=assistant_content,
-                language=request.language,
+                language=original_language,
                 model_used="command-r7b-12-2024",
                 metadata={
                     "sources": rag_result.get("sources", []),
@@ -386,17 +441,17 @@ class ChatService:
             assistant_message = MessageCreate(
                 role="assistant",
                 content="Lo siento, no pude procesar tu consulta en este momento. Por favor, intenta nuevamente.",
-                language=request.language,
+                language=original_language,
                 model_used="fallback",
                 metadata={"error": str(e)}
             )
         
         assistant_response = await self.add_message(conversation_id, assistant_message)
         
-        # 7. Obtener historial actualizado
+        # 9. Obtener historial actualizado
         history = await self.get_conversation_messages(conversation_id, limit=10)
         
-        # 8. Actualizar sesión
+        # 10. Actualizar sesión
         session.conversation_id = conversation_id
         session.last_activity = datetime.utcnow()
         await self.redis.create_user_session(session.session_id, session.to_redis_format())
@@ -409,7 +464,8 @@ class ChatService:
             conversation_history=history,
             metadata={
                 "context": context.model_dump(),
-                "language": request.language
+                "language": original_language,
+                "translation_applied": original_language == "quechua"
             }
         )
     
@@ -438,6 +494,39 @@ class ChatService:
             key_entities=[],  # Extraer con NLP
             metadata={"message_count": len(messages)}
         )
+    
+    # === Gestión de Sesiones ===
+    
+    async def clear_user_session(self, user_id: str, session_token: Optional[str] = None) -> bool:
+        """Limpiar/invalidar sesión de usuario activa"""
+        try:
+            # Si se proporciona session_token, eliminar esa sesión específica
+            if session_token:
+                try:
+                    await self.redis.delete_cache(f"session:{session_token}")
+                    print(f"✅ Cleared session: {session_token}")
+                    return True
+                except Exception as e:
+                    print(f"⚠️ Error clearing session {session_token}: {e}")
+                    return False
+            
+            # Si no hay session_token, intentar limpiar todas las sesiones del usuario
+            # Esto es más complejo sin un índice de sesiones por usuario
+            # Por ahora, simplemente retornamos True ya que no hay sesión específica que limpiar
+            print(f"ℹ️ No specific session token provided for user {user_id}")
+            return True
+        except Exception as e:
+            print(f"⚠️ Error in clear_user_session: {e}")
+            return False
+    
+    async def invalidate_conversation_cache(self, conversation_id: str) -> bool:
+        """Invalidar cache de conversación específica"""
+        try:
+            await self.redis.delete_cache(f"conversation:{conversation_id}")
+            return True
+        except Exception as e:
+            print(f"⚠️ Error invalidating conversation cache: {e}")
+            return False
     
     # === Utilidades ===
     

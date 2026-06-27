@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
     COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
     COHERE_LLM_MODEL: str = "command-r7b-12-2024"
-    COHERE_MAX_TOKENS: int = 2048
+    COHERE_MAX_TOKENS: int = 512
     COHERE_TEMPERATURE: float = 0.3
     
     # Configuración de Reranking
@@ -116,7 +116,8 @@ class Settings(BaseSettings):
     
     # Configuración de Traducción
     TRANSLATION_ENABLED: bool = True
-    NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"
+    TRANSLATION_METHOD: str = "google_translate"  # "google_translate" o "nllb"
+    NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"  # Descontinuado para quechua (genera repeticiones)
     QUEEN_MODEL: Optional[str] = None
     
     # Configuración de Monitoreo

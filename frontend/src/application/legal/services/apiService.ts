@@ -249,6 +249,25 @@ class ApiService {
     return this.request(`/chat/sessions/${sessionId}`);
   }
 
+  async clearSession(sessionToken?: string): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+  }>> {
+    const url = sessionToken ? `/chat/clear-session?session_token=${encodeURIComponent(sessionToken)}` : '/chat/clear-session';
+    return this.request(url, {
+      method: 'POST',
+    });
+  }
+
+  async invalidateConversationCache(conversationId: string): Promise<ApiResponse<{
+    success: boolean;
+    message: string;
+  }>> {
+    return this.request(`/chat/invalidate-cache/${conversationId}`, {
+      method: 'POST',
+    });
+  }
+
   // ── Legal Query (existente) ───────────────────────────────────────────────
   async legalQuery(query: string, language: string): Promise<ApiResponse<any>> {
     return this.request('/legal-query', {

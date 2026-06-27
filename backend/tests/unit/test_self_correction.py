@@ -12,8 +12,8 @@ Cobertura:
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from validation.anti_hallucination import AntiHallucinationLayer, HallucinationReport
-from validation.self_correction import SelfCorrectionEngine
+from modules.validation.services.anti_hallucination import AntiHallucinationLayer, HallucinationReport
+from modules.validation.services.self_correction import SelfCorrectionEngine
 
 
 @pytest.fixture

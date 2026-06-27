@@ -89,6 +89,7 @@ npm run dev
 ### Backend (FastAPI)
 - **RAG**: LightRAG con grafos de conocimiento
 - **LLM**: Cohere (embeddings, reranking, generación)
+- **Traducción**: Google Translate API (español ↔ quechua)
 - **Validación**: Pipeline anti-alucinación con Pydantic
 - **Procesamiento PDF**: Docling para extracción estructurada
 

@@ -10,7 +10,7 @@ Cobertura:
 """
 
 import pytest
-from validation.anti_hallucination import AntiHallucinationLayer, HallucinationReport
+from modules.validation.services.anti_hallucination import AntiHallucinationLayer, HallucinationReport
 
 
 class TestAntiHallucinationLayer:
