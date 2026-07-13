@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     COHERE_MAX_TOKENS: int = 512
     COHERE_TEMPERATURE: float = 0.3
     
+    # Configuración de Neo4j
+    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "")
+    NEO4J_DATABASE: str = os.getenv("NEO4J_DATABASE", "neo4j")
+    NEO4J_ENABLED: bool = os.getenv("NEO4J_ENABLED", "false").lower() == "true"
+    
     # Configuración de Reranking
     RERANK_TOP_K: int = 5
     RERANK_CANDIDATES: int = 50

@@ -26,6 +26,7 @@ SQLAlchemy==2.0.46
 asyncpg==0.29.0
 psycopg[binary]==3.3.3
 redis==5.2.1
+neo4j==5.26.0
 
 # PDF Generation
 reportlab==4.4.10

@@ -39,6 +39,13 @@ DATABASE_PORT=5433
 DATABASE_NAME=juridica_db
 DATABASE_USER=juridica_user
 DATABASE_PASSWORD=juridica_password
+
+# Neo4j (opcional - para grafo de conocimiento)
+NEO4J_ENABLED=false
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your-neo4j-password
+NEO4J_DATABASE=neo4j
 ```
 
 ### Iniciar Servicios
@@ -102,6 +109,7 @@ npm run dev
 - **PostgreSQL**: Chat persistente (Docker container en puerto 5433)
 - **Redis**: Caché de sesiones (Docker container)
 - **SQLite**: Consultas y estadísticas (desarrollo)
+- **Neo4j** (opcional): Grafo de conocimiento para LightRAG
 
 ### Visualización de Base de Datos
 
@@ -158,6 +166,29 @@ GET session:tu_session_id
 # Ver estadísticas de Redis
 INFO memory
 INFO clients
+```
+
+### Neo4j (opcional)
+
+Para usar Neo4j como almacenamiento del grafo de conocimiento:
+
+```bash
+# Iniciar Neo4j con Docker
+docker run -d \
+  --name juridica_neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/tu_password \
+  neo4j:latest
+
+# Habilitar en backend/.env
+NEO4J_ENABLED=true
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=tu_password
+NEO4J_DATABASE=neo4j
+
+# Acceder a Neo4j Browser
+# http://localhost:7474
 ```
 
 ## 📁 Estructura del Proyecto

@@ -21,6 +21,13 @@ except Exception as e:
     logger.warning(f"LightRAG no disponible: {e}")
     LIGHTRAG_AVAILABLE = False
 
+try:
+    from lightrag.kg.neo4j_impl import Neo4JStorage
+    NEO4J_AVAILABLE = True
+except ImportError:
+    logger.warning("Neo4j storage no disponible (requiere lightrag con soporte Neo4j)")
+    NEO4J_AVAILABLE = False
+
 
 class LegalRAGEngine:
     """Motor RAG especializado para documentos legales con LightRAG + Cohere"""
@@ -180,6 +187,24 @@ class LegalRAGEngine:
                 logger.error(f"Error en Cohere LLM: {e}")
                 return ""
         
+        # Configurar storage de grafo (Neo4j o NetworkX por defecto)
+        graph_storage = "NetworkXStorage"
+        
+        if settings.NEO4J_ENABLED and NEO4J_AVAILABLE:
+            if settings.NEO4J_URI and settings.NEO4J_PASSWORD:
+                graph_storage = "Neo4JStorage"
+                # Configurar variables de entorno para Neo4j (LightRAG las lee automáticamente)
+                import os
+                os.environ["NEO4J_URI"] = settings.NEO4J_URI
+                os.environ["NEO4J_USERNAME"] = settings.NEO4J_USER
+                os.environ["NEO4J_PASSWORD"] = settings.NEO4J_PASSWORD
+                os.environ["NEO4J_DATABASE"] = settings.NEO4J_DATABASE
+                logger.info(f"Neo4j habilitado: {settings.NEO4J_URI}")
+            else:
+                logger.warning("NEO4J_ENABLED=true pero faltan credenciales, usando NetworkX")
+        elif settings.NEO4J_ENABLED and not NEO4J_AVAILABLE:
+            logger.warning("NEO4J_ENABLED=true pero Neo4JStorage no disponible, usando NetworkX")
+        
         # Inicializar LightRAG con funciones reales
         self.rag = LightRAG(
             working_dir=str(self.working_dir),
@@ -188,10 +213,12 @@ class LegalRAGEngine:
                 embedding_dim=settings.EMBEDDING_DIM,
                 max_token_size=8192,
                 func=cohere_embedding_func
-            )
+            ),
+            graph_storage=graph_storage
         )
         
-        logger.info(f"LightRAG inicializado con Cohere (embed={settings.COHERE_EMBED_MODEL}, llm={settings.COHERE_LLM_MODEL})")
+        storage_type = "Neo4j" if graph_storage == "Neo4JStorage" else "NetworkX (local)"
+        logger.info(f"LightRAG inicializado con Cohere (embed={settings.COHERE_EMBED_MODEL}, llm={settings.COHERE_LLM_MODEL}, graph_storage={storage_type})")
     
     async def initialize_storages(self):
         """
