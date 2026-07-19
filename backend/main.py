@@ -12,7 +12,10 @@ import json
 from dotenv import load_dotenv
 import traceback
 
+from utils.console import configure_console_output
+
 BASE_DIR = Path(__file__).resolve().parent
+configure_console_output()
 load_dotenv(BASE_DIR / ".env")
 
 # Rate limiting
@@ -106,18 +109,50 @@ def _ndjson_event(payload: Dict[str, Any]) -> str:
     return json.dumps(serializable, ensure_ascii=False) + "\n"
 
 
-def _extract_streamable_text(response_payload: Dict[str, Any], language: str) -> str:
-    if language == "quechua":
-        return str(
-            response_payload.get("respuesta_quechua")
-            or response_payload.get("quechua")
-            or ""
-        )
-    return str(
-        response_payload.get("respuesta_espanol")
-        or response_payload.get("spanish")
-        or ""
+def _extract_response_text(response_payload: Any, language: str) -> str:
+    if not isinstance(response_payload, dict):
+        return str(response_payload or "")
+
+    field_order = (
+        ("respuesta_quechua", "quechua", "respuesta_espanol", "spanish", "answer")
+        if language == "quechua"
+        else ("respuesta_espanol", "spanish", "answer", "respuesta_quechua", "quechua")
     )
+    for field in field_order:
+        value = response_payload.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
+async def _persist_assistant_response(
+    conversation_id: Optional[str],
+    response_payload: Any,
+    language: str,
+    metadata: Dict[str, Any],
+) -> None:
+    if not conversation_id:
+        return
+
+    content = _extract_response_text(response_payload, language)
+    if not content:
+        print("Skipping empty assistant response persistence")
+        return
+
+    try:
+        from models.chat_models import MessageCreate, MessageRole
+
+        await chat_service.add_message(
+            conversation_id=conversation_id,
+            message_data=MessageCreate(
+                content=content,
+                role=MessageRole.ASSISTANT,
+                language=language,
+                metadata=metadata,
+            ),
+        )
+    except Exception as error:
+        print(f"Error guardando mensaje de asistente: {error}")
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
@@ -545,7 +580,16 @@ async def legal_query_stream(payload: LegalQueryRequest):
     if cached_result:
         cached_payload = cached_result if isinstance(cached_result, dict) else {}
         response_payload = jsonable_encoder(cached_payload.get("response", {}))
-        cached_text = _extract_streamable_text(response_payload, language)
+        cached_text = _extract_response_text(response_payload, language)
+        await _persist_assistant_response(
+            conversation_id,
+            response_payload,
+            language,
+            {
+                "sources": cached_payload.get("sources", []),
+                "validation": cached_payload.get("validation", {}),
+            },
+        )
 
         async def cached_stream_generator():
             if cached_text:
@@ -628,7 +672,7 @@ async def legal_query_stream(payload: LegalQueryRequest):
                 
                 # Extraer el texto de respuesta
                 if isinstance(final_response, dict):
-                    response_text = final_response.get("answer", "") or final_response.get("respuesta_espanol", "")
+                    response_text = _extract_response_text(final_response, "spanish")
                 else:
                     response_text = str(final_response)
                 
@@ -682,23 +726,12 @@ async def legal_query_stream(payload: LegalQueryRequest):
             if validated.is_reliable:
                 optimizer.cache_response(cache_key, result_payload)
 
-            # Guardar respuesta del asistente si se proporciona conversation_id
-            if conversation_id:
-                try:
-                    # Convertir la respuesta completa a JSON para guardarla en metadata
-                    assistant_content = final_response.get("answer", "") if isinstance(final_response, dict) else str(final_response)
-                    from models.chat_models import MessageCreate, MessageRole
-                    await chat_service.add_message(
-                        conversation_id=conversation_id,
-                        message_data=MessageCreate(
-                            content=assistant_content,
-                            role=MessageRole.ASSISTANT,
-                            language=language,
-                            metadata={"sources": validated.sources, "validation": validation_meta}  # JSON serializable
-                        )
-                    )
-                except Exception as e:
-                    print(f"Error guardando mensaje de asistente: {e}")
+            await _persist_assistant_response(
+                conversation_id,
+                final_response,
+                language,
+                {"sources": validated.sources, "validation": validation_meta},
+            )
 
             yield _ndjson_event(
                 {

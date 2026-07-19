@@ -21,12 +21,32 @@ except Exception as e:
     logger.warning(f"LightRAG no disponible: {e}")
     LIGHTRAG_AVAILABLE = False
 
-try:
-    from lightrag.kg.neo4j_impl import Neo4JStorage
-    NEO4J_AVAILABLE = True
-except ImportError:
-    logger.warning("Neo4j storage no disponible (requiere lightrag con soporte Neo4j)")
-    NEO4J_AVAILABLE = False
+
+def _select_graph_storage() -> str:
+    """Load Neo4j support only when the optional backend is enabled."""
+    if not settings.NEO4J_ENABLED:
+        return "NetworkXStorage"
+
+    try:
+        from lightrag.kg.neo4j_impl import Neo4JStorage  # noqa: F401
+    except ImportError:
+        logger.warning("Neo4j storage unavailable; using NetworkX")
+        return "NetworkXStorage"
+
+    if not (settings.NEO4J_URI and settings.NEO4J_PASSWORD):
+        logger.warning(
+            "NEO4J_ENABLED=true but credentials are missing; using NetworkX"
+        )
+        return "NetworkXStorage"
+
+    import os
+
+    os.environ["NEO4J_URI"] = settings.NEO4J_URI
+    os.environ["NEO4J_USERNAME"] = settings.NEO4J_USER
+    os.environ["NEO4J_PASSWORD"] = settings.NEO4J_PASSWORD
+    os.environ["NEO4J_DATABASE"] = settings.NEO4J_DATABASE
+    logger.info(f"Neo4j enabled: {settings.NEO4J_URI}")
+    return "Neo4JStorage"
 
 
 class LegalRAGEngine:
@@ -187,23 +207,7 @@ class LegalRAGEngine:
                 logger.error(f"Error en Cohere LLM: {e}")
                 return ""
         
-        # Configurar storage de grafo (Neo4j o NetworkX por defecto)
-        graph_storage = "NetworkXStorage"
-        
-        if settings.NEO4J_ENABLED and NEO4J_AVAILABLE:
-            if settings.NEO4J_URI and settings.NEO4J_PASSWORD:
-                graph_storage = "Neo4JStorage"
-                # Configurar variables de entorno para Neo4j (LightRAG las lee automáticamente)
-                import os
-                os.environ["NEO4J_URI"] = settings.NEO4J_URI
-                os.environ["NEO4J_USERNAME"] = settings.NEO4J_USER
-                os.environ["NEO4J_PASSWORD"] = settings.NEO4J_PASSWORD
-                os.environ["NEO4J_DATABASE"] = settings.NEO4J_DATABASE
-                logger.info(f"Neo4j habilitado: {settings.NEO4J_URI}")
-            else:
-                logger.warning("NEO4J_ENABLED=true pero faltan credenciales, usando NetworkX")
-        elif settings.NEO4J_ENABLED and not NEO4J_AVAILABLE:
-            logger.warning("NEO4J_ENABLED=true pero Neo4JStorage no disponible, usando NetworkX")
+        graph_storage = _select_graph_storage()
         
         # Inicializar LightRAG con funciones reales
         self.rag = LightRAG(

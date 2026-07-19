@@ -11,6 +11,7 @@ export interface Conversation {
   title?: string;
   created_at: string;
   updated_at?: string;
+  message_count?: number;
 }
 
 export interface Message {
@@ -47,7 +48,8 @@ class ApiService {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    logErrors = true
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
@@ -67,7 +69,9 @@ class ApiService {
       const data = await response.json();
       return { success: true, data };
     } catch (error) {
-      console.error(`API Error [${endpoint}]:`, error);
+      if (logErrors) {
+        console.error(`API Error [${endpoint}]:`, error);
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -101,7 +105,7 @@ class ApiService {
     total_count: number;
     active_count: number;
   }>> {
-    return this.request(`/chat/conversations?limit=${limit}&active_only=${activeOnly}`);
+    return this.request(`/chat/conversations?limit=${limit}&active_only=${activeOnly}`, {}, false);
   }
 
   async updateConversation(conversationId: string, updates: {

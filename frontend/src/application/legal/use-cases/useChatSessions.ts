@@ -1,37 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { ChatMessage, ChatSessionMeta, SupportedLanguage } from '../../../domain/legal/types';
-import { apiService, type Conversation as BackendConversation, type Message as BackendMessage } from '../services/apiService';
-
-// ─── Helpers de conversión ──────────────────────────────────────────────────
-
-function backendToSessionMeta(conv: BackendConversation): ChatSessionMeta {
-  return {
-    id: conv.id,
-    title: conv.title || 'Conversación',
-    preview: '', // Se actualizará con el primer mensaje
-    language: conv.language as SupportedLanguage,
-    createdAt: conv.created_at,
-    updatedAt: conv.updated_at || conv.created_at,
-    messageCount: 0, // Se actualizará al cargar mensajes
-  };
-}
-
-function backendToChatMessage(msg: BackendMessage): ChatMessage {
-  return {
-    id: msg.id,
-    role: msg.role as 'user' | 'assistant',
-    content: msg.content,
-    timestamp: new Date(msg.created_at),
-    metadata: msg.metadata,
-  };
-}
-
-function truncate(text: string, max = 60): string {
-  const clean = text.trim();
-  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
-}
+import type { ChatSessionMeta, SupportedLanguage } from '../../../domain/legal/types';
+import { apiService } from '../services/apiService';
+import { loadChatSessions, sessionsAfterLoad } from './chatSessionLoad';
+import { backendToSessionMeta } from './chatSessionMeta';
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 
@@ -40,43 +13,7 @@ export function useChatSessions() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // ── Limpiar sesión al refrescar la página ───────────────────────────────
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Limpiar sesión activa en el backend antes de recargar
-      if (activeSessionId) {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-        const data = new Blob([JSON.stringify({ session_token: activeSessionId })], { 
-          type: 'application/json' 
-        });
-        
-        navigator.sendBeacon(`${apiUrl}/chat/clear-session`, data);
-        console.log('Session cleanup sent for:', activeSessionId);
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      // También limpiar cuando la página se oculta (tab change, minimize)
-      if (document.visibilityState === 'hidden' && activeSessionId) {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-        const data = new Blob([JSON.stringify({ session_token: activeSessionId })], { 
-          type: 'application/json' 
-        });
-        
-        navigator.sendBeacon(`${apiUrl}/chat/clear-session`, data);
-        console.log('Session cleanup sent on visibility change for:', activeSessionId);
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [activeSessionId]);
+  const [sessionsLoadError, setSessionsLoadError] = useState<string | null>(null);
 
   // ── Crear nueva sesión en el backend ────────────────────────────────────────
   const createSession = useCallback(async (language: SupportedLanguage = 'spanish'): Promise<string> => {
@@ -107,66 +44,29 @@ export function useChatSessions() {
     }
   }, [sessions]);
 
+  const reloadSessions = useCallback(async () => {
+    setLoading(true);
+    const result = await loadChatSessions(
+      apiService.listConversations.bind(apiService),
+      backendToSessionMeta
+    );
+
+    if (result.success) {
+      setSessions((current) => sessionsAfterLoad(current, result));
+      setSessionsLoadError(null);
+    } else {
+      setSessionsLoadError(result.error);
+      console.warn('Unable to load conversations:', result.error);
+    }
+
+    setLoading(false);
+    setHydrated(true);
+  }, []);
+
   // ── Cargar sesiones desde el backend al montar ─────────────────────────────
   useEffect(() => {
-    const loadSessions = async () => {
-      setLoading(true);
-      try {
-        console.log('Loading sessions from backend...');
-        
-        // Limpiar cualquier sesión residual al cargar
-        try {
-          await apiService.clearSession();
-          console.log('Cleared any residual session');
-        } catch (clearError) {
-          console.warn('Could not clear session:', clearError);
-        }
-        
-        const response = await apiService.listConversations(50, true);
-        console.log('Sessions API response:', response);
-        
-        if (response.success && response.data) {
-          const backendSessions = response.data.conversations;
-          const sessionMetas = backendSessions.map(backendToSessionMeta);
-          setSessions(sessionMetas);
-          console.log('Loaded sessions:', sessionMetas);
-
-          // Solo activar la más reciente si hay sesiones con mensajes
-          const sessionsWithMessages = sessionMetas.filter(s => s.messageCount > 0);
-          
-          if (sessionsWithMessages.length > 0) {
-            const mostRecent = [...sessionsWithMessages].sort(
-              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            )[0];
-            setActiveSessionId(mostRecent.id);
-            console.log('Set active session (has messages):', mostRecent.id);
-          } else {
-            // No hay sesiones con mensajes, dejar activa la primera si existe
-            if (sessionMetas.length > 0) {
-              setActiveSessionId(sessionMetas[0].id);
-              console.log('Set first session as active:', sessionMetas[0].id);
-            } else {
-              console.log('No sessions at all');
-              setActiveSessionId(null);
-            }
-          }
-        } else {
-          console.log('No sessions found');
-          setSessions([]);
-          setActiveSessionId(null);
-        }
-      } catch (error) {
-        console.error('Error loading sessions:', error);
-        setSessions([]);
-        setActiveSessionId(null);
-      } finally {
-        setLoading(false);
-        setHydrated(true);
-      }
-    };
-
-    loadSessions();
-  }, []); // Sin dependencias para evitar loops
+    void reloadSessions();
+  }, [reloadSessions]);
 
   // ── Actualizar metadata de una sesión ──────────────────────────────────────
   const updateSessionMeta = useCallback(
@@ -232,7 +132,7 @@ export function useChatSessions() {
         throw error;
       }
     },
-    [activeSessionId, createSession]
+    [activeSessionId]
   );
 
   // ── Limpiar mensajes de la sesión activa (sin eliminarla) ──────────────────
@@ -268,28 +168,12 @@ export function useChatSessions() {
     }
   }, [sessions]);
 
-  // ── Recargar sesiones desde el backend ───────────────────────────────────────
-  const reloadSessions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await apiService.listConversations(50, true);
-      if (response.success && response.data) {
-        const backendSessions = response.data.conversations;
-        const sessionMetas = backendSessions.map(backendToSessionMeta);
-        setSessions(sessionMetas);
-      }
-    } catch (error) {
-      console.error('Error reloading sessions:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   return {
     sessions,
     activeSessionId,
     hydrated,
     loading,
+    sessionsLoadError,
     setActiveSessionId,
     createSession,
     updateSessionMeta,

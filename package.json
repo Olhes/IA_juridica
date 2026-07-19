@@ -5,7 +5,8 @@
   "main": "backend/main.py",
   "scripts": {
     "dev": "pnpm run dev:full",
-    "dev:full": "concurrently -k -n BACKEND,FRONTEND -c green,blue \"pnpm run backend:dev:safe\" \"pnpm run frontend:dev\"",
+    "dev:full": "node scripts/dev-full.mjs",
+    "test:dev-full": "node --test scripts/dev-full.test.mjs",
     "frontend:dev": "pnpm --dir frontend dev",
     "frontend:build": "pnpm --dir frontend build",
     "frontend:start": "pnpm --dir frontend start",

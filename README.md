@@ -48,21 +48,14 @@ NEO4J_PASSWORD=your-neo4j-password
 NEO4J_DATABASE=neo4j
 ```
 
-### Iniciar Servicios
+### Start Development
 
 ```bash
-# Iniciar Docker (PostgreSQL + Redis)
-docker-compose up -d
-
-# Iniciar backend
-cd backend
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Iniciar frontend (opcional)
-cd frontend
-npm install
-npm run dev
+# Starts PostgreSQL and Redis, waits for both health checks, then starts backend and frontend.
+pnpm run dev:full
 ```
+
+Use this single command after completing the dependency and environment setup above. Ctrl+C stops the backend and frontend only; PostgreSQL and Redis remain available in Docker.
 
 ## 📡 Endpoints API
 

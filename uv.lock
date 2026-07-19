@@ -1128,6 +1128,7 @@ dependencies = [
     { name = "googletrans" },
     { name = "lightrag-hku" },
     { name = "loguru" },
+    { name = "neo4j" },
     { name = "numpy" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -1178,6 +1179,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'ml'", specifier = ">=0.27,<1" },
     { name = "lightrag-hku", specifier = "==1.4.9.11" },
     { name = "loguru", specifier = "==0.7.3" },
+    { name = "neo4j", specifier = "==5.26.0" },
     { name = "numpy", specifier = ">=2.4.2,<3.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.3" },
     { name = "pydantic", specifier = "==2.12.5" },
@@ -1690,6 +1692,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/ff/ed9ff1c4e5b0418687c17d02fdc453c212e7550c62622914ba0243c106bc/nano_vectordb-0.0.4.3.tar.gz", hash = "sha256:3d13074476f2b739e51261974ed44aa467725579966219734c03502c929ed3b5", size = 6332, upload-time = "2024-11-11T12:50:50.584Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/d8/f1876f59916da0a2147e63066650c46bf7992828a9e92f1b4e3b695f1fb0/nano_vectordb-0.0.4.3-py3-none-any.whl", hash = "sha256:1b70401a54c02fabf76515b5dfb630076434547ed3c6861828ee8771b6dd7c19", size = 5590, upload-time = "2024-11-11T12:50:48.9Z" },
+]
+
+[[package]]
+name = "neo4j"
+version = "5.26.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/62/7a6d0b90da5fb2a68c61996baeade66ff030b3f1036263e649a50e80e9d0/neo4j-5.26.0.tar.gz", hash = "sha256:51b25ba127b7b9fdae1ddf48ae697ddfab331e60f4b6d8488d1fc1f74ec60dcc", size = 224127, upload-time = "2024-11-01T13:15:19.504Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/a8/e8bafaaf3a2fa2391c8c86ab4e8dec2aff3f2fd35b773476580ccca26e4c/neo4j-5.26.0-py3-none-any.whl", hash = "sha256:511a6a9468ca89b521bf686f885a2070acc462b1d09821d43710bd477acdf11e", size = 302024, upload-time = "2024-11-01T13:15:15.631Z" },
 ]
 
 [[package]]
