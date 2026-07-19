@@ -172,34 +172,6 @@ class RedisAdapter:
         key = f"doc_chunks:{doc_id}"
         return await self.get_cache(key)
     
-    # === Sesiones de Usuario ===
-    
-    async def create_user_session(self, session_id: str, session_data: Dict[str, Any],
-                                 ttl_hours: int = 24) -> bool:
-        """Crear sesión de usuario en Redis"""
-        key = f"session:{session_id}"
-        ttl = ttl_hours * 3600
-        return await self.set_cache(key, session_data, ttl)
-    
-    async def get_user_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Obtener sesión de usuario"""
-        key = f"session:{session_id}"
-        return await self.get_cache(key)
-    
-    async def update_user_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
-        """Actualizar sesión de usuario"""
-        key = f"session:{session_id}"
-        session_data = await self.get_user_session(session_id)
-        if session_data:
-            session_data.update(updates)
-            return await self.set_cache(key, session_data)
-        return False
-    
-    async def delete_user_session(self, session_id: str) -> bool:
-        """Eliminar sesión de usuario"""
-        key = f"session:{session_id}"
-        return await self.delete_cache(key)
-    
     # === Rate Limiting ===
     
     async def check_rate_limit(self, identifier: str, limit: int = 100,
@@ -310,11 +282,10 @@ class RedisAdapter:
                 'response_time_ms': (datetime.utcnow() - start_time).total_seconds() * 1000,
                 'timestamp': datetime.utcnow().isoformat()
             }
-        except Exception as e:
+        except Exception:
             return {
                 'status': 'unhealthy',
                 'database': 'redis',
-                'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }
     

@@ -56,3 +56,62 @@ test('persists assistant messages across refresh and keeps the home route on lan
   await expect(messageArea).toContainText(query);
   await expect(page.locator('.markdown-content')).toContainText(assistantText);
 });
+
+test('isolates anonymous principals and preserves each context across refresh', async ({ browser }) => {
+  test.skip(!targetUrl, 'PLAYWRIGHT_TARGET_URL is required');
+  const apiUrl = process.env.PLAYWRIGHT_API_URL || 'http://localhost:8000';
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+
+  try {
+    await Promise.all([pageA.goto(targetUrl), pageB.goto(targetUrl)]);
+    const bootstrap = (page) => page.evaluate(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/session/bootstrap`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      return response.json();
+    }, apiUrl);
+    const [principalA, principalB] = await Promise.all([bootstrap(pageA), bootstrap(pageB)]);
+    expect(principalA.principal_id).not.toBe(principalB.principal_id);
+
+    const cookiesA = await contextA.cookies(apiUrl);
+    const sessionCookie = cookiesA.find((cookie) => cookie.name === 'ia_juridica_session');
+    expect(sessionCookie?.httpOnly).toBe(true);
+
+    const title = `Anonymous isolation ${Date.now()}`;
+    const conversationA = await pageA.evaluate(async ({ baseUrl, title }) => {
+      const response = await fetch(`${baseUrl}/chat/conversations`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, language: 'spanish' }),
+      });
+      return response.json();
+    }, { baseUrl: apiUrl, title });
+
+    const list = (page) => page.evaluate(async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/chat/conversations`, { credentials: 'include' });
+      return response.json();
+    }, apiUrl);
+    const conversationsB = await list(pageB);
+    expect(conversationsB.conversations.map((item) => item.id)).not.toContain(conversationA.id);
+
+    await pageA.reload();
+    const conversationsA = await list(pageA);
+    expect(conversationsA.conversations.map((item) => item.id)).toContain(conversationA.id);
+
+    const foreignRead = await pageB.evaluate(async ({ baseUrl, id }) => {
+      const response = await fetch(`${baseUrl}/chat/conversations/${id}`, { credentials: 'include' });
+      return response.status;
+    }, { baseUrl: apiUrl, id: conversationA.id });
+    expect(foreignRead).toBe(404);
+  } finally {
+    await pageA.close();
+    await pageB.close();
+    await contextA.close();
+    await contextB.close();
+  }
+});

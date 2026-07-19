@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Dict, List, Any, Optional
 import json
 from pathlib import Path
@@ -16,6 +17,7 @@ except ImportError:
 try:
     from lightrag import LightRAG, QueryParam
     from lightrag.utils import EmbeddingFunc
+    logging.getLogger("lightrag").disabled = True
     LIGHTRAG_AVAILABLE = True
 except Exception as e:
     logger.warning(f"LightRAG no disponible: {e}")
@@ -203,8 +205,8 @@ class LegalRAGEngine:
                     max_tokens=settings.COHERE_MAX_TOKENS,
                 )
                 return response.text
-            except Exception as e:
-                logger.error(f"Error en Cohere LLM: {e}")
+            except Exception as error:
+                logger.error(f"Error en Cohere LLM: {type(error).__name__}")
                 return ""
         
         graph_storage = _select_graph_storage()
@@ -409,8 +411,8 @@ class LegalRAGEngine:
                         param=QueryParam(mode="hybrid")
                     )
                     lightrag_answer = raw_result
-                except Exception as e:
-                    logger.warning(f"LightRAG query falló, usando fallback local: {e}")
+                except Exception as error:
+                    logger.warning(f"LightRAG query falló, usando fallback local: {type(error).__name__}")
             
             # Reunir documentos candidatos del almacén local
             for doc_id, doc_data in self.documents.items():
@@ -468,21 +470,20 @@ class LegalRAGEngine:
                         "total_candidates": len(candidate_docs),
                     }
                     
-                except Exception as e:
-                    logger.error(f"Cohere rerank falló, usando fallback: {e}")
+                except Exception as error:
+                    logger.error(f"Cohere rerank falló, usando fallback: {type(error).__name__}")
             
             # PASO 3: Fallback sin rerank (keyword scoring)
             return await self._fallback_rerank(query, candidate_docs, top_k, lightrag_answer)
             
-        except Exception as e:
-            logger.error(f"Error en query_with_rerank: {e}")
+        except Exception as error:
+            logger.error(f"Error en query_with_rerank: {type(error).__name__}")
             return {
                 "answer": "Error procesando la consulta.",
                 "documents": [],
                 "rerank_scores": [],
                 "sources": [],
                 "method": "error",
-                "error": str(e),
             }
     
     async def _fallback_rerank(

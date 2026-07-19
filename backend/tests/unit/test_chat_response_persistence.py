@@ -2,8 +2,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from starlette.requests import Request
 
 import main
+from security import Principal
+
+
+def make_request() -> Request:
+    return Request({"type": "http", "method": "POST", "path": "/legal-query-stream", "headers": []})
 
 
 @pytest.mark.unit
@@ -40,6 +46,7 @@ async def test_stream_persists_validated_spanish_response(monkeypatch):
     )
     chat_service = MagicMock()
     chat_service.add_message = AsyncMock()
+    chat_service.get_conversation = AsyncMock(return_value=object())
 
     monkeypatch.setattr(main, "chat_service", chat_service)
     monkeypatch.setattr(main.app.state, "llm_optimizer", optimizer, raising=False)
@@ -54,7 +61,9 @@ async def test_stream_persists_validated_spanish_response(monkeypatch):
     monkeypatch.setattr(main.app.state, "response_validator", validator, raising=False)
 
     response = await main.legal_query_stream(
-        main.LegalQueryRequest(query="Test query", conversation_id="conversation-id")
+        request=make_request(),
+        payload=main.LegalQueryRequest(query="Test query", conversation_id="conversation-id"),
+        principal=Principal("c5d4a819-f0b1-4775-a374-f280bfc2085c", 9999999999),
     )
     async for _chunk in response.body_iterator:
         pass
@@ -74,12 +83,15 @@ async def test_cached_stream_persists_response_with_same_extractor(monkeypatch):
     }
     chat_service = MagicMock()
     chat_service.add_message = AsyncMock()
+    chat_service.get_conversation = AsyncMock(return_value=object())
 
     monkeypatch.setattr(main, "chat_service", chat_service)
     monkeypatch.setattr(main.app.state, "llm_optimizer", optimizer, raising=False)
 
     response = await main.legal_query_stream(
-        main.LegalQueryRequest(query="Cached query", conversation_id="conversation-id")
+        request=make_request(),
+        payload=main.LegalQueryRequest(query="Cached query", conversation_id="conversation-id"),
+        principal=Principal("c5d4a819-f0b1-4775-a374-f280bfc2085c", 9999999999),
     )
     async for _chunk in response.body_iterator:
         pass

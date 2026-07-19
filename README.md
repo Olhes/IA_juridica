@@ -13,8 +13,7 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 ### Instalación
 
 ```bash
-# Instalar UV
-pip install uv
+# Instalar UV según https://docs.astral.sh/uv/getting-started/installation/
 
 # Clonar repositorio
 cd IA_juridica
@@ -32,7 +31,7 @@ Crear `backend/.env`:
 
 ```env
 COHERE_API_KEY=tu_api_key_aqui
-SECRET_KEY=tu_secreto_unico
+ANONYMOUS_SESSION_SECRET=secreto_aleatorio_de_al_menos_32_bytes
 DEBUG=true
 DATABASE_HOST=localhost
 DATABASE_PORT=5433
@@ -60,6 +59,7 @@ Use this single command after completing the dependency and environment setup ab
 ## 📡 Endpoints API
 
 ### Chat Persistente
+- `POST /session/bootstrap` - Crear o renovar sesión anónima HttpOnly
 - `POST /chat/message` - Enviar mensaje con persistencia
 - `GET /chat/conversations` - Listar conversaciones del usuario
 - `GET /chat/conversations/{id}` - Obtener historial completo
@@ -75,7 +75,7 @@ Use this single command after completing the dependency and environment setup ab
 - `GET /health` - Health check del sistema
 
 ### Documentos
-- `POST /upload-pdf` - Subir y procesar PDF (requiere API Key)
+- `POST /upload-pdf` - Subir y procesar PDF (admin habilitado + `ADMIN_API_KEY`)
 - `POST /batch-process` - Procesar todos los PDFs pendientes (requiere API Key)
 - `GET /documents` - Listar documentos indexados
 - `GET /knowledge-graph` - Obtener grafo de conocimiento
@@ -274,6 +274,7 @@ docker exec -it juridica_redis redis-cli ping
 
 ## 📚 Documentación Adicional
 
+- `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
 - `API_DOC.md` - Documentación completa de la API
 - `POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL
 - `DOCUMENTATION.md` - Documentación técnica detallada

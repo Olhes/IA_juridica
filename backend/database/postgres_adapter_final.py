@@ -5,15 +5,13 @@ Conexión simple y robusta
 
 import asyncio
 import psycopg
-import importlib
-import sys
 from typing import Dict, Any, Optional, List
 
-# Forzar recarga del módulo settings
-if 'config.settings' in sys.modules:
-    importlib.reload(sys.modules['config.settings'])
-
 from config.settings import settings
+
+
+class DatabaseUnavailableError(RuntimeError):
+    pass
 
 
 class PostgreSQLAdapter:
@@ -56,8 +54,8 @@ class PostgreSQLAdapter:
                             conn.commit()
                         print(f"  ✅ Conexión exitosa para: {actual_user}")
                         return conn
-                    except Exception as e:
-                        print(f"  ❌ Falló conexión: {e}")
+                    except Exception:
+                        print("  PostgreSQL connection failed")
                         raise
                 
                 self.conn = await loop.run_in_executor(None, connect_sync)
@@ -74,13 +72,12 @@ class PostgreSQLAdapter:
                 print("✅ Conexión PostgreSQL inicializada")
                 return
                 
-            except Exception as e:
-                print(f"❌ Intento {attempt + 1} fallido: {e}")
+            except Exception:
+                print(f"PostgreSQL connection attempt {attempt + 1} failed")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(3)
                 else:
-                    print(f"❌ Error inicializando PostgreSQL: {e}")
-                    print("⚠️ Continuando sin PostgreSQL...")
+                    print("PostgreSQL unavailable; continuing without persistence")
                     return
     
     async def close(self):
@@ -120,11 +117,10 @@ class PostgreSQLAdapter:
                 'version': version,
                 'timestamp': str(asyncio.get_event_loop().time())
             }
-        except Exception as e:
+        except Exception:
             return {
                 'status': 'unhealthy',
                 'database': 'postgresql',
-                'error': str(e),
                 'timestamp': str(asyncio.get_event_loop().time())
             }
     
@@ -136,7 +132,7 @@ class PostgreSQLAdapter:
     async def create_conversation(self, user_id: str, title: str = None, language: str = "spanish") -> Dict[str, Any]:
         """Crear una nueva conversación"""
         if not self.conn:
-            raise Exception("PostgreSQL no conectado")
+            raise DatabaseUnavailableError("PostgreSQL unavailable")
         
         loop = asyncio.get_event_loop()
         
@@ -169,7 +165,7 @@ class PostgreSQLAdapter:
         
         return await loop.run_in_executor(None, create_sync)
     
-    async def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+    async def get_conversation(self, conversation_id: str, owner_id: str) -> Optional[Dict[str, Any]]:
         """Obtener una conversación por ID"""
         if not self.conn:
             return None
@@ -179,10 +175,10 @@ class PostgreSQLAdapter:
         def get_sync():
             with self.conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, title, language, created_at, updated_at
+                    SELECT id, user_id, title, language, created_at, updated_at, metadata, is_active
                     FROM conversations_schema.conversations
-                    WHERE id = %s
-                """, (conversation_id,))
+                    WHERE id = %s AND user_id = %s
+                """, (conversation_id, owner_id))
                 
                 result = cursor.fetchone()
                 if not result:
@@ -190,15 +186,18 @@ class PostgreSQLAdapter:
                 
                 return {
                     'id': str(result[0]),
-                    'title': result[1],
-                    'language': result[2],
-                    'created_at': result[3].isoformat(),
-                    'updated_at': result[4].isoformat() if result[4] else None
+                    'user_id': str(result[1]),
+                    'title': result[2],
+                    'language': result[3],
+                    'created_at': result[4].isoformat(),
+                    'updated_at': result[5].isoformat() if result[5] else result[4].isoformat(),
+                    'metadata': result[6] or {},
+                    'is_active': result[7],
                 }
         
         return await loop.run_in_executor(None, get_sync)
     
-    async def create_message(self, conversation_id: str, content: str, role: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def create_message(self, conversation_id: str, owner_id: str, content: str, role: str, metadata: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """Crear un nuevo mensaje en una conversación"""
         if not self.conn:
             raise Exception("PostgreSQL no conectado")
@@ -225,11 +224,22 @@ class PostgreSQLAdapter:
                     
                     cursor.execute("""
                         INSERT INTO conversations_schema.messages (conversation_id, content, role, metadata)
-                        VALUES (%s, %s, %s, %s)
+                        SELECT c.id, %s, %s, %s
+                        FROM conversations_schema.conversations c
+                        WHERE c.id = %s AND c.user_id = %s
                         RETURNING id, conversation_id, content, role, metadata, created_at
-                    """, (conversation_id, content, role, json.dumps(serialize_metadata(metadata or {}))))
+                    """, (
+                        content,
+                        role,
+                        json.dumps(serialize_metadata(metadata or {})),
+                        conversation_id,
+                        owner_id,
+                    ))
                     
                     result = cursor.fetchone()
+                    if not result:
+                        self.conn.rollback()
+                        return None
                     self.conn.commit()
                     
                     return {
@@ -249,7 +259,7 @@ class PostgreSQLAdapter:
         
         return await loop.run_in_executor(None, create_sync)
     
-    async def get_conversation_messages(self, conversation_id: str) -> List[Dict[str, Any]]:
+    async def get_conversation_messages(self, conversation_id: str, owner_id: str) -> List[Dict[str, Any]]:
         """Obtener todos los mensajes de una conversación"""
         if not self.conn:
             return []
@@ -259,11 +269,12 @@ class PostgreSQLAdapter:
         def get_sync():
             with self.conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, conversation_id, content, role, metadata, created_at
-                    FROM conversations_schema.messages
-                    WHERE conversation_id = %s
-                    ORDER BY created_at ASC
-                """, (conversation_id,))
+                    SELECT m.id, m.conversation_id, m.content, m.role, m.metadata, m.created_at
+                    FROM conversations_schema.messages m
+                    INNER JOIN conversations_schema.conversations c ON c.id = m.conversation_id
+                    WHERE m.conversation_id = %s AND c.user_id = %s
+                    ORDER BY m.created_at ASC
+                """, (conversation_id, owner_id))
                 
                 results = cursor.fetchall()
                 return [
@@ -280,7 +291,7 @@ class PostgreSQLAdapter:
         
         return await loop.run_in_executor(None, get_sync)
     
-    async def update_cultural_context(self, conversation_id: str, cultural_context: str, legal_domain: str = None, user_preferences: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def update_cultural_context(self, conversation_id: str, owner_id: str, cultural_context: str, legal_domain: str = None, user_preferences: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """Actualizar o crear contexto cultural de una conversación"""
         if not self.conn:
             raise Exception("PostgreSQL no conectado")
@@ -305,7 +316,9 @@ class PostgreSQLAdapter:
                 # Upsert del contexto
                 cursor.execute("""
                     INSERT INTO cultural_contexts (conversation_id, cultural_context, legal_domain, user_preferences)
-                    VALUES (%s, %s, %s, %s)
+                    SELECT c.id, %s, %s, %s
+                    FROM conversations_schema.conversations c
+                    WHERE c.id = %s AND c.user_id = %s
                     ON CONFLICT (conversation_id)
                     DO UPDATE SET
                         cultural_context = EXCLUDED.cultural_context,
@@ -313,9 +326,12 @@ class PostgreSQLAdapter:
                         user_preferences = EXCLUDED.user_preferences,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING id, conversation_id, cultural_context, legal_domain, user_preferences, updated_at
-                """, (conversation_id, cultural_context, legal_domain, user_preferences or {}))
+                """, (cultural_context, legal_domain, user_preferences or {}, conversation_id, owner_id))
                 
                 result = cursor.fetchone()
+                if not result:
+                    self.conn.rollback()
+                    return None
                 self.conn.commit()
                 
                 return {
@@ -329,7 +345,7 @@ class PostgreSQLAdapter:
         
         return await loop.run_in_executor(None, update_sync)
     
-    async def list_conversations(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    async def list_conversations(self, owner_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """Listar conversaciones con paginación"""
         if not self.conn:
             return []
@@ -342,9 +358,10 @@ class PostgreSQLAdapter:
                     SELECT id, title, language, created_at, updated_at,
                            (SELECT COUNT(*) FROM conversations_schema.messages WHERE conversation_id = conversations_schema.conversations.id) as message_count
                     FROM conversations_schema.conversations
-                    ORDER BY updated_at DESC
-                    LIMIT %s OFFSET %s
-                """, (limit, offset))
+                     WHERE conversations_schema.conversations.user_id = %s
+                     ORDER BY updated_at DESC
+                     LIMIT %s OFFSET %s
+                """, (owner_id, limit, offset))
                 
                 results = cursor.fetchall()
                 return [
@@ -397,7 +414,7 @@ class PostgreSQLAdapter:
         
         return await loop.run_in_executor(None, get_sync)
     
-    async def update_conversation(self, conversation_id: str, update_data: Dict[str, Any]) -> bool:
+    async def update_conversation(self, conversation_id: str, owner_id: str, update_data: Dict[str, Any]) -> bool:
         """Actualizar metadata de conversación"""
         if not self.conn:
             return False
@@ -409,10 +426,6 @@ class PostgreSQLAdapter:
                 # Convertir objeto Pydantic a diccionario y filtrar valores nulos
                 update_dict = update_data.model_dump() if hasattr(update_data, 'model_dump') else dict(update_data)
                 filtered_data = {k: v for k, v in update_dict.items() if v is not None}
-                print(f"DEBUG update_conversation: update_data original = {update_data}")
-                print(f"DEBUG update_conversation: update_dict = {update_dict}")
-                print(f"DEBUG update_conversation: filtered_data = {filtered_data}")
-                
                 # Construir consulta dinámica basada en los campos a actualizar
                 set_clauses = []
                 values = []
@@ -449,29 +462,22 @@ class PostgreSQLAdapter:
                 # Agregar updated_at
                 set_clauses.append("updated_at = CURRENT_TIMESTAMP")
                 
-                # Agregar conversation_id al final para el WHERE
-                values.append(conversation_id)
+                values.extend((conversation_id, owner_id))
                 
                 try:
-                    sql = f"UPDATE conversations_schema.conversations SET {', '.join(set_clauses)} WHERE id = %s RETURNING id"
-                    print(f"DEBUG update_conversation: SQL = {sql}")
-                    print(f"DEBUG update_conversation: values = {values}")
+                    sql = f"UPDATE conversations_schema.conversations SET {', '.join(set_clauses)} WHERE id = %s AND user_id = %s RETURNING id"
                     cursor.execute(sql, values)
                     
                     result = cursor.fetchone()
                     self.conn.commit()
-                    print(f"DEBUG update_conversation: UPDATE exitoso, result={result}")
                     return result is not None
                 except Exception as e:
                     self.conn.rollback()
-                    print(f"DEBUG update_conversation: ERROR en SQL = {e}")
-                    print(f"DEBUG update_conversation: set_clauses = {set_clauses}")
-                    print(f"DEBUG update_conversation: values = {values}")
                     raise e
         
         return await loop.run_in_executor(None, update_sync)
     
-    async def delete_conversation(self, conversation_id: str, user_id: str = None) -> bool:
+    async def delete_conversation(self, conversation_id: str, owner_id: str) -> bool:
         """Eliminar una conversación"""
         if not self.conn:
             return False
@@ -480,19 +486,11 @@ class PostgreSQLAdapter:
         
         def delete_sync():
             with self.conn.cursor() as cursor:
-                # Si se proporciona user_id, verificar que la conversación pertenezca al usuario
-                if user_id:
-                    cursor.execute("""
-                        DELETE FROM conversations_schema.conversations
-                        WHERE id = %s AND user_id = %s
-                        RETURNING id
-                    """, (conversation_id, user_id))
-                else:
-                    cursor.execute("""
-                        DELETE FROM conversations_schema.conversations
-                        WHERE id = %s
-                        RETURNING id
-                    """, (conversation_id,))
+                cursor.execute("""
+                    DELETE FROM conversations_schema.conversations
+                    WHERE id = %s AND user_id = %s
+                    RETURNING id
+                """, (conversation_id, owner_id))
                 
                 result = cursor.fetchone()
                 self.conn.commit()

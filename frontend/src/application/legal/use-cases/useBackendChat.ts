@@ -14,14 +14,13 @@ interface BackendChatState {
 
 interface BackendChatOptions {
   language: SupportedLanguage;
-  userId?: string;
 }
 
 /**
  * Hook simplificado para chat con backend
  * Funciona sin errores de TypeScript complejos
  */
-export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af' }: BackendChatOptions) {
+export function useBackendChat({ language = 'spanish' }: BackendChatOptions) {
   const [state, setState] = useState<BackendChatState>({
     messages: [],
     conversationId: null,
@@ -29,8 +28,6 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
     isOnline: false,
     error: null
   });
-
-  const [sessionId, setSessionId] = useState<string | null>(null);
 
   // ── Enviar mensaje ─────────────────────────────────────
   const sendMessage = useCallback(async (content: string) => {
@@ -42,17 +39,11 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
       const response = await apiService.sendChatMessage(
         content.trim(),
         state.conversationId || undefined,
-        language,
-        sessionId || undefined
+        language
       );
 
       if (response.success && response.data) {
-        const { message, conversation_history, conversation_id, session_id } = response.data;
-        
-        // Actualizar sesión
-        if (session_id && session_id !== sessionId) {
-          setSessionId(session_id);
-        }
+        const { message, conversation_history, conversation_id } = response.data;
 
         // Convertir BackendMessage a ChatMessage
         const chatMessages: ChatMessage[] = (conversation_history || [message]).map(msg => ({
@@ -77,7 +68,6 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
         return {
           success: true,
           conversationId: conversation_id,
-          sessionId: session_id,
           message
         };
       } else {
@@ -97,14 +87,14 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
       }));
       return { success: false, error: errorMessage };
     }
-  }, [state.conversationId, state.isLoading, sessionId, language]);
+  }, [state.conversationId, state.isLoading, language]);
 
   // ── Crear nueva conversación ───────────────────────────────
   const createConversation = useCallback(async (title?: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await apiService.createConversation(language, title, userId);
+      const response = await apiService.createConversation(language, title);
 
       if (response.success && response.data) {
         const newConversation = response.data;
@@ -131,7 +121,7 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
       }));
       return null;
     }
-  }, [language, userId]);
+  }, [language]);
 
   // ── Cargar conversación existente ─────────────────────────────
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -215,7 +205,6 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
       isOnline: false,
       error: null
     });
-    setSessionId(null);
   }, []);
 
   // ── Effects ───────────────────────────────────────────────────
@@ -229,8 +218,6 @@ export function useBackendChat({ language = 'spanish', userId = 'd1d0e0f7-1b3d-4
   return {
     // Estado
     ...state,
-    sessionId,
-    
     // Acciones
     sendMessage,
     createConversation,

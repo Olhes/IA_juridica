@@ -29,7 +29,7 @@ export function useChatSessions() {
         return existingEmptySession.id;
       }
 
-      const response = await apiService.createConversation(language, 'Nueva consulta', 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af');
+      const response = await apiService.createConversation(language, 'Nueva consulta');
       if (response.success && response.data) {
         const newSession = backendToSessionMeta(response.data);
         setSessions((prev) => [newSession, ...prev]);
@@ -46,6 +46,14 @@ export function useChatSessions() {
 
   const reloadSessions = useCallback(async () => {
     setLoading(true);
+    try {
+      await apiService.initializeSession();
+    } catch {
+      setSessionsLoadError('No se pudo iniciar la sesión anónima.');
+      setLoading(false);
+      setHydrated(true);
+      return;
+    }
     const result = await loadChatSessions(
       apiService.listConversations.bind(apiService),
       backendToSessionMeta
