@@ -18,10 +18,13 @@ interface ChatSidebarProps {
   activeSessionId: string | null;
   language: SupportedLanguage;
   isOpen: boolean;
+  loading: boolean;
+  loadError: string | null;
   onClose: () => void;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onRetry: () => void;
 }
 
 const i18n = {
@@ -34,6 +37,9 @@ const i18n = {
     confirmDel: '¿Eliminar esta consulta?',
     cancel:     'Cancelar',
     delete:     'Eliminar',
+    loadError:  'No pudimos cargar tus consultas.',
+    retry:      'Reintentar',
+    retrying:   'Reintentando...',
     messages:   (n: number) => `${n} mensaje${n !== 1 ? 's' : ''}`,
   },
   quechua: {
@@ -45,6 +51,9 @@ const i18n = {
     confirmDel: '¿Kay tapukuyta pichankichu?',
     cancel:     'Mana',
     delete:     'Pichay',
+    loadError:  'Tapukuykunata mana apamuyta atirqanchikchu.',
+    retry:      'Wakmanta ruray',
+    retrying:   'Wakmanta ruraspa...',
     messages:   (n: number) => `${n} willay${n !== 1 ? 'kuna' : ''}`,
   },
 } as const;
@@ -199,10 +208,13 @@ export function ChatSidebar({
   activeSessionId,
   language,
   isOpen,
+  loading,
+  loadError,
   onClose,
   onNewSession,
   onSelectSession,
   onDeleteSession,
+  onRetry,
 }: ChatSidebarProps) {
   const t = i18n[language];
 
@@ -249,13 +261,31 @@ export function ChatSidebar({
 
       {/* ── Lista de sesiones ── */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
-        {sorted.length === 0 ? (
+        {loadError && (
+          <div role="alert" className="mx-1 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-medium">{t.loadError}</p>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  disabled={loading}
+                  className="mt-1.5 text-xs font-semibold underline underline-offset-2 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {loading ? t.retrying : t.retry}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {sorted.length === 0 && !loadError ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <MessagesSquare className="w-10 h-10 text-slate-200 dark:text-gray-700 mb-3" />
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t.noChats}</p>
             <p className="text-xs text-slate-400 dark:text-slate-600 mt-1">{t.noChatsHint}</p>
           </div>
-        ) : (
+        ) : sorted.length > 0 ? (
           sorted.map((session) => (
             <SessionRow
               key={session.id}
@@ -266,7 +296,7 @@ export function ChatSidebar({
               onDelete={() => onDeleteSession(session.id)}
             />
           ))
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -64,10 +64,13 @@ export function ChatPage() {
     sessions,
     activeSessionId,
     hydrated: sessionsHydrated,
+    loading: sessionsLoading,
+    sessionsLoadError,
     setActiveSessionId,
     createSession,
     updateSessionMeta,
     deleteSession,
+    reloadSessions,
   } = useChatSessions();
 
   // NO crear sesión automáticamente - esperar a que el usuario haga clic en "Nueva consulta"
@@ -118,11 +121,13 @@ export function ChatPage() {
 
   const handleNewSession = async () => {
     await createSession(language);
+    setShowLanding(false);
     setSidebarOpen(false);
   };
 
   const handleSelectSession = (id: string) => {
     setActiveSessionId(id);
+    setShowLanding(false);
     setSidebarOpen(false);
   };
 
@@ -144,10 +149,13 @@ export function ChatPage() {
         activeSessionId={activeSessionId}
         language={language}
         isOpen={sidebarOpen}
+        loading={sessionsLoading}
+        loadError={sessionsLoadError}
         onClose={() => setSidebarOpen(false)}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
         onDeleteSession={deleteSession}
+        onRetry={reloadSessions}
       />
 
       {/* ── Main area ── */}

@@ -13,8 +13,7 @@ Asistente virtual bilingüe (quechua-español) especializado en derecho familiar
 ### Instalación
 
 ```bash
-# Instalar UV
-pip install uv
+# Instalar UV según https://docs.astral.sh/uv/getting-started/installation/
 
 # Clonar repositorio
 cd IA_juridica
@@ -32,7 +31,7 @@ Crear `backend/.env`:
 
 ```env
 COHERE_API_KEY=tu_api_key_aqui
-SECRET_KEY=tu_secreto_unico
+ANONYMOUS_SESSION_SECRET=secreto_aleatorio_de_al_menos_32_bytes
 DEBUG=true
 DATABASE_HOST=localhost
 DATABASE_PORT=5433
@@ -48,25 +47,19 @@ NEO4J_PASSWORD=your-neo4j-password
 NEO4J_DATABASE=neo4j
 ```
 
-### Iniciar Servicios
+### Start Development
 
 ```bash
-# Iniciar Docker (PostgreSQL + Redis)
-docker-compose up -d
-
-# Iniciar backend
-cd backend
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Iniciar frontend (opcional)
-cd frontend
-npm install
-npm run dev
+# Starts PostgreSQL and Redis, waits for both health checks, then starts backend and frontend.
+pnpm run dev:full
 ```
+
+Use this single command after completing the dependency and environment setup above. Ctrl+C stops the backend and frontend only; PostgreSQL and Redis remain available in Docker.
 
 ## 📡 Endpoints API
 
 ### Chat Persistente
+- `POST /session/bootstrap` - Crear o renovar sesión anónima HttpOnly
 - `POST /chat/message` - Enviar mensaje con persistencia
 - `GET /chat/conversations` - Listar conversaciones del usuario
 - `GET /chat/conversations/{id}` - Obtener historial completo
@@ -82,7 +75,7 @@ npm run dev
 - `GET /health` - Health check del sistema
 
 ### Documentos
-- `POST /upload-pdf` - Subir y procesar PDF (requiere API Key)
+- `POST /upload-pdf` - Subir y procesar PDF (admin habilitado + `ADMIN_API_KEY`)
 - `POST /batch-process` - Procesar todos los PDFs pendientes (requiere API Key)
 - `GET /documents` - Listar documentos indexados
 - `GET /knowledge-graph` - Obtener grafo de conocimiento
@@ -281,6 +274,7 @@ docker exec -it juridica_redis redis-cli ping
 
 ## 📚 Documentación Adicional
 
+- `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
 - `API_DOC.md` - Documentación completa de la API
 - `POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL
 - `DOCUMENTATION.md` - Documentación técnica detallada
