@@ -3,20 +3,16 @@ Servicio de gestión de conversaciones con persistencia
 IA Jurídica - Redis Cache + PostgreSQL Storage
 """
 
-import uuid
-import hashlib
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timedelta
-import json
+from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 from models.chat_models import (
     MessageCreate, MessageResponse, ConversationCreate, ConversationResponse,
     ConversationUpdate, ChatRequest, ChatResponse, CachedConversation,
-    UserSession, ConversationContext, ContextSummary, MessageType
+    ConversationContext, MessageType
 )
 from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
-from config.settings import settings
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
 
@@ -42,57 +38,17 @@ class ChatService:
         await self.redis.initialize()
         await self.db.initialize()
     
-    # === Gestión de Sesiones ===
-    
-    async def create_or_get_session(self, user_id: str, session_token: Optional[str] = None) -> UserSession:
-        """Crear o recuperar sesión de usuario"""
-        if session_token:
-            # Intentar recuperar sesión existente
-            try:
-                cached_session = await self.redis.get_cache(f"session:{session_token}")
-                if cached_session:
-                    session = UserSession.from_redis_format(cached_session)
-                    # Verificar que la sesión no esté expirada
-                    if session.expires_at > datetime.utcnow():
-                        # Actualizar última actividad
-                        session.last_activity = datetime.utcnow()
-                        session.expires_at = datetime.utcnow() + timedelta(hours=24)
-                        await self.redis.create_user_session(session_token, session.to_redis_format())
-                        return session
-                    else:
-                        print(f"⚠️ Session {session_token} expired, creating new one")
-            except Exception as e:
-                print(f"⚠️ Error retrieving session {session_token}: {e}")
-                # Continuar para crear nueva sesión
-        
-        # Crear nueva sesión
-        session_id = str(uuid.uuid4())
-        new_session = UserSession(
-            session_id=session_id,
-            user_id=user_id,
-            language_preferences={"primary": "spanish", "secondary": "quechua"},
-            last_activity=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=24)
-        )
-        
-        await self.redis.create_user_session(session_id, new_session.to_redis_format())
-        return new_session
-    
     # === Gestión de Conversaciones ===
     
     async def create_conversation(self, user_id: str, title: Optional[str] = None, 
                                 language: str = "spanish") -> ConversationResponse:
         """Crear nueva conversación"""
-        conversation_data = ConversationCreate(
-            user_id=user_id,
-            title=title or f"Conversación {datetime.now().strftime('%d/%m %H:%M')}",
-            language=language
-        )
+        conversation_title = title or f"Conversación {datetime.now().strftime('%d/%m %H:%M')}"
         
         # Guardar en base de datos (pasar parámetros individuales)
         db_conversation = await self.db.create_conversation(
             user_id=user_id,
-            title=conversation_data.title,
+            title=conversation_title,
             language=language
         )
         
@@ -124,19 +80,20 @@ class ChatService:
             )
             
             await self.redis.set_cache(
-                f"conversation:{conversation_response.id}",
+                self._conversation_cache_key(user_id, conversation_response.id),
                 cached_conv.to_redis_format(),
                 self.cache_ttl['conversation']
             )
-        except Exception as e:
-            print(f"⚠️ Error caching conversation: {e}")
+        except Exception:
+            print("Conversation cache write failed")
         
         return conversation_response
     
     async def get_conversation(self, conversation_id: str, user_id: str) -> Optional[ConversationResponse]:
         """Obtener conversación con mensajes"""
         # Primero intentar Redis cache
-        cached = await self.redis.get_cache(f"conversation:{conversation_id}")
+        cache_key = self._conversation_cache_key(user_id, conversation_id)
+        cached = await self.redis.get_cache(cache_key)
         if cached:
             cached_conv = CachedConversation.from_redis_format(cached)
             if cached_conv.user_id == user_id:
@@ -154,12 +111,12 @@ class ChatService:
                 )
         
         # Si no está en cache, buscar en base de datos
-        db_conversation = await self.db.get_conversation(conversation_id)
+        db_conversation = await self.db.get_conversation(conversation_id, user_id)
         if not db_conversation:
             return None
         
         # Obtener mensajes
-        messages = await self.db.get_conversation_messages(conversation_id)
+        messages = await self.db.get_conversation_messages(conversation_id, user_id)
         message_responses = []
         for msg in messages:
             try:
@@ -175,8 +132,8 @@ class ChatService:
                     model_used=msg.get('model_used'),
                     created_at=msg['created_at'] if isinstance(msg['created_at'], datetime) else datetime.fromisoformat(msg['created_at'])
                 ))
-            except Exception as e:
-                print(f"⚠️ Error parsing message: {e}")
+            except Exception:
+                print("Cached message parse failed")
                 continue
         
         # Construir respuesta
@@ -207,12 +164,12 @@ class ChatService:
             )
             
             await self.redis.set_cache(
-                f"conversation:{conversation_id}",
+                cache_key,
                 cached_conv.to_redis_format(),
                 self.cache_ttl['conversation']
             )
-        except Exception as e:
-            print(f"⚠️ Error caching conversation: {e}")
+        except Exception:
+            print("Conversation cache write failed")
         
         return conversation_response
     
@@ -234,68 +191,70 @@ class ChatService:
                     message_count=conv.get('message_count', 0),
                     last_message=None
                 ))
-            except Exception as e:
-                print(f"⚠️ Error parsing conversation: {e}")
+            except Exception:
+                print("Conversation parse failed")
                 continue
         return result
     
     # === Gestión de Mensajes ===
     
-    async def add_message(self, conversation_id: str, message_data: MessageCreate) -> MessageResponse:
+    async def add_message(self, conversation_id: str, user_id: str, message_data: MessageCreate) -> MessageResponse:
         """Agregar mensaje a conversación"""
         # Guardar en base de datos (pasar parámetros individuales)
         db_message = await self.db.create_message(
             conversation_id=conversation_id,
+            owner_id=user_id,
             content=message_data.content,
             role=message_data.role,
             metadata=message_data.metadata
         )
+        if not db_message:
+            raise ValueError("Conversation not found")
         message_response = MessageResponse.model_validate(db_message)
         
         # Actualizar cache en Redis
-        cached = await self.redis.get_cache(f"conversation:{conversation_id}")
+        cache_key = self._conversation_cache_key(user_id, conversation_id)
+        cached = await self.redis.get_cache(cache_key)
         if cached:
             cached_conv = CachedConversation.from_redis_format(cached)
+            if cached_conv.user_id != user_id:
+                raise ValueError("Conversation not found")
             cached_conv.messages.append(message_response)
             cached_conv.updated_at = datetime.utcnow()
             
             await self.redis.set_cache(
-                f"conversation:{conversation_id}",
+                cache_key,
                 cached_conv.to_redis_format(),
                 self.cache_ttl['conversation']
             )
         
         return message_response
     
-    async def get_conversation_messages(self, conversation_id: str, limit: int = 100) -> List[MessageResponse]:
+    async def get_conversation_messages(self, conversation_id: str, user_id: str, limit: int = 100) -> List[MessageResponse]:
         """Obtener mensajes de conversación"""
         # Intentar cache primero
-        cached = await self.redis.get_cache(f"conversation:{conversation_id}")
+        cached = await self.redis.get_cache(self._conversation_cache_key(user_id, conversation_id))
         if cached:
             cached_conv = CachedConversation.from_redis_format(cached)
+            if cached_conv.user_id != user_id:
+                return []
             return cached_conv.messages[-limit:] if len(cached_conv.messages) > limit else cached_conv.messages
         
         # Si no está en cache, buscar en DB (el método del adapter no usa limit)
-        messages = await self.db.get_conversation_messages(conversation_id)
+        messages = await self.db.get_conversation_messages(conversation_id, user_id)
         return [MessageResponse.model_validate(msg) for msg in messages]
     
     # === Procesamiento de Chat ===
     
     async def process_chat_message(self, request: ChatRequest, user_id: str) -> ChatResponse:
         """Procesar mensaje de chat con persistencia y traducción automática"""
-        print(f"🔍 Procesando mensaje: {request.message[:50]}...")
-        print(f"🌐 Idioma solicitado: {request.language}")
-        
         # 1. Detectar idioma del mensaje del usuario
         detected_language = self.language_detector.detect_language(request.message)
-        print(f"🔎 Idioma detectado: {detected_language}")
-        
         # 2. Si el idioma es quechua, traducir a español para procesamiento
         query_for_processing = request.message
         original_language = request.language
         
         if detected_language == "qu" or request.language == "quechua":
-            print(f"🔄 Detectado quechua, iniciando traducción a español...")
             # Traducir consulta de quechua a español
             translation_result = await self.translation_service.translate(
                 text=request.message,
@@ -303,22 +262,15 @@ class ChatService:
                 target_lang="es"
             )
             
-            print(f"📊 Resultado de traducción: {translation_result}")
-            
             if translation_result.get("success"):
                 query_for_processing = translation_result["translated_text"]
                 original_language = "quechua"
-                print(f"✅ Traducción Quechua -> Español: {request.message} -> {query_for_processing}")
             else:
                 # Fallback: usar mensaje original si falla traducción
                 query_for_processing = request.message
                 original_language = "quechua"
-                print(f"⚠️  Traducción falló, usando mensaje original")
         
-        # 3. Gestionar sesión
-        session = await self.create_or_get_session(user_id, request.session_token)
-        
-        # 4. Determinar conversación
+        # 3. Determinar conversación
         conversation_id = request.conversation_id
         if not conversation_id:
             # Crear nueva conversación
@@ -341,10 +293,10 @@ class ChatService:
             metadata=request.context or {}
         )
         
-        saved_message = await self.add_message(conversation_id, user_message)
+        saved_message = await self.add_message(conversation_id, user_id, user_message)
         
         # 6. Obtener contexto de conversación
-        context = await self._build_conversation_context(conversation_id, original_language)
+        context = await self._build_conversation_context(conversation_id, user_id, original_language)
         
         # 7. Procesar con IA usando el pipeline existente (en español)
         from main import LegalQueryRequest
@@ -356,7 +308,6 @@ class ChatService:
             language="spanish",  # Procesar siempre en español
             context=request.context,
             conversation_id=conversation_id,
-            user_id=user_id
         )
         
         # Obtener respuesta del pipeline existente
@@ -416,10 +367,7 @@ class ChatService:
                 
                 if translation_result.get("success"):
                     assistant_content = translation_result["translated_text"]
-                    print(f"🔄 Traducción Español -> Quechua completada")
                 else:
-                    # Fallback: mantener respuesta en español si falla traducción
-                    print(f"⚠️ Error traduciendo respuesta a quechua, usando español")
                     assistant_content = assistant_content
             
             # Guardar respuesta del asistente (en idioma original del usuario)
@@ -435,31 +383,24 @@ class ChatService:
                 }
             )
             
-        except Exception as e:
-            print(f"Error procesando con IA: {e}")
+        except Exception:
             # Fallback a respuesta simple
             assistant_message = MessageCreate(
                 role="assistant",
                 content="Lo siento, no pude procesar tu consulta en este momento. Por favor, intenta nuevamente.",
                 language=original_language,
                 model_used="fallback",
-                metadata={"error": str(e)}
+                metadata={"fallback": True}
             )
         
-        assistant_response = await self.add_message(conversation_id, assistant_message)
+        assistant_response = await self.add_message(conversation_id, user_id, assistant_message)
         
         # 9. Obtener historial actualizado
-        history = await self.get_conversation_messages(conversation_id, limit=10)
-        
-        # 10. Actualizar sesión
-        session.conversation_id = conversation_id
-        session.last_activity = datetime.utcnow()
-        await self.redis.create_user_session(session.session_id, session.to_redis_format())
+        history = await self.get_conversation_messages(conversation_id, user_id, limit=10)
         
         return ChatResponse(
             success=True,
             conversation_id=conversation_id,
-            session_id=session.session_id,
             message=assistant_response,
             conversation_history=history,
             metadata={
@@ -469,9 +410,9 @@ class ChatService:
             }
         )
     
-    async def _build_conversation_context(self, conversation_id: str, language: str) -> ConversationContext:
+    async def _build_conversation_context(self, conversation_id: str, user_id: str, language: str) -> ConversationContext:
         """Construir contexto de conversación"""
-        messages = await self.get_conversation_messages(conversation_id, limit=20)
+        messages = await self.get_conversation_messages(conversation_id, user_id, limit=20)
         
         # Análisis simple del contexto (mejorar con NLP)
         all_text = " ".join([msg.content for msg in messages])
@@ -495,37 +436,14 @@ class ChatService:
             metadata={"message_count": len(messages)}
         )
     
-    # === Gestión de Sesiones ===
-    
-    async def clear_user_session(self, user_id: str, session_token: Optional[str] = None) -> bool:
-        """Limpiar/invalidar sesión de usuario activa"""
-        try:
-            # Si se proporciona session_token, eliminar esa sesión específica
-            if session_token:
-                try:
-                    await self.redis.delete_cache(f"session:{session_token}")
-                    print(f"✅ Cleared session: {session_token}")
-                    return True
-                except Exception as e:
-                    print(f"⚠️ Error clearing session {session_token}: {e}")
-                    return False
-            
-            # Si no hay session_token, intentar limpiar todas las sesiones del usuario
-            # Esto es más complejo sin un índice de sesiones por usuario
-            # Por ahora, simplemente retornamos True ya que no hay sesión específica que limpiar
-            print(f"ℹ️ No specific session token provided for user {user_id}")
-            return True
-        except Exception as e:
-            print(f"⚠️ Error in clear_user_session: {e}")
-            return False
-    
-    async def invalidate_conversation_cache(self, conversation_id: str) -> bool:
+    async def invalidate_conversation_cache(self, conversation_id: str, user_id: str) -> bool:
         """Invalidar cache de conversación específica"""
         try:
-            await self.redis.delete_cache(f"conversation:{conversation_id}")
-            return True
-        except Exception as e:
-            print(f"⚠️ Error invalidating conversation cache: {e}")
+            if not await self.get_conversation(conversation_id, user_id):
+                return False
+            return await self.redis.delete_cache(self._conversation_cache_key(user_id, conversation_id))
+        except Exception:
+            print("Conversation cache invalidation failed")
             return False
     
     # === Utilidades ===
@@ -537,7 +455,7 @@ class ChatService:
         
         if success:
             # Eliminar de cache
-            await self.redis.delete_cache(f"conversation:{conversation_id}")
+            await self.redis.delete_cache(self._conversation_cache_key(user_id, conversation_id))
         
         return success
     
@@ -553,7 +471,7 @@ class ChatService:
         if not conversation:
             return {}
         
-        messages = await self.get_conversation_messages(conversation_id)
+        messages = await self.get_conversation_messages(conversation_id, user_id)
         
         return {
             "conversation_id": conversation_id,
@@ -565,6 +483,18 @@ class ChatService:
             "duration_hours": (datetime.utcnow() - conversation.created_at).total_seconds() / 3600,
             "last_activity": conversation.updated_at
         }
+
+    async def update_conversation(
+        self, conversation_id: str, user_id: str, update_data: ConversationUpdate
+    ) -> Optional[ConversationResponse]:
+        if not await self.db.update_conversation(conversation_id, user_id, update_data):
+            return None
+        await self.redis.delete_cache(self._conversation_cache_key(user_id, conversation_id))
+        return await self.get_conversation(conversation_id, user_id)
+
+    @staticmethod
+    def _conversation_cache_key(user_id: str, conversation_id: str) -> str:
+        return f"conversation:{user_id}:{conversation_id}"
 
 
 # Instancia global del servicio

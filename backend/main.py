@@ -1,32 +1,38 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, Security
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
-from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 import json
+import logging
+import uuid
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-import traceback
+
+from utils.console import configure_console_output
 
 BASE_DIR = Path(__file__).resolve().parent
+configure_console_output()
 load_dotenv(BASE_DIR / ".env")
-
-# Rate limiting
-try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
-    from slowapi.errors import RateLimitExceeded
-
-    SLOWAPI_AVAILABLE = True
-except ImportError:
-    SLOWAPI_AVAILABLE = False
 
 # Módulos del sistema
 from config.settings import settings
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from security import (
+    Principal,
+    client_ip_key,
+    issue_session,
+    limiter,
+    principal_from_request,
+    require_principal,
+    set_session_cookie,
+    verify_admin_api_key,
+)
 from ingestion.pipeline import LegalIngestionPipeline
 from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
@@ -46,13 +52,17 @@ RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
 
-# Rate limiter
-if SLOWAPI_AVAILABLE and settings.RATE_LIMIT_ENABLED:
-    limiter = Limiter(key_func=get_remote_address)
-else:
-    limiter = None
+logger = logging.getLogger("ia_juridica.api")
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def _log_failure(event: str, error: Exception, request: Optional[Request] = None) -> None:
+    request_id = getattr(getattr(request, "state", None), "request_id", "unknown")
+    logger.error(
+        "%s request_id=%s error_type=%s",
+        event,
+        request_id,
+        type(error).__name__,
+    )
 
 
 def _get_pdf_processor(app: FastAPI):
@@ -77,23 +87,15 @@ def _get_evaluation_suite(app: FastAPI):
     return suite
 
 
-async def verify_admin_api_key(api_key: Optional[str] = Security(api_key_header)):
-    if settings.is_development():
-        return True
-    if not api_key or api_key != settings.SECRET_KEY:
-        raise HTTPException(status_code=403, detail="API key inválida")
-    return True
-
-
 # ── Modelos de request/response ────────────────────────────────────────────────
 
 
 class LegalQueryRequest(BaseModel):
-    query: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="forbid")
+    query: str = Field(..., min_length=1, max_length=8000)
     language: str = Field(default="spanish")
     context: Optional[Dict[str, Any]] = None
     conversation_id: Optional[str] = None
-    user_id: Optional[str] = None
 
 
 class PDFReportRequest(BaseModel):
@@ -106,18 +108,52 @@ def _ndjson_event(payload: Dict[str, Any]) -> str:
     return json.dumps(serializable, ensure_ascii=False) + "\n"
 
 
-def _extract_streamable_text(response_payload: Dict[str, Any], language: str) -> str:
-    if language == "quechua":
-        return str(
-            response_payload.get("respuesta_quechua")
-            or response_payload.get("quechua")
-            or ""
-        )
-    return str(
-        response_payload.get("respuesta_espanol")
-        or response_payload.get("spanish")
-        or ""
+def _extract_response_text(response_payload: Any, language: str) -> str:
+    if not isinstance(response_payload, dict):
+        return str(response_payload or "")
+
+    field_order = (
+        ("respuesta_quechua", "quechua", "respuesta_espanol", "spanish", "answer")
+        if language == "quechua"
+        else ("respuesta_espanol", "spanish", "answer", "respuesta_quechua", "quechua")
     )
+    for field in field_order:
+        value = response_payload.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
+async def _persist_assistant_response(
+    conversation_id: Optional[str],
+    owner_id: str,
+    response_payload: Any,
+    language: str,
+    metadata: Dict[str, Any],
+) -> None:
+    if not conversation_id:
+        return
+
+    content = _extract_response_text(response_payload, language)
+    if not content:
+        print("Skipping empty assistant response persistence")
+        return
+
+    try:
+        from models.chat_models import MessageCreate, MessageRole
+
+        await chat_service.add_message(
+            conversation_id=conversation_id,
+            user_id=owner_id,
+            message_data=MessageCreate(
+                content=content,
+                role=MessageRole.ASSISTANT,
+                language=language,
+                metadata=metadata,
+            ),
+        )
+    except Exception as error:
+        _log_failure("assistant_persistence_failed", error)
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
@@ -126,20 +162,24 @@ def _extract_streamable_text(response_payload: Dict[str, Any], language: str) ->
 async def lifespan(app: FastAPI):
     print("Inicializando IA Jurídica v2.1...")
 
+    configuration = settings.validate_configuration()
+    if not configuration["valid"]:
+        raise RuntimeError("Invalid configuration: " + "; ".join(configuration["issues"]))
+
     # Inicializar Redis adapter
     try:
         await redis_adapter.initialize()
         print("Redis adapter inicializado correctamente")
-    except Exception as e:
-        print(f"Error inicializando Redis: {e}")
+    except Exception:
+        print("Error inicializando Redis")
         print("Continuando sin Redis...")
     
     # Inicializar chat service
     try:
         await chat_service.initialize()
         print("Chat service inicializado correctamente")
-    except Exception as e:
-        print(f"Error inicializando chat service: {e}")
+    except Exception:
+        print("Error inicializando chat service")
         print("Continuando sin chat persistente...")
 
     if not hasattr(app.state, "rag_engine"):
@@ -199,8 +239,8 @@ async def lifespan(app: FastAPI):
     try:
         await redis_adapter.close()
         print("Redis adapter cerrado correctamente")
-    except Exception as e:
-        print(f"Error cerrando Redis: {e}")
+    except Exception:
+        print("Error cerrando Redis")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -210,11 +250,30 @@ app = FastAPI(
     description="Asistente legal especializado con RAG avanzado y validación anti-alucinación",
     version=settings.APP_VERSION,
     lifespan=lifespan,
+    docs_url="/docs" if settings.docs_enabled() else None,
+    redoc_url="/redoc" if settings.docs_enabled() else None,
+    openapi_url="/openapi.json" if settings.docs_enabled() else None,
 )
 
-if limiter is not None:
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    supplied_id = request.headers.get("X-Request-ID", "")
+    request_id = supplied_id if supplied_id.isascii() and len(supplied_id) <= 64 else uuid.uuid4().hex
+    request.state.request_id = request_id
+    try:
+        response = await call_next(request)
+    except Exception as error:
+        _log_failure("request_failed", error, request)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": request_id},
+        )
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -229,6 +288,18 @@ app.include_router(chat_router)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
+
+@app.post("/session/bootstrap")
+@limiter.limit(settings.SESSION_BOOTSTRAP_RATE_LIMIT, key_func=client_ip_key)
+async def bootstrap_session(request: Request, response: Response):
+    existing = principal_from_request(request)
+    token, principal = issue_session(existing.id if existing else None)
+    set_session_cookie(response, token, principal)
+    return {
+        "principal_id": principal.id,
+        "expires_at": datetime.fromtimestamp(principal.expires_at, timezone.utc).isoformat(),
+    }
 
 
 @app.get("/")
@@ -285,15 +356,15 @@ async def health_check():
         components["redis"] = "error"
     # ── Health check de Chat Service ──────────────────────────────────────────
     try:
-        chat_health = await chat_service.redis.health_check()
-        components["chat_service"] = chat_health.get("status", "unknown")
+        db_health = await chat_service.db.health_check()
+        components["postgresql"] = db_health.get("status", "unknown")
     except Exception:
         components["chat_service"] = "error"
 
     critical_ok = all(
         components.get(c) in ("ready", "fallback")
         for c in ("cohere", "lightrag", "pydantic_ai")
-    )
+    ) and components.get("postgresql") == "healthy"
 
     return {
         "status": "healthy" if critical_ok else "degraded",
@@ -304,35 +375,64 @@ async def health_check():
 
 
 @app.post("/upload-pdf")
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
 async def upload_pdf(
-    file: UploadFile = File(...), _auth: bool = Depends(verify_admin_api_key)
+    request: Request,
+    file: UploadFile = File(...),
+    _auth: bool = Depends(verify_admin_api_key),
 ):
     """Sube y procesa un PDF legal con Docling."""
+    raw_path: Optional[Path] = None
+    processed_path: Optional[Path] = None
     try:
-        filename = file.filename or ""
-        if not filename.endswith(".pdf"):
-            raise HTTPException(400, "Solo se permiten archivos PDF")
+        original_name = (file.filename or "upload.pdf").replace("\\", "/").rsplit("/", 1)[-1]
+        original_name = "".join(char for char in original_name if char.isprintable())[:255]
+        if Path(original_name).suffix.lower() != ".pdf":
+            raise HTTPException(400, "Only PDF files are allowed")
+        if file.content_type != "application/pdf":
+            raise HTTPException(400, "Invalid PDF media type")
 
-        file_path = RAW_PDFS_DIR / filename
-        with open(file_path, "wb") as buffer:
-            buffer.write(await file.read())
+        raw_directory = RAW_PDFS_DIR.resolve()
+        raw_directory.mkdir(parents=True, exist_ok=True)
+        server_name = f"{uuid.uuid4().hex}.pdf"
+        raw_path = (raw_directory / server_name).resolve()
+        if raw_path.parent != raw_directory:
+            raise HTTPException(400, "Invalid upload path")
+
+        total_size = 0
+        first_chunk = True
+        with raw_path.open("xb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                total_size += len(chunk)
+                if total_size > settings.MAX_FILE_SIZE:
+                    raise HTTPException(413, "PDF exceeds maximum allowed size")
+                if first_chunk:
+                    if not chunk.startswith(b"%PDF-"):
+                        raise HTTPException(400, "Invalid PDF signature")
+                    first_chunk = False
+                buffer.write(chunk)
+        if first_chunk:
+            raise HTTPException(400, "Empty PDF file")
 
         pdf_processor = _get_pdf_processor(app)
-        processed_content = await pdf_processor.process_pdf(str(file_path))
+        processed_content = await pdf_processor.process_pdf(str(raw_path))
 
-        processed_path = PROCESSED_DIR / f"{filename}.md"
-        with open(processed_path, "w", encoding="utf-8") as f:
+        processed_directory = PROCESSED_DIR.resolve()
+        processed_directory.mkdir(parents=True, exist_ok=True)
+        processed_path = processed_directory / f"{raw_path.stem}.md"
+        with processed_path.open("x", encoding="utf-8") as f:
             f.write(processed_content)
 
         await app.state.rag_engine.add_document(
             processed_content,
             {
-                "filename": filename,
-                "title": filename,
+                "filename": server_name,
+                "original_filename": original_name,
+                "title": original_name,
                 "document_type": "legal_pdf",
                 "source": "upload-pdf",
             },
-            filename,
+            server_name,
         )
 
         # Actualizar el CrossChecker con el nuevo documento [NUEVO]
@@ -343,18 +443,32 @@ async def upload_pdf(
 
         return {
             "success": True,
-            "filename": filename,
-            "processed_path": str(processed_path),
+            "filename": server_name,
+            "original_filename": original_name,
             "message": "PDF procesado correctamente con Docling",
         }
-
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"Error procesando PDF: {repr(e)}")
+    except HTTPException:
+        if raw_path:
+            raw_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        raise
+    except Exception as error:
+        if raw_path:
+            raw_path.unlink(missing_ok=True)
+        if processed_path:
+            processed_path.unlink(missing_ok=True)
+        _log_failure("pdf_upload_failed", error, request)
+        raise HTTPException(500, "PDF processing failed")
+    finally:
+        await file.close()
 
 
 @app.post("/batch-process")
-async def batch_process_pdfs(_auth: bool = Depends(verify_admin_api_key)):
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def batch_process_pdfs(
+    request: Request, _auth: bool = Depends(verify_admin_api_key)
+):
     """Procesa todos los PDFs del directorio raw_pdfs."""
     try:
         results = await app.state.ingestion_pipeline.process_all_pdfs()
@@ -364,12 +478,18 @@ async def batch_process_pdfs(_auth: bool = Depends(verify_admin_api_key)):
             "failed": results["failed_count"],
             "details": results["details"],
         }
-    except Exception as e:
-        raise HTTPException(500, f"Batch processing failed: {str(e)}")
+    except Exception as error:
+        _log_failure("batch_processing_failed", error, request)
+        raise HTTPException(500, "Batch processing failed")
 
 
 @app.post("/legal-query")
-async def legal_query(request: Request, payload: LegalQueryRequest):
+@limiter.limit(settings.LLM_RATE_LIMIT)
+async def legal_query(
+    request: Request,
+    payload: LegalQueryRequest,
+    principal: Principal = Depends(require_principal),
+):
     """
     Procesa una consulta legal con RAG + Rerank + Context Engineering
     + LLM (Cohere) + Pipeline de Validación Anti-Alucinación.
@@ -470,21 +590,25 @@ async def legal_query(request: Request, payload: LegalQueryRequest):
             **result_payload,
         }
 
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"Legal query failed: {str(e)}")
+    except Exception as error:
+        _log_failure("legal_query_failed", error, request)
+        raise HTTPException(500, "Legal query failed")
 
 
 @app.post("/legal-query-stream")
-async def legal_query_stream(payload: LegalQueryRequest):
+@limiter.limit(settings.LLM_RATE_LIMIT)
+async def legal_query_stream(
+    request: Request,
+    payload: LegalQueryRequest,
+    principal: Principal = Depends(require_principal),
+):
     """Stream NDJSON con chunks + payload final validado (1 sola llamada).
     
-    Si se proporciona conversation_id y user_id, guarda los mensajes en PostgreSQL.
+    Si se proporciona conversation_id, guarda los mensajes sólo para su propietario.
     """
     query = payload.query.strip()
     language = payload.language
     conversation_id = payload.conversation_id
-    user_id = payload.user_id or "d1d0e0f7-1b3d-43fc-875d-b6991e6c94af"
     optimizer: LLMOptimizer = app.state.llm_optimizer
     cache_key = f"{query}|{language}"
     
@@ -492,18 +616,13 @@ async def legal_query_stream(payload: LegalQueryRequest):
     from modules.language.services.language_detector import LanguageDetector
     from modules.language.services.translation_service import TranslationService
     
-    print(f"🔍 Procesando mensaje: {query[:50]}...")
-    print(f"🌐 Idioma solicitado: {language}")
-    
     detector = LanguageDetector()
     detected_language = detector.detect_language(query)
-    print(f"🔎 Idioma detectado: {detected_language}")
     
     query_for_processing = query
     original_language = language
     
     if detected_language == "qu" or language == "quechua":
-        print(f"🔄 Detectado quechua, iniciando traducción a español...")
         translation_service = TranslationService()
         translation_result = await translation_service.translate(
             text=query,
@@ -511,41 +630,49 @@ async def legal_query_stream(payload: LegalQueryRequest):
             target_lang="es"
         )
         
-        print(f"📊 Resultado de traducción: {translation_result}")
-        
         if translation_result.get("success"):
             query_for_processing = translation_result["translated_text"]
             original_language = "quechua"
-            print(f"✅ Traducción Quechua -> Español: {query} -> {query_for_processing}")
         else:
             query_for_processing = query
             original_language = "quechua"
-            print(f"⚠️  Traducción falló, usando mensaje original")
     
     # Usar query_for_processing para el cache y procesamiento
     cache_key = f"{query_for_processing}|{language}"
 
     # Guardar mensaje del usuario si se proporciona conversation_id
     if conversation_id:
+        if not await chat_service.get_conversation(conversation_id, principal.id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
         try:
             from models.chat_models import MessageCreate, MessageRole
             await chat_service.add_message(
                 conversation_id=conversation_id,
+                user_id=principal.id,
                 message_data=MessageCreate(
                     content=query,
                     role=MessageRole.USER,
                     language=language
                 )
             )
-        except Exception as e:
-            print(f"Error guardando mensaje de usuario: {e}")
-            # Continuar sin persistencia si falla
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
     cached_result = optimizer.get_cached(cache_key)
     if cached_result:
         cached_payload = cached_result if isinstance(cached_result, dict) else {}
         response_payload = jsonable_encoder(cached_payload.get("response", {}))
-        cached_text = _extract_streamable_text(response_payload, language)
+        cached_text = _extract_response_text(response_payload, language)
+        await _persist_assistant_response(
+            conversation_id,
+            principal.id,
+            response_payload,
+            language,
+            {
+                "sources": cached_payload.get("sources", []),
+                "validation": cached_payload.get("validation", {}),
+            },
+        )
 
         async def cached_stream_generator():
             if cached_text:
@@ -623,22 +750,18 @@ async def legal_query_stream(payload: LegalQueryRequest):
             
             # Traducir respuesta de español a quechua si el idioma original era quechua
             if original_language == "quechua":
-                print(f"🔄 Traduciendo respuesta de español a quechua...")
                 translation_service = TranslationService()
                 
                 # Extraer el texto de respuesta
                 if isinstance(final_response, dict):
-                    response_text = final_response.get("answer", "") or final_response.get("respuesta_espanol", "")
+                    response_text = _extract_response_text(final_response, "spanish")
                 else:
                     response_text = str(final_response)
                 
                 # Truncamiento forzado a 1000 caracteres (Google Translate maneja mejor que NLLB-200)
                 MAX_RESPONSE_LENGTH = 1000
                 if len(response_text) > MAX_RESPONSE_LENGTH:
-                    print(f"⚠️  Respuesta muy larga ({len(response_text)} chars), truncando a {MAX_RESPONSE_LENGTH}")
                     response_text = response_text[:MAX_RESPONSE_LENGTH] + "..."
-                
-                print(f"📝 Texto a traducir (longitud {len(response_text)}): {response_text[:100]}...")
                 
                 translation_result = await translation_service.translate(
                     text=response_text,
@@ -646,21 +769,14 @@ async def legal_query_stream(payload: LegalQueryRequest):
                     target_lang="qu"
                 )
                 
-                print(f"📊 Resultado de traducción: {translation_result}")
-                
                 if translation_result.get("success"):
                     translated_text = translation_result["translated_text"]
-                    print(f"✅ Texto traducido (longitud {len(translated_text)}): {translated_text[:100]}...")
                     # Actualizar la respuesta con el texto traducido
                     if isinstance(final_response, dict):
                         final_response["answer"] = translated_text
                         final_response["respuesta_quechua"] = translated_text
-                        print(f"📝 final_response['answer'] actualizado: {final_response['answer'][:100]}...")
                     else:
                         final_response = translated_text
-                    print(f"✅ Traducción Español -> Quechua completada")
-                else:
-                    print(f"⚠️  Error traduciendo respuesta a quechua, usando español")
 
             result_payload = {
                 "response": final_response,
@@ -682,23 +798,13 @@ async def legal_query_stream(payload: LegalQueryRequest):
             if validated.is_reliable:
                 optimizer.cache_response(cache_key, result_payload)
 
-            # Guardar respuesta del asistente si se proporciona conversation_id
-            if conversation_id:
-                try:
-                    # Convertir la respuesta completa a JSON para guardarla en metadata
-                    assistant_content = final_response.get("answer", "") if isinstance(final_response, dict) else str(final_response)
-                    from models.chat_models import MessageCreate, MessageRole
-                    await chat_service.add_message(
-                        conversation_id=conversation_id,
-                        message_data=MessageCreate(
-                            content=assistant_content,
-                            role=MessageRole.ASSISTANT,
-                            language=language,
-                            metadata={"sources": validated.sources, "validation": validation_meta}  # JSON serializable
-                        )
-                    )
-                except Exception as e:
-                    print(f"Error guardando mensaje de asistente: {e}")
+            await _persist_assistant_response(
+                conversation_id,
+                principal.id,
+                final_response,
+                language,
+                {"sources": validated.sources, "validation": validation_meta},
+            )
 
             yield _ndjson_event(
                 {
@@ -713,10 +819,11 @@ async def legal_query_stream(payload: LegalQueryRequest):
                 }
             )
         except Exception as stream_error:
+            _log_failure("legal_query_stream_failed", stream_error, request)
             yield _ndjson_event(
                 {
                     "type": "error",
-                    "error": f"Legal query stream failed: {str(stream_error)}",
+                    "error": "Legal query stream failed",
                 }
             )
 
@@ -731,7 +838,10 @@ async def legal_query_stream(payload: LegalQueryRequest):
 
 
 @app.post("/generate-pdf-report")
-async def generate_pdf_report(payload: PDFReportRequest):
+async def generate_pdf_report(
+    payload: PDFReportRequest,
+    principal: Principal = Depends(require_principal),
+):
     """Genera reporte PDF legal con ReportLab."""
     try:
         from utils.pdf_generator import generate_legal_pdf_bytes
@@ -750,26 +860,27 @@ async def generate_pdf_report(payload: PDFReportRequest):
             },
         )
     except ImportError:
-        return {
-            "success": False,
-            "message": "reportlab no instalado. Ejecuta: pip install reportlab",
-        }
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"PDF generation failed: {str(e)}")
+        raise HTTPException(503, "PDF generation unavailable")
+    except Exception as error:
+        _log_failure("pdf_generation_failed", error)
+        raise HTTPException(500, "PDF generation failed")
 
 
 @app.get("/knowledge-graph")
-async def get_knowledge_graph():
+async def get_knowledge_graph(_auth: bool = Depends(verify_admin_api_key)):
     try:
         graph_data = await app.state.rag_engine.get_knowledge_graph()
         return {"success": True, "graph": graph_data}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to get knowledge graph: {str(e)}")
+    except Exception as error:
+        _log_failure("knowledge_graph_read_failed", error)
+        raise HTTPException(500, "Failed to get knowledge graph")
 
 
 @app.post("/evaluate-system")
-async def evaluate_system(_auth: bool = Depends(verify_admin_api_key)):
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def evaluate_system(
+    request: Request, _auth: bool = Depends(verify_admin_api_key)
+):
     try:
         evaluation_suite = _get_evaluation_suite(app)
         if evaluation_suite is None:
@@ -778,24 +889,26 @@ async def evaluate_system(_auth: bool = Depends(verify_admin_api_key)):
         return {"success": True, "results": evaluation_results}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(500, f"Evaluation failed: {str(e)}")
+    except Exception as error:
+        _log_failure("evaluation_failed", error, request)
+        raise HTTPException(500, "Evaluation failed")
 
 
 @app.get("/documents")
-async def list_documents():
+async def list_documents(_auth: bool = Depends(verify_admin_api_key)):
     try:
         docs = await app.state.rag_engine.list_documents()
         return {"success": True, "documents": docs}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to list documents: {str(e)}")
+    except Exception as error:
+        _log_failure("document_listing_failed", error)
+        raise HTTPException(500, "Failed to list documents")
 
 
 # ── Endpoint de estadísticas de validación ────────────────────────────
 
 
 @app.get("/validation-stats")
-async def get_validation_stats():
+async def get_validation_stats(_auth: bool = Depends(verify_admin_api_key)):
     """
     Retorna estadísticas del pipeline de validación y uso del optimizador.
     Útil para monitoreo y ajuste de umbrales.
@@ -815,15 +928,16 @@ async def get_validation_stats():
                 "self_correction_retries": app.state.response_validator.config.max_self_correction_retries,
             },
         }
-    except Exception as e:
-        raise HTTPException(500, f"Stats failed: {str(e)}")
+    except Exception as error:
+        _log_failure("validation_stats_failed", error)
+        raise HTTPException(500, "Stats failed")
 
 
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.is_development(),
         log_level="info",
     )

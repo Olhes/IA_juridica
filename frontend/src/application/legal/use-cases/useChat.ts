@@ -96,7 +96,10 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
   const checkHealth = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(4000) });
+      const res = await fetch(`${API_BASE}/health`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(4000),
+      });
       const data = (await res.json()) as { status?: string };
       setIsOnline(data.status === 'healthy');
     } catch {
@@ -153,18 +156,14 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       let gotFinalPayload = false;
       let finalPayload: LegalQueryApiResponse | null = null;
       try {
-        // Intentar obtener conversation_id del backend si existe
-        let conversationId = sessionId;
-        let userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af';
-
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: query.trim(),
             language,
-            conversation_id: conversationId,
-            user_id: userId
+            conversation_id: sessionId,
           }),
           signal: controller.signal,
         });
@@ -317,6 +316,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     try {
       const res = await fetch(`${API_BASE}/generate-pdf-report`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: msg.apiResponse.query,

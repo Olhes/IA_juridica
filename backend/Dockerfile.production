@@ -1,0 +1,52 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_CACHE_DIR=/tmp/uv-cache \
+    PORT=8000 \
+    WORKERS=1
+
+WORKDIR /app
+
+# System build deps + uv
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        libgomp1 \
+        libglib2.0-0 \
+        libgl1 \
+    && pip install --no-cache-dir uv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies first for layer caching
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --frozen --no-dev --no-cache --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Non-root user
+RUN useradd --create-home appuser
+
+# Copy backend source
+COPY --chown=appuser:appuser backend /app/backend
+
+# Copy prebuilt knowledge graph from repo root into backend path used at runtime
+# (application resolves ./docs/knowledge_graph relative to WORKDIR /app/backend)
+COPY --chown=appuser:appuser docs/knowledge_graph /app/backend/docs/knowledge_graph
+
+# Runtime directories
+RUN install -d -o appuser -g appuser \
+        /app/backend/docs/raw_pdfs \
+        /app/backend/docs/failed \
+        /app/backend/logs \
+        /app/backend/temp/pdfs
+
+USER appuser
+WORKDIR /app/backend
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
+
+# Railway/Render/Fly inject PORT; default to 8000 for local compose.
+# Single worker to avoid duplicating KG/caches in memory for the MVP.
+CMD ["/bin/sh", "-c", "exec /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS}"]
