@@ -15,9 +15,8 @@ logs
 backend/logs
 
 backend/docs/raw_pdfs
-backend/docs/processed
-backend/docs/knowledge_graph
 backend/docs/failed
+backend/docs/knowledge_graph
 
 .env
 .env.local

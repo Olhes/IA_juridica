@@ -3,7 +3,7 @@ Modelos de datos para el sistema de chat persistente
 IA Jurídica - Conversaciones con Redis + PostgreSQL
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -63,7 +63,7 @@ class ConversationBase(BaseModel):
 
 class ConversationCreate(ConversationBase):
     """Modelo para crear conversaciones"""
-    user_id: str
+    model_config = ConfigDict(extra="forbid")
     initial_message: Optional[str] = None
 
 
@@ -102,10 +102,10 @@ class ChatSession(BaseModel):
 
 class ChatRequest(BaseModel):
     """Request para endpoint de chat"""
-    message: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(..., min_length=1, max_length=8000)
     conversation_id: Optional[str] = None
     language: str = "spanish"
-    session_token: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
 
 
@@ -113,7 +113,6 @@ class ChatResponse(BaseModel):
     """Response para endpoint de chat"""
     success: bool
     conversation_id: str
-    session_id: str
     message: MessageResponse
     conversation_history: List[MessageResponse]
     metadata: Dict[str, Any] = Field(default_factory=dict)

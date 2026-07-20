@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
+    ANONYMOUS_SESSION_SECRET: str = "local-development-session-secret-change-me"
+    ANONYMOUS_SESSION_COOKIE_NAME: str = "ia_juridica_session"
+    ANONYMOUS_SESSION_COOKIE_DOMAIN: Optional[str] = None
+    ANONYMOUS_SESSION_COOKIE_SAMESITE: str = "lax"
+    ANONYMOUS_SESSION_COOKIE_SECURE: bool = False
+    ANONYMOUS_SESSION_TTL_DAYS: int = 30
+    ADMIN_ENDPOINTS_ENABLED: bool = False
+    ADMIN_API_KEY: Optional[str] = None
+    API_DOCS_ENABLED: Optional[bool] = None
     
     # Configuración de Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
@@ -110,12 +119,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = 900
     RATE_LIMIT_WINDOW_MS: int = 900000
     RATE_LIMIT_MAX_REQUESTS: int = 100
+    RATE_LIMIT_STORAGE_URI: str = "memory://"
+    LLM_RATE_LIMIT: str = "10/minute"
+    CONVERSATION_CREATE_RATE_LIMIT: str = "20/hour"
+    ADMIN_RATE_LIMIT: str = "5/hour"
+    SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: List[str] = ["*"]
-    CORS_ALLOW_HEADERS: List[str] = ["*"]
+    CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID"]
     
     # Configuración de Archivos
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
@@ -167,6 +181,14 @@ class Settings(BaseSettings):
     
     def is_production(self) -> bool:
         return not self.is_development()
+
+    def docs_enabled(self) -> bool:
+        if self.API_DOCS_ENABLED is not None:
+            return self.API_DOCS_ENABLED
+        return self.is_development()
+
+    def session_cookie_secure(self) -> bool:
+        return self.is_production() or self.ANONYMOUS_SESSION_COOKIE_SECURE
     
     def get_openai_config(self) -> dict:
         """Configuración OpenAI (legacy)"""
@@ -211,8 +233,29 @@ class Settings(BaseSettings):
         if not self.OPENAI_API_KEY:
             warnings.append("OPENAI_API_KEY no está configurada (legacy, opcional)")
         
-        if self.SECRET_KEY == "your-secret-key-change-in-production" and self.is_production():
-            issues.append("SECRET_KEY debe ser cambiada en producción")
+        if self.is_production():
+            if (
+                len(self.ANONYMOUS_SESSION_SECRET.encode("utf-8")) < 32
+                or self.ANONYMOUS_SESSION_SECRET == "local-development-session-secret-change-me"
+            ):
+                issues.append("ANONYMOUS_SESSION_SECRET debe ser aleatorio y tener al menos 32 bytes en producción")
+            if not self.session_cookie_secure():
+                issues.append("La cookie anónima debe usar Secure en producción")
+            if "*" in self.CORS_ORIGINS or not self.CORS_ORIGINS:
+                issues.append("CORS_ORIGINS debe enumerar orígenes explícitos en producción")
+            if "*" in self.CORS_ALLOW_METHODS or "*" in self.CORS_ALLOW_HEADERS:
+                issues.append("CORS methods/headers no pueden usar wildcard en producción")
+            if self.RATE_LIMIT_ENABLED and self.RATE_LIMIT_STORAGE_URI == "memory://":
+                issues.append("RATE_LIMIT_STORAGE_URI debe ser compartido entre workers en producción")
+            if not self.DATABASE_PASSWORD and not os.getenv("DATABASE_URL"):
+                issues.append("DATABASE_PASSWORD o DATABASE_URL es obligatorio en producción")
+
+        if self.ANONYMOUS_SESSION_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+            issues.append("ANONYMOUS_SESSION_COOKIE_SAMESITE debe ser lax, strict o none")
+        if self.ANONYMOUS_SESSION_COOKIE_SAMESITE == "none" and not self.session_cookie_secure():
+            issues.append("SameSite=None requiere Secure")
+        if self.ADMIN_ENDPOINTS_ENABLED and not self.ADMIN_API_KEY:
+            issues.append("ADMIN_API_KEY es obligatoria cuando los endpoints admin están habilitados")
         
         if self.EMBEDDING_DIM != 1024:
             warnings.append(f"EMBEDDING_DIM es {self.EMBEDDING_DIM}, se esperan 1024 para Cohere embed-multilingual-v3.0")

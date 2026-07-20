@@ -8,7 +8,6 @@ import type { Conversation as BackendConversation, Message as BackendMessage } f
 interface UsePersistentChatOptions {
   conversationId?: string;
   language: SupportedLanguage;
-  userId?: string;
   onConversationUpdated?: (conversation: BackendConversation) => void;
 }
 
@@ -41,7 +40,6 @@ interface ChatState {
 export function usePersistentChat({
   conversationId,
   language = 'spanish',
-  userId = 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af',
   onConversationUpdated
 }: UsePersistentChatOptions) {
   const [state, setState] = useState<ChatState>({
@@ -51,8 +49,6 @@ export function usePersistentChat({
     isOnline: false,
     error: null
   });
-
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // ── Cargar conversación ─────────────────────────────────────────────
   const loadConversation = useCallback(async () => {
@@ -101,17 +97,11 @@ export function usePersistentChat({
       const response = await apiService.sendChatMessage(
         content.trim(),
         conversationId,
-        language,
-        currentSessionId || undefined
+        language
       );
 
       if (response.success && response.data) {
-        const { message, conversation_history, conversation_id, session_id } = response.data;
-        
-        // Actualizar sesión
-        if (session_id && session_id !== currentSessionId) {
-          setCurrentSessionId(session_id);
-        }
+        const { message, conversation_history, conversation_id } = response.data;
 
         // Si es una nueva conversación, actualizar el ID
         const finalConversationId = conversation_id || conversationId;
@@ -130,7 +120,6 @@ export function usePersistentChat({
         return {
           success: true,
           conversationId: finalConversationId,
-          sessionId: session_id,
           message
         };
       } else {
@@ -150,7 +139,7 @@ export function usePersistentChat({
       }));
       return { success: false, error: errorMessage };
     }
-  }, [conversationId, language, currentSessionId, state.isLoading, onConversationUpdated]);
+  }, [conversationId, language, state.isLoading, onConversationUpdated]);
 
   // ── Continuar conversación existente ───────────────────────────────
   const continueConversation = useCallback(async (content: string) => {
@@ -185,7 +174,7 @@ export function usePersistentChat({
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await apiService.createConversation(language, title, userId);
+      const response = await apiService.createConversation(language, title);
 
       if (response.success && response.data) {
         const newConversation = response.data;
@@ -213,7 +202,7 @@ export function usePersistentChat({
       }));
       return null;
     }
-  }, [language, userId, onConversationUpdated]);
+  }, [language, onConversationUpdated]);
 
   // ── Health check ───────────────────────────────────────────────────
   const checkHealth = useCallback(async () => {
@@ -241,7 +230,6 @@ export function usePersistentChat({
       isOnline: false,
       error: null
     });
-    setCurrentSessionId(null);
   }, []);
 
   // ── Effects ───────────────────────────────────────────────────────
@@ -270,7 +258,6 @@ export function usePersistentChat({
     resetChat,
     
     // Metadatos
-    currentSessionId,
     conversationId: state.conversation?.id || conversationId,
     messageCount: state.messages.length,
     hasMessages: state.messages.length > 0

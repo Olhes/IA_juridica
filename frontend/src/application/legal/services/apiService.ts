@@ -11,6 +11,7 @@ export interface Conversation {
   title?: string;
   created_at: string;
   updated_at?: string;
+  message_count?: number;
 }
 
 export interface Message {
@@ -40,6 +41,7 @@ export interface ApiResponse<T = any> {
 
 class ApiService {
   private baseUrl: string;
+  private sessionBootstrap: Promise<void> | null = null;
 
   constructor(baseUrl: string = API_BASE) {
     this.baseUrl = baseUrl;
@@ -47,11 +49,14 @@ class ApiService {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    logErrors = true
   ): Promise<ApiResponse<T>> {
     try {
+      await this.initializeSession();
       const url = `${this.baseUrl}${endpoint}`;
       const response = await fetch(url, {
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
@@ -67,7 +72,9 @@ class ApiService {
       const data = await response.json();
       return { success: true, data };
     } catch (error) {
-      console.error(`API Error [${endpoint}]:`, error);
+      if (logErrors) {
+        console.error(`API Error [${endpoint}]:`, error);
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -75,15 +82,26 @@ class ApiService {
     }
   }
 
+  async initializeSession(): Promise<void> {
+    if (!this.sessionBootstrap) {
+      this.sessionBootstrap = fetch(`${this.baseUrl}/session/bootstrap`, {
+        method: 'POST',
+        credentials: 'include',
+      }).then((response) => {
+        if (!response.ok) throw new Error('Unable to initialize anonymous session');
+      }).catch((error) => {
+        this.sessionBootstrap = null;
+        throw error;
+      });
+    }
+    return this.sessionBootstrap;
+  }
+
   // ── Conversaciones ────────────────────────────────────────────────
-  async createConversation(language: string, title?: string, userId?: string): Promise<ApiResponse<Conversation>> {
+  async createConversation(language: string, title?: string): Promise<ApiResponse<Conversation>> {
     return this.request<Conversation>('/chat/conversations', {
       method: 'POST',
-      body: JSON.stringify({ 
-        user_id: userId || 'd1d0e0f7-1b3d-43fc-875d-b6991e6c94af',
-        language, 
-        title 
-      }),
+      body: JSON.stringify({ language, title }),
     });
   }
 
@@ -101,7 +119,7 @@ class ApiService {
     total_count: number;
     active_count: number;
   }>> {
-    return this.request(`/chat/conversations?limit=${limit}&active_only=${activeOnly}`);
+    return this.request(`/chat/conversations?limit=${limit}&active_only=${activeOnly}`, {}, false);
   }
 
   async updateConversation(conversationId: string, updates: {
@@ -148,12 +166,10 @@ class ApiService {
     message: string,
     conversationId?: string,
     language: string = 'spanish',
-    sessionToken?: string,
     context?: Record<string, any>
   ): Promise<ApiResponse<{
     success: boolean;
     conversation_id: string;
-    session_id: string;
     message: Message;
     conversation_history: Message[];
     metadata: Record<string, any>;
@@ -164,7 +180,6 @@ class ApiService {
         message,
         conversation_id: conversationId,
         language,
-        session_token: sessionToken,
         context,
       }),
     });
@@ -231,32 +246,6 @@ class ApiService {
     timestamp: string;
   }>> {
     return this.request('/chat/health');
-  }
-
-  async getSessionInfo(sessionId: string): Promise<ApiResponse<{
-    success: boolean;
-    session: {
-      session_id: string;
-      user_id: string;
-      conversation_id?: string;
-      language_preferences: Record<string, string>;
-      cultural_profile: Record<string, any>;
-      last_activity: string;
-      expires_at: string;
-      is_active: boolean;
-    };
-  }>> {
-    return this.request(`/chat/sessions/${sessionId}`);
-  }
-
-  async clearSession(sessionToken?: string): Promise<ApiResponse<{
-    success: boolean;
-    message: string;
-  }>> {
-    const url = sessionToken ? `/chat/clear-session?session_token=${encodeURIComponent(sessionToken)}` : '/chat/clear-session';
-    return this.request(url, {
-      method: 'POST',
-    });
   }
 
   async invalidateConversationCache(conversationId: string): Promise<ApiResponse<{
