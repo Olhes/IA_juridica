@@ -80,3 +80,6 @@ exclude = [
 
 [tool.setuptools.package-data]
 backend = ["**/*.yaml", "**/*.yml", "**/*.json", "**/*.md", "**/*.txt"]
+
+[tool.vercel]
+entrypoint = "backend.main:app"
