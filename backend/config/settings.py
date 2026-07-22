@@ -137,9 +137,7 @@ class Settings(BaseSettings):
     
     # Configuración de Traducción
     TRANSLATION_ENABLED: bool = True
-    TRANSLATION_METHOD: str = "google_translate"  # "google_translate" o "nllb"
-    NLLB_MODEL: str = "facebook/nllb-200-distilled-600M"  # Descontinuado para quechua (genera repeticiones)
-    QUEEN_MODEL: Optional[str] = None
+    TRANSLATION_METHOD: str = "google_translate"
     
     # Configuración de Monitoreo
     OPIK_ENABLED: bool = False

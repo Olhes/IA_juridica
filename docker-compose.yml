@@ -14,7 +14,6 @@ services:
       - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/database/init_multi_schema_simple.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - ia_juridica_network
     restart: unless-stopped
@@ -40,25 +39,19 @@ services:
       timeout: 3s
       retries: 5
 
-  weaviate:
-    image: semitechnologies/weaviate:1.26.1
-    container_name: ia_juridica_weaviate
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: ia_juridica_qdrant
     ports:
-      - "127.0.0.1:8080:8080"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      ENABLE_MODULES: 'text2vec-cohere'
-      CLUSTER_HOSTNAME: 'node1'
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - qdrant_data:/qdrant/storage
     networks:
       - ia_juridica_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/.well-known/ready || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -66,7 +59,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  weaviate_data:
+  qdrant_data:
 
 networks:
   ia_juridica_network:

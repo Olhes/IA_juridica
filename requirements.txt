@@ -43,10 +43,7 @@ loguru==0.7.3
 tqdm==4.67.3
 rich==14.3.2
 click==8.2.2
-
-# Optional: local translation / embeddings (pesado)
-transformers==5.1.0
-sentence-transformers==5.2.2
+googletrans>=4.0.2
 
 # Dev
 pytest==9.0.2

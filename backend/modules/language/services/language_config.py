@@ -56,13 +56,6 @@ class LanguageConfig:
     DETECTION_CONFIDENCE_THRESHOLD = 0.7
     MIN_TEXT_LENGTH_FOR_DETECTION = 10
     
-    # Configuración de traducción
-    TRANSLATION_MODELS = {
-        "nllb": "facebook/nllb-200-distilled-600M",
-        "opus": "Helsinki-NLP/opus-mt-es-qu",
-        "custom": "models/quechua-translation-v1"
-    }
-    
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path
         self.custom_config = self._load_custom_config()

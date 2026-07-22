@@ -7,12 +7,8 @@ from typing import Dict, List, Optional, Tuple, Any
 import asyncio
 from loguru import logger
 
-try:
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    logger.warning("transformers no disponible. Usando implementación simulada.")
-    TRANSFORMERS_AVAILABLE = False
+# Transformers eliminado para evitar descargas de modelos pesados en producción
+TRANSFORMERS_AVAILABLE = False
 
 try:
     from googletrans import Translator
@@ -72,63 +68,17 @@ class TranslationService:
         logger.info(f"⚙️  TRANSLATION_ENABLED: {settings.TRANSLATION_ENABLED}")
         logger.info(f"⚙️  TRANSLATION_METHOD: {settings.TRANSLATION_METHOD}")
         
-        if TRANSFORMERS_AVAILABLE and settings.TRANSLATION_ENABLED and settings.TRANSLATION_METHOD == "nllb":
-            logger.info("🚀 Inicializando modelos de traducción NLLB...")
-            self._initialize_translation_models()
-        elif settings.TRANSLATION_METHOD == "google_translate":
+        if settings.TRANSLATION_METHOD == "google_translate":
             logger.info("🌐 Usando Google Translate como método de traducción principal")
         elif not settings.TRANSLATION_ENABLED:
             logger.warning("⚠️  Traducción deshabilitada (TRANSLATION_ENABLED=false)")
         else:
-            logger.warning("⚠️  Transformers no disponible, usando traducción basada en reglas")
+            logger.warning("⚠️  Método de traducción no soportado, usando Google Translate")
         
         TranslationService._initialized = True
         logger.info("✅ TranslationService inicializado (Singleton)")
     
-    def _initialize_translation_models(self):
-        """Inicializa modelos de traducción"""
-        try:
-            # Modelo NLLB para traducción general
-            nllb_model = self.config.TRANSLATION_MODELS.get("nllb")
-            logger.info(f"📥 Cargando modelo NLLB: {nllb_model}")
-            
-            # Configurar directorio de cache local para evitar errores de ruta
-            import os
-            from pathlib import Path
-            
-            # Usar directorio cache en el proyecto
-            cache_dir = Path(__file__).parent.parent.parent / "models" / "transformers_cache"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"💾 Cache directory: {cache_dir}")
-            
-            if nllb_model:
-                logger.info("⏳ Descargando tokenizer y modelo (puede tardar varios minutos)...")
-                self.translation_models["nllb"] = {
-                    "tokenizer": AutoTokenizer.from_pretrained(nllb_model, cache_dir=str(cache_dir)),
-                    "model": AutoModelForSeq2SeqLM.from_pretrained(nllb_model, cache_dir=str(cache_dir))
-                }
-                logger.info("✅ Modelo NLLB cargado exitosamente")
-            else:
-                logger.warning("⚠️  No se encontró configuración del modelo NLLB")
-            
-            # Crear pipelines
-            for model_name, model_data in self.translation_models.items():
-                logger.info(f"🔧 Creando pipeline para {model_name}...")
-                self.translation_pipelines[model_name] = pipeline(
-                    "translation",
-                    model=model_data["model"],
-                    tokenizer=model_data["tokenizer"],
-                    max_length=1024,  # Aumentar max_length para traducciones largas
-                    device="cpu"
-                )
-                logger.info(f"✅ Pipeline {model_name} creado (max_length=1024)")
-            
-            logger.info(f"📊 Modelos disponibles: {list(self.translation_pipelines.keys())}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error inicializando modelos de traducción: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+    # Método _initialize_translation_models eliminado - no se usan modelos pesados en producción
     
     async def translate(self, text: str, source_lang: str, target_lang: str, 
                        model: str = "nllb") -> Dict[str, Any]:
@@ -166,16 +116,9 @@ class TranslationService:
                 logger.debug("Traducción encontrada en cache")
                 return self.translation_cache[cache_key]
             
-            # Priorizar Google Translate para quechua (evita repeticiones de NLLB-200)
-            if target_lang in ["qu", "quy", "quz", "qul"] and self.google_translate_available:
-                logger.info("🌐 Usando Google Translate para quechua (mejor calidad que NLLB-200)")
+            # Usar Google Translate como método principal
+            if self.google_translate_available:
                 result = await self._translate_with_google(text, source_lang, target_lang)
-            # Usar modelo NLLB para otros idiomas
-            elif TRANSFORMERS_AVAILABLE and model in self.translation_pipelines:
-                result = await self._translate_with_model(text, source_lang, target_lang, model)
-                if original_length > MAX_TEXT_LENGTH:
-                    result["truncated"] = True
-                    result["original_length"] = original_length
             else:
                 result = await self._translate_with_rules(text, source_lang, target_lang)
             
@@ -197,42 +140,7 @@ class TranslationService:
         supported_pairs = self.config.get_translation_pairs()
         return (source_lang, target_lang) in supported_pairs
     
-    async def _translate_with_model(self, text: str, source_lang: str, target_lang: str, 
-                                  model: str) -> Dict[str, Any]:
-        """Usa modelo de transformers para traducción"""
-        try:
-            # Mapear códigos de idioma a códigos de modelo
-            # Usar Quechua Southern (quy_Latn) que tiene mejor soporte en NLLB-200
-            lang_mapping = {
-                "es": "spa_Latn",
-                "qu": "quy_Latn",  # Quechua Southern (mejor soporte en NLLB-200)
-                "quy": "quy_Latn",  # Quechua Southern
-                "quz": "quz_Latn",  # Quechua Cuzqueño
-                "qul": "quy_Latn",  # Mapear a Southern por mejor soporte
-                "ay": "ayr_Latn"
-            }
-            
-            source_code = lang_mapping.get(source_lang, source_lang)
-            target_code = lang_mapping.get(target_lang, target_lang)
-            
-            # Realizar traducción
-            pipeline = self.translation_pipelines[model]
-            result = pipeline(text, src_lang=source_code, tgt_lang=target_code)
-            
-            return {
-                "success": True,
-                "translated_text": result[0]["translation_text"],
-                "source_language": source_lang,
-                "target_language": target_lang,
-                "model_used": model,
-                "confidence": 0.85,  # Estimación
-                "method": "model"
-            }
-            
-        except Exception as e:
-            logger.error(f"Error en traducción con modelo: {str(e)}")
-            # Fallback a traducción basada en reglas
-            return await self._translate_with_rules(text, source_lang, target_lang)
+    # Método _translate_with_model eliminado - no se usan modelos pesados en producción
     
     async def _translate_with_google(self, text: str, source_lang: str, target_lang: str) -> Dict[str, Any]:
         """Usa Google Translate API para traducción"""
@@ -268,9 +176,6 @@ class TranslationService:
             
         except Exception as e:
             logger.error(f"Error en traducción con Google Translate: {str(e)}")
-            # Fallback a traducción con modelo NLLB
-            if TRANSFORMERS_AVAILABLE and "nllb" in self.translation_pipelines:
-                return await self._translate_with_model(text, source_lang, target_lang, "nllb")
             # Fallback a reglas
             return await self._translate_with_rules(text, source_lang, target_lang)
     
@@ -721,12 +626,13 @@ class TranslationService:
     def get_translation_stats(self) -> Dict[str, Any]:
         """Obtiene estadísticas del servicio de traducción"""
         return {
-            "models_loaded": list(self.translation_models.keys()),
-            "pipelines_available": list(self.translation_pipelines.keys()),
+            "models_loaded": [],
+            "pipelines_available": [],
             "cache_size": len(self.translation_cache),
             "supported_pairs": self.config.get_translation_pairs(),
             "transformers_available": TRANSFORMERS_AVAILABLE,
-            "default_model": "nllb" if TRANSFORMERS_AVAILABLE else "rules"
+            "default_model": "google_translate",
+            "google_translate_available": self.google_translate_available
         }
     
     def clear_cache(self):

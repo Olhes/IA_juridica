@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: ia-juridica-backend
+    env: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile.production
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: WORKERS
+        value: 1
+      - key: COHERE_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: NEO4J_DATABASE
+        sync: false
+      - key: NEO4J_ENABLED
+        value: "true"
+      - key: QDRANT_URL
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ANONYMOUS_SESSION_SECRET
+        generateValue: true
