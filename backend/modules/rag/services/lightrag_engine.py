@@ -58,15 +58,21 @@ class LegalRAGEngine:
     
     def __init__(self, working_dir: str = "./docs/knowledge_graph"):
         self.working_dir = Path(working_dir)
-        self.working_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Solo crear directorio si LOAD_LOCAL_KG está habilitado
+        if settings.LOAD_LOCAL_KG:
+            self.working_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            logger.info("LOAD_LOCAL_KG=false, no se cargará grafo local (usando Neo4j Aura)")
     
         self.documents = {}
         self.embeddings = {}
         self.rag = None
         self._storages_initialized = False
         
-        # Cargar documentos persistidos del disco
-        self._load_documents_from_disk()
+        # Cargar documentos persistidos del disco solo si LOAD_LOCAL_KG está habilitado
+        if settings.LOAD_LOCAL_KG:
+            self._load_documents_from_disk()
         
         # Inicializar cliente Cohere
         self.cohere_client = None

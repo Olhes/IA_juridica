@@ -28,9 +28,8 @@ RUN useradd --create-home appuser
 # Copy backend source
 COPY --chown=appuser:appuser backend /app/backend
 
-# Copy prebuilt knowledge graph from repo root into backend path used at runtime
-# (application resolves ./docs/knowledge_graph relative to WORKDIR /app/backend)
-COPY --chown=appuser:appuser docs/knowledge_graph /app/backend/docs/knowledge_graph
+# Knowledge graph NO se copia en producción - se usa Neo4j Aura
+# El grafo local pesa ~140MB y excede el límite de 512MB de Render free tier
 
 # Runtime directories
 RUN install -d -o appuser -g appuser \
