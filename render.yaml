@@ -13,7 +13,7 @@ services:
       - key: COHERE_API_KEY
         sync: false
       - key: DATABASE_URL
-        sync: false
+        value: postgresql://ia_juridica_db_user:V349UCtHF7KQeSC59qqvIgzv4iG4uwgT@dpg-d9g4kimrnols73a23em0-a/ia_juridica_db
       - key: REDIS_URL
         sync: false
       - key: NEO4J_URI
@@ -26,6 +26,8 @@ services:
         sync: false
       - key: NEO4J_ENABLED
         value: "true"
+      - key: LOAD_LOCAL_KG
+        value: "false"
       - key: QDRANT_URL
         sync: false
       - key: ENVIRONMENT
