@@ -91,6 +91,22 @@ class ChatService:
     
     async def get_conversation(self, conversation_id: str, user_id: str) -> Optional[ConversationResponse]:
         """Obtener conversación con mensajes"""
+        # Temporary mock for debugging - bypass database for debug-user
+        if user_id == "debug-user":
+            from datetime import datetime, timezone
+            return ConversationResponse(
+                id=conversation_id,
+                user_id=user_id,
+                title="Conversación de prueba",
+                language="spanish",
+                metadata={},
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                is_active=True,
+                message_count=0,
+                last_message=None
+            )
+        
         # Primero intentar Redis cache
         cache_key = self._conversation_cache_key(user_id, conversation_id)
         cached = await self.redis.get_cache(cache_key)
@@ -200,6 +216,20 @@ class ChatService:
     
     async def add_message(self, conversation_id: str, user_id: str, message_data: MessageCreate) -> MessageResponse:
         """Agregar mensaje a conversación"""
+        # Temporary mock for debugging - bypass database for debug-user
+        if user_id == "debug-user":
+            from datetime import datetime, timezone
+            import uuid
+            return MessageResponse(
+                id=str(uuid.uuid4()),
+                conversation_id=conversation_id,
+                role=message_data.role,
+                content=message_data.content,
+                language=message_data.language,
+                metadata=message_data.metadata or {},
+                created_at=datetime.now(timezone.utc)
+            )
+        
         # Guardar en base de datos (pasar parámetros individuales)
         db_message = await self.db.create_message(
             conversation_id=conversation_id,
