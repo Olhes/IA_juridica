@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 30
     ANONYMOUS_SESSION_SECRET: str = "local-development-session-secret-change-me"
     ANONYMOUS_SESSION_COOKIE_NAME: str = "ia_juridica_session"
-    ANONYMOUS_SESSION_COOKIE_DOMAIN: Optional[str] = None
+    ANONYMOUS_SESSION_COOKIE_DOMAIN: Optional[str] = ".onrender.com" if ENVIRONMENT == "production" else None
     ANONYMOUS_SESSION_COOKIE_SAMESITE: str = "none" if ENVIRONMENT == "production" else "lax"
     ANONYMOUS_SESSION_COOKIE_SECURE: bool = ENVIRONMENT == "production"
     ANONYMOUS_SESSION_TTL_DAYS: int = 30
