@@ -153,13 +153,26 @@ class PostgreSQLAdapter:
         def create_sync():
             with self.conn.cursor() as cursor:
                 try:
-                    # For debugging: create user if it doesn't exist
+                    # For debugging: create user if it doesn't exist and get UUID
+                    actual_user_id = user_id
                     if user_id == "debug-user":
                         cursor.execute("""
                             INSERT INTO auth_schema.users (id, email, username, role)
                             VALUES (gen_random_uuid(), 'debug@local', 'debug-user', 'user')
                             ON CONFLICT (username) DO NOTHING
+                            RETURNING id
                         """)
+                        result = cursor.fetchone()
+                        if result:
+                            actual_user_id = str(result[0])
+                        else:
+                            # User already exists, get its UUID
+                            cursor.execute("""
+                                SELECT id FROM auth_schema.users WHERE username = 'debug-user'
+                            """)
+                            result = cursor.fetchone()
+                            if result:
+                                actual_user_id = str(result[0])
                         self.conn.commit()
                     
                     # Insertar conversación en conversations_schema
@@ -167,7 +180,7 @@ class PostgreSQLAdapter:
                         INSERT INTO conversations_schema.conversations (user_id, title, language)
                         VALUES (%s, %s, %s)
                         RETURNING id, user_id, title, language, created_at
-                    """, (user_id, title or f"Conversación en {language}", language))
+                    """, (actual_user_id, title or f"Conversación en {language}", language))
                     
                     result = cursor.fetchone()
                     self.conn.commit()
