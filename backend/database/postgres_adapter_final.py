@@ -34,29 +34,43 @@ class PostgreSQLAdapter:
                 loop = asyncio.get_event_loop()
                 
                 def connect_sync():
-                    # Usar juridica_user con trust auth (sin contraseña)
-                    actual_user = "juridica_user"
-                    
-                    print(f"  🔧 Usando usuario: {actual_user} (trust auth)")
-                    
-                    try:
-                        conn = psycopg.connect(
-                            host=settings.DATABASE_HOST or "localhost",
-                            port=5433,  # Puerto del container Docker (evita conflicto con PostgreSQL local)
-                            dbname=settings.DATABASE_NAME or "juridica_db",
-                            user=actual_user,
-                            password="",
-                            connect_timeout=10
-                        )
-                        # Configurar search path para usar múltiples schemas
-                        with conn.cursor() as cursor:
-                            cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
-                            conn.commit()
-                        print(f"  ✅ Conexión exitosa para: {actual_user}")
-                        return conn
-                    except Exception:
-                        print("  PostgreSQL connection failed")
-                        raise
+                    # En producción usar DATABASE_URL, en desarrollo usar configuración local
+                    if settings.ENVIRONMENT == "production" and settings.DATABASE_URL:
+                        print(f"  🔧 Usando DATABASE_URL (producción)")
+                        try:
+                            conn = psycopg.connect(settings.DATABASE_URL, connect_timeout=10)
+                            # Configurar search path para usar múltiples schemas
+                            with conn.cursor() as cursor:
+                                cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
+                                conn.commit()
+                            print(f"  ✅ Conexión exitosa via DATABASE_URL")
+                            return conn
+                        except Exception as e:
+                            print(f"  Error conectando via DATABASE_URL: {e}")
+                            raise
+                    else:
+                        # Desarrollo local: configuración Docker
+                        actual_user = "juridica_user"
+                        print(f"  🔧 Usando configuración local: {actual_user} (trust auth)")
+                        
+                        try:
+                            conn = psycopg.connect(
+                                host=settings.DATABASE_HOST or "localhost",
+                                port=5433,  # Puerto del container Docker (evita conflicto con PostgreSQL local)
+                                dbname=settings.DATABASE_NAME or "juridica_db",
+                                user=actual_user,
+                                password="",
+                                connect_timeout=10
+                            )
+                            # Configurar search path para usar múltiples schemas
+                            with conn.cursor() as cursor:
+                                cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
+                                conn.commit()
+                            print(f"  ✅ Conexión exitosa para: {actual_user}")
+                            return conn
+                        except Exception:
+                            print("  PostgreSQL connection failed")
+                            raise
                 
                 self.conn = await loop.run_in_executor(None, connect_sync)
                 

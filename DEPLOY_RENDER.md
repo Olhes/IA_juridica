@@ -1,6 +1,17 @@
 # Guía de部署 en Render
 
-## Requisitos Previos
+## Requisitos de Memoria
+
+**Free Tier (512MB RAM):**
+- El knowledge graph local (~140MB) NO se carga en producción
+- Se usa Neo4j Aura para almacenamiento del grafo
+- Configuración: `LOAD_LOCAL_KG=false`
+- Uso estimado: ~200-300MB (dependencias + runtime)
+
+**Si necesitas cargar el grafo local:**
+- Requiere upgrade a plan Standard (1GB RAM) o superior
+- Configurar: `LOAD_LOCAL_KG=true`
+- El grafo local pesa ~140MB en disco
 
 1. Cuenta en [Render](https://render.com)
 2. Repositorio en GitHub con el código del proyecto
