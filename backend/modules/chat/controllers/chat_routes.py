@@ -58,7 +58,18 @@ async def get_user_conversations(
     # Convert string to bool if needed
     if isinstance(active_only, str):
         active_only = active_only.lower() in ('true', '1', 'yes')
-    conversations = await chat_service.get_user_conversations(principal_id, limit)
+    
+    try:
+        conversations = await chat_service.get_user_conversations(principal_id, limit)
+    except Exception as e:
+        # Return empty list if user doesn't exist or error occurs
+        print(f"Error getting conversations for {principal_id}: {e}")
+        return ConversationList(
+            conversations=[],
+            total_count=0,
+            active_count=0,
+        )
+    
     if active_only:
         conversations = [conversation for conversation in conversations if conversation.is_active]
     return ConversationList(
