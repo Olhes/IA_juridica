@@ -40,7 +40,8 @@ async def send_message(
     principal: CurrentPrincipal,
 ):
     try:
-        return await chat_service.process_chat_message(payload, principal.id)
+        principal_id = principal.id if principal else "debug-user"
+        return await chat_service.process_chat_message(payload, principal_id)
     except ValueError:
         raise conversation_not_found()
 
@@ -52,7 +53,9 @@ async def get_user_conversations(
     limit: int = Query(default=20, ge=1, le=100),
     active_only: bool = Query(default=True),
 ):
-    conversations = await chat_service.get_user_conversations(principal.id, limit)
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    conversations = await chat_service.get_user_conversations(principal_id, limit)
     if active_only:
         conversations = [conversation for conversation in conversations if conversation.is_active]
     return ConversationList(
