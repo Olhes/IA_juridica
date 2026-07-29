@@ -293,13 +293,17 @@ app.include_router(chat_router)
 @app.post("/session/bootstrap")
 @limiter.limit(settings.SESSION_BOOTSTRAP_RATE_LIMIT, key_func=client_ip_key)
 async def bootstrap_session(request: Request, response: Response):
-    existing = principal_from_request(request)
-    token, principal = issue_session(existing.id if existing else None)
-    set_session_cookie(response, token, principal)
-    return {
-        "principal_id": principal.id,
-        "expires_at": datetime.fromtimestamp(principal.expires_at, timezone.utc).isoformat(),
-    }
+    try:
+        existing = principal_from_request(request)
+        token, principal = issue_session(existing.id if existing else None)
+        set_session_cookie(response, token, principal)
+        return {
+            "principal_id": principal.id,
+            "expires_at": datetime.fromtimestamp(principal.expires_at, timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        print(f"Error in session bootstrap: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create session")
 
 
 @app.get("/")

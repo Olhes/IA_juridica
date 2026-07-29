@@ -110,14 +110,21 @@ async def create_conversation(
     conversation_data: ConversationCreate,
     principal: CurrentPrincipal,
 ):
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    
     try:
         conversation = await chat_service.create_conversation(
-            user_id=principal.id,
+            user_id=principal_id,
             title=conversation_data.title,
             language=conversation_data.language,
         )
     except DatabaseUnavailableError:
         raise HTTPException(status_code=503, detail="Chat persistence unavailable")
+    except Exception as e:
+        # Handle other errors (e.g., user doesn't exist)
+        print(f"Error creating conversation for {principal_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create conversation")
     if conversation_data.initial_message:
         await chat_service.process_chat_message(
             ChatRequest(
