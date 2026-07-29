@@ -86,6 +86,31 @@ async def get_conversation_history(
     principal: CurrentPrincipal,
     limit: int = Query(default=50, ge=1, le=200),
 ):
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    
+    # Temporary mock for debugging - bypass database
+    if principal_id == "debug-user":
+        from datetime import datetime, timezone
+        mock_conversation = ConversationResponse(
+            id=conversation_id,
+            user_id=principal_id,
+            title="Conversación de prueba",
+            language="spanish",
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_active=True,
+            message_count=0,
+            last_message=None
+        )
+        return ConversationHistory(
+            conversation=mock_conversation,
+            messages=[],
+            total_messages=0,
+            context_summary={},
+        )
+    
     conversation = await chat_service.get_conversation(conversation_id, principal.id)
     if not conversation:
         raise conversation_not_found()
@@ -162,6 +187,26 @@ async def update_conversation(
     update_data: ConversationUpdate,
     principal: CurrentPrincipal,
 ):
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    
+    # Temporary mock for debugging - bypass database
+    if principal_id == "debug-user":
+        from datetime import datetime, timezone
+        mock_conversation = ConversationResponse(
+            id=conversation_id,
+            user_id=principal_id,
+            title=update_data.title or "Conversación actualizada",
+            language=update_data.language or "spanish",
+            metadata=update_data.metadata or {},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_active=update_data.is_active if update_data.is_active is not None else True,
+            message_count=0,
+            last_message=None
+        )
+        return mock_conversation
+    
     updated = await chat_service.update_conversation(
         conversation_id, principal.id, update_data
     )
