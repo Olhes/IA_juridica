@@ -55,6 +55,9 @@ async def get_user_conversations(
 ):
     # Temporary fix for debugging: use a default principal ID when auth is disabled
     principal_id = principal.id if principal else "debug-user"
+    # Convert string to bool if needed
+    if isinstance(active_only, str):
+        active_only = active_only.lower() in ('true', '1', 'yes')
     conversations = await chat_service.get_user_conversations(principal_id, limit)
     if active_only:
         conversations = [conversation for conversation in conversations if conversation.is_active]
