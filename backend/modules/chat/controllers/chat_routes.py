@@ -190,6 +190,9 @@ async def update_conversation(
     # Temporary fix for debugging: use a default principal ID when auth is disabled
     principal_id = principal.id if principal else "debug-user"
     
+    # Debug logging
+    print(f"DEBUG update_conversation: principal={principal}, principal_id={principal_id}")
+    
     # Temporary mock for debugging - bypass database
     if principal_id == "debug-user":
         from datetime import datetime, timezone
