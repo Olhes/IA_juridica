@@ -113,6 +113,24 @@ async def create_conversation(
     # Temporary fix for debugging: use a default principal ID when auth is disabled
     principal_id = principal.id if principal else "debug-user"
     
+    # Temporary mock for debugging - bypass database
+    if principal_id == "debug-user":
+        import uuid
+        from datetime import datetime, timezone
+        mock_conversation = ConversationResponse(
+            id=str(uuid.uuid4()),
+            user_id=principal_id,
+            title=conversation_data.title or f"Conversación {datetime.now().strftime('%d/%m %H:%M')}",
+            language=conversation_data.language,
+            metadata={},
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_active=True,
+            message_count=0,
+            last_message=None
+        )
+        return mock_conversation
+    
     try:
         conversation = await chat_service.create_conversation(
             user_id=principal_id,
