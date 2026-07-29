@@ -153,6 +153,15 @@ class PostgreSQLAdapter:
         def create_sync():
             with self.conn.cursor() as cursor:
                 try:
+                    # For debugging: create user if it doesn't exist
+                    if user_id == "debug-user":
+                        cursor.execute("""
+                            INSERT INTO auth_schema.users (id, email, username, role)
+                            VALUES (gen_random_uuid(), 'debug@local', 'debug-user', 'user')
+                            ON CONFLICT (username) DO NOTHING
+                        """)
+                        self.conn.commit()
+                    
                     # Insertar conversación en conversations_schema
                     cursor.execute("""
                         INSERT INTO conversations_schema.conversations (user_id, title, language)
