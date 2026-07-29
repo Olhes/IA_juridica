@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -23,7 +23,7 @@ from security import Principal, limiter, require_principal
 router = APIRouter(prefix="/chat", tags=["chat"])
 # Temporarily disable auth for debugging
 # CurrentPrincipal = Annotated[Principal, Depends(require_principal)]
-CurrentPrincipal = None
+CurrentPrincipal = Annotated[Optional[Principal], Depends(lambda: None)]
 def conversation_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="Conversation not found")
 
