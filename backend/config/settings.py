@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "https://ia-juridica-frontend.onrender.com"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "https://ia-juridica-frontend-web.onrender.com"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID"]
