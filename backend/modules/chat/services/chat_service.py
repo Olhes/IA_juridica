@@ -227,7 +227,10 @@ class ChatService:
                 content=message_data.content,
                 language=message_data.language,
                 metadata=message_data.metadata or {},
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
+                message_type="text",  # Required field
+                tokens_used=0,  # Required field
+                model_used="debug"  # Required field
             )
         
         # Guardar en base de datos (pasar parámetros individuales)
