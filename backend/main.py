@@ -610,62 +610,69 @@ async def legal_query_stream(
     
     Si se proporciona conversation_id, guarda los mensajes sólo para su propietario.
     """
-    print(f"DEBUG legal_query_stream: principal={principal}, payload={payload}")
-    
-    # Temporary fix for debugging: use a default principal ID when auth is disabled
-    principal_id = principal.id if principal else "debug-user"
-    
-    query = payload.query.strip()
-    language = payload.language
-    conversation_id = payload.conversation_id
-    optimizer: LLMOptimizer = app.state.llm_optimizer
-    cache_key = f"{query}|{language}"
-    
-    # Detectar idioma y traducir si es quechua
-    from modules.language.services.language_detector import LanguageDetector
-    from modules.language.services.translation_service import TranslationService
-    
-    detector = LanguageDetector()
-    detected_language = detector.detect_language(query)
-    
-    query_for_processing = query
-    original_language = language
-    
-    if detected_language == "qu" or language == "quechua":
-        translation_service = TranslationService()
-        translation_result = await translation_service.translate(
-            text=query,
-            source_lang="qu",
-            target_lang="es"
-        )
+    try:
+        print(f"DEBUG legal_query_stream: principal={principal}, payload={payload}")
         
-        if translation_result.get("success"):
-            query_for_processing = translation_result["translated_text"]
-            original_language = "quechua"
-        else:
-            query_for_processing = query
-            original_language = "quechua"
-    
-    # Usar query_for_processing para el cache y procesamiento
-    cache_key = f"{query_for_processing}|{language}"
-
-    # Guardar mensaje del usuario si se proporciona conversation_id
-    if conversation_id:
-        if not await chat_service.get_conversation(conversation_id, principal_id):
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        try:
-            from models.chat_models import MessageCreate, MessageRole
-            await chat_service.add_message(
-                conversation_id=conversation_id,
-                user_id=principal_id,
-                message_data=MessageCreate(
-                    content=query,
-                    role=MessageRole.USER,
-                    language=language
-                )
+        # Temporary fix for debugging: use a default principal ID when auth is disabled
+        principal_id = principal.id if principal else "debug-user"
+        
+        query = payload.query.strip()
+        language = payload.language
+        conversation_id = payload.conversation_id
+        optimizer: LLMOptimizer = app.state.llm_optimizer
+        cache_key = f"{query}|{language}"
+        
+        # Detectar idioma y traducir si es quechua
+        from modules.language.services.language_detector import LanguageDetector
+        from modules.language.services.translation_service import TranslationService
+        
+        detector = LanguageDetector()
+        detected_language = detector.detect_language(query)
+        
+        query_for_processing = query
+        original_language = language
+        
+        if detected_language == "qu" or language == "quechua":
+            translation_service = TranslationService()
+            translation_result = await translation_service.translate(
+                text=query,
+                source_lang="qu",
+                target_lang="es"
             )
-        except ValueError:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+            if translation_result.get("success"):
+                query_for_processing = translation_result["translated_text"]
+                original_language = "quechua"
+            else:
+                query_for_processing = query
+                original_language = "quechua"
+        
+        # Usar query_for_processing para el cache y procesamiento
+        cache_key = f"{query_for_processing}|{language}"
+
+        # Guardar mensaje del usuario si se proporciona conversation_id
+        if conversation_id:
+            print(f"DEBUG legal_query_stream: checking conversation {conversation_id} for user {principal_id}")
+            if not await chat_service.get_conversation(conversation_id, principal_id):
+                print(f"DEBUG legal_query_stream: conversation not found, raising 404")
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            try:
+                from models.chat_models import MessageCreate, MessageRole
+                await chat_service.add_message(
+                    conversation_id=conversation_id,
+                    user_id=principal_id,
+                    message_data=MessageCreate(
+                        content=query,
+                        role=MessageRole.USER,
+                        language=language
+                    )
+                )
+            except ValueError as e:
+                print(f"DEBUG legal_query_stream: ValueError adding message: {e}")
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            except Exception as e:
+                print(f"DEBUG legal_query_stream: Exception adding message: {e}")
+                # Continue without adding message for debugging
 
     cached_result = optimizer.get_cached(cache_key)
     if cached_result:
@@ -844,6 +851,11 @@ async def legal_query_stream(
             "X-Accel-Buffering": "no",
         },
     )
+    except Exception as e:
+        print(f"DEBUG legal_query_stream: Exception in endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Legal query stream failed: {str(e)}")
 
 
 @app.post("/generate-pdf-report")
