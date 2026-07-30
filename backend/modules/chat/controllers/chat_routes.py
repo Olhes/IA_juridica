@@ -195,27 +195,35 @@ async def update_conversation(
     
     # Temporary mock for debugging - bypass database
     if principal_id == "debug-user":
-        from datetime import datetime, timezone
-        mock_conversation = ConversationResponse(
-            id=conversation_id,
-            user_id=principal_id,
-            title=update_data.title or "Conversación actualizada",
-            language=update_data.language or "spanish",
-            metadata=update_data.metadata or {},
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            is_active=update_data.is_active if update_data.is_active is not None else True,
-            message_count=0,
-            last_message=None
-        )
-        return mock_conversation
+        try:
+            from datetime import datetime, timezone
+            mock_conversation = ConversationResponse(
+                id=conversation_id,
+                user_id=principal_id,
+                title=update_data.title or "Conversación actualizada",
+                language=update_data.language or "spanish",
+                metadata=update_data.metadata or {},
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                is_active=update_data.is_active if update_data.is_active is not None else True,
+                message_count=0,
+                last_message=None
+            )
+            return mock_conversation
+        except Exception as e:
+            print(f"DEBUG update_conversation mock error: {e}")
+            raise
     
-    updated = await chat_service.update_conversation(
-        conversation_id, principal_id, update_data
-    )
-    if not updated:
-        raise conversation_not_found()
-    return updated
+    try:
+        updated = await chat_service.update_conversation(
+            conversation_id, principal_id, update_data
+        )
+        if not updated:
+            raise conversation_not_found()
+        return updated
+    except Exception as e:
+        print(f"DEBUG update_conversation service error: {e}")
+        raise
 
 
 @router.delete("/conversations/{conversation_id}")
