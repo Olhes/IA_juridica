@@ -211,7 +211,7 @@ async def update_conversation(
         return mock_conversation
     
     updated = await chat_service.update_conversation(
-        conversation_id, principal.id, update_data
+        conversation_id, principal_id, update_data
     )
     if not updated:
         raise conversation_not_found()
