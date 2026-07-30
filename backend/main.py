@@ -182,20 +182,13 @@ async def lifespan(app: FastAPI):
         print("Error inicializando chat service")
         print("Continuando sin chat persistente...")
 
+    # Inicializar componentes básicos primero para startup rápido
     if not hasattr(app.state, "rag_engine"):
         RAW_PDFS_DIR.mkdir(parents=True, exist_ok=True)
         PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
         KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
         app.state.rag_engine = LegalRAGEngine()
-
-        await app.state.rag_engine.initialize_storages()
-
-        loaded = await app.state.rag_engine.load_processed_documents(str(PROCESSED_DIR))
-        print(
-            f"Documentos en memoria: {len(app.state.rag_engine.documents)} ({loaded} nuevos)"
-        )
-
         app.state.ingestion_pipeline = LegalIngestionPipeline(
             rag_engine=app.state.rag_engine
         )
@@ -222,12 +215,12 @@ async def lifespan(app: FastAPI):
             cache_ttl_seconds=settings.CACHE_TTL,
             max_cache_size=settings.CACHE_MAX_SIZE,
         )
-        print("ResponseValidator y LLMOptimizer inicializados")
+        print("Componentes básicos inicializados")
         # ─────────────────────────────────────────────────────────────────────
 
         app.state.evaluation_suite = None
 
-        print("Componentes inicializados correctamente")
+        print("Inicialización básica completada - iniciando servidor...")
     else:
         print("Componentes ya inicializados, saltando...")
 
@@ -241,6 +234,20 @@ async def lifespan(app: FastAPI):
         print("Redis adapter cerrado correctamente")
     except Exception:
         print("Error cerrando Redis")
+
+
+async def load_heavy_components(rag_engine, processed_dir):
+    """Cargar componentes pesados en segundo plano después del startup"""
+    print("Cargando componentes pesados en segundo plano...")
+    try:
+        await rag_engine.initialize_storages()
+        loaded = await rag_engine.load_processed_documents(str(processed_dir))
+        print(
+            f"Documentos en memoria: {len(rag_engine.documents)} ({loaded} nuevos)"
+        )
+        print("Componentes pesados cargados correctamente")
+    except Exception as e:
+        print(f"Error cargando componentes pesados: {e}")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -257,6 +264,15 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.on_event("startup")
+async def startup_load_heavy_components():
+    """Cargar componentes pesados en segundo plano después del startup"""
+    import asyncio
+    if hasattr(app.state, "rag_engine"):
+        # Crear tarea en segundo plano
+        asyncio.create_task(load_heavy_components(app.state.rag_engine, str(PROCESSED_DIR)))
 
 
 @app.middleware("http")
