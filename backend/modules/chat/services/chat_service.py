@@ -45,6 +45,23 @@ class ChatService:
         """Crear nueva conversación"""
         conversation_title = title or f"Conversación {datetime.now().strftime('%d/%m %H:%M')}"
         
+        # Temporary mock for debugging - bypass database for debug-user
+        if user_id == "debug-user":
+            from datetime import timezone
+            import uuid
+            return ConversationResponse(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                title=conversation_title,
+                language=language,
+                metadata={},
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                is_active=True,
+                message_count=0,
+                last_message=None
+            )
+        
         # Guardar en base de datos (pasar parámetros individuales)
         db_conversation = await self.db.create_conversation(
             user_id=user_id,
@@ -191,6 +208,10 @@ class ChatService:
     
     async def get_user_conversations(self, user_id: str, limit: int = 50) -> List[ConversationResponse]:
         """Obtener conversaciones de un usuario"""
+        # Temporary mock for debugging - bypass database for debug-user
+        if user_id == "debug-user":
+            return []
+        
         conversations = await self.db.get_user_conversations(user_id, limit)
         result = []
         for conv in conversations:
@@ -483,6 +504,10 @@ class ChatService:
     
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         """Eliminar conversación"""
+        # Temporary mock for debugging - bypass database for debug-user
+        if user_id == "debug-user":
+            return True
+        
         # Eliminar de base de datos
         success = await self.db.delete_conversation(conversation_id, user_id)
         

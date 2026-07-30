@@ -33,21 +33,6 @@ CREATE TABLE IF NOT EXISTS auth_schema.users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabla de Sesiones de Usuario
-CREATE TABLE IF NOT EXISTS auth_schema.user_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES auth_schema.users(id) ON DELETE CASCADE,
-    session_token VARCHAR(255) NOT NULL UNIQUE,
-    conversation_id UUID REFERENCES conversations_schema.conversations(id),
-    context_stack JSONB DEFAULT '[]',
-    language_preferences JSONB DEFAULT '{}',
-    cultural_profile JSONB DEFAULT '{}',
-    last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
 -- ========================================
 -- CONVERSATIONS_SCHEMA - Chat y Mensajes
 -- ========================================
@@ -62,6 +47,21 @@ CREATE TABLE IF NOT EXISTS conversations_schema.conversations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB DEFAULT '{}',
     is_active BOOLEAN DEFAULT true
+);
+
+-- Tabla de Sesiones de Usuario (depende de conversations_schema.conversations)
+CREATE TABLE IF NOT EXISTS auth_schema.user_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth_schema.users(id) ON DELETE CASCADE,
+    session_token VARCHAR(255) NOT NULL UNIQUE,
+    conversation_id UUID REFERENCES conversations_schema.conversations(id),
+    context_stack JSONB DEFAULT '[]',
+    language_preferences JSONB DEFAULT '{}',
+    cultural_profile JSONB DEFAULT '{}',
+    last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Tabla de Mensajes

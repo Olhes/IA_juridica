@@ -235,6 +235,10 @@ async def delete_conversation(
     # Temporary fix for debugging: use a default principal ID when auth is disabled
     principal_id = principal.id if principal else "debug-user"
     
+    # Temporary mock for debugging - bypass database
+    if principal_id == "debug-user":
+        return {"success": True}
+    
     if not await chat_service.delete_conversation(conversation_id, principal_id):
         raise conversation_not_found()
     return {"success": True}
