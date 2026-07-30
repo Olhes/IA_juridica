@@ -201,7 +201,7 @@ async def update_conversation(
                 id=conversation_id,
                 user_id=principal_id,
                 title=update_data.title or "Conversación actualizada",
-                language=update_data.language or "spanish",
+                language="spanish",  # Default language since ConversationUpdate doesn't have language
                 metadata=update_data.metadata or {},
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
