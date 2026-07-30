@@ -111,14 +111,14 @@ async def get_conversation_history(
             context_summary={},
         )
     
-    conversation = await chat_service.get_conversation(conversation_id, principal.id)
+    conversation = await chat_service.get_conversation(conversation_id, principal_id)
     if not conversation:
         raise conversation_not_found()
     messages = await chat_service.get_conversation_messages(
-        conversation_id, principal.id, limit
+        conversation_id, principal_id, limit
     )
     context_summary = await chat_service._build_conversation_context(
-        conversation_id, principal.id, conversation.language
+        conversation_id, principal_id, conversation.language
     )
     return ConversationHistory(
         conversation=conversation,
@@ -175,7 +175,7 @@ async def create_conversation(
                 conversation_id=conversation.id,
                 language=conversation_data.language,
             ),
-            principal.id,
+            principal_id,
         )
     return conversation
 
@@ -224,7 +224,10 @@ async def delete_conversation(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    if not await chat_service.delete_conversation(conversation_id, principal.id):
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    
+    if not await chat_service.delete_conversation(conversation_id, principal_id):
         raise conversation_not_found()
     return {"success": True}
 
@@ -236,7 +239,9 @@ async def search_conversations(
     q: str = Query(..., min_length=2),
     limit: int = Query(default=10, ge=1, le=50),
 ):
-    conversations = await chat_service.search_conversations(principal.id, q, limit)
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    conversations = await chat_service.search_conversations(principal_id, q, limit)
     return {"success": True, "results": conversations, "total_count": len(conversations)}
 
 
@@ -246,7 +251,9 @@ async def get_conversation_stats(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    stats = await chat_service.get_conversation_stats(conversation_id, principal.id)
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    stats = await chat_service.get_conversation_stats(conversation_id, principal_id)
     if not stats:
         raise conversation_not_found()
     return {"success": True, "stats": stats}
@@ -260,7 +267,10 @@ async def continue_conversation(
     payload: ContinueConversationRequest,
     principal: CurrentPrincipal,
 ):
-    conversation = await chat_service.get_conversation(conversation_id, principal.id)
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    
+    conversation = await chat_service.get_conversation(conversation_id, principal_id)
     if not conversation:
         raise conversation_not_found()
     return await chat_service.process_chat_message(
@@ -269,7 +279,7 @@ async def continue_conversation(
             conversation_id=conversation_id,
             language=conversation.language,
         ),
-        principal.id,
+        principal_id,
     )
 
 
@@ -279,7 +289,9 @@ async def invalidate_conversation_cache(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    if not await chat_service.invalidate_conversation_cache(conversation_id, principal.id):
+    # Temporary fix for debugging: use a default principal ID when auth is disabled
+    principal_id = principal.id if principal else "debug-user"
+    if not await chat_service.invalidate_conversation_cache(conversation_id, principal_id):
         raise conversation_not_found()
     return {"success": True}
 
