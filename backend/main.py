@@ -188,6 +188,7 @@ async def lifespan(app: FastAPI):
         PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
         KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
+        # Crear instancias pero no inicializar componentes pesados
         app.state.rag_engine = LegalRAGEngine()
         app.state.ingestion_pipeline = LegalIngestionPipeline(
             rag_engine=app.state.rag_engine

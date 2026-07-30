@@ -69,23 +69,36 @@ class LegalRAGEngine:
         self.embeddings = {}
         self.rag = None
         self._storages_initialized = False
+        self._initialized = False  # Flag para lazy initialization
         
         # Cargar documentos persistidos del disco solo si LOAD_LOCAL_KG está habilitado
         if settings.LOAD_LOCAL_KG:
             self._load_documents_from_disk()
         
-        # Inicializar cliente Cohere
+        # Inicializar cliente Cohere - lazy initialization
         self.cohere_client = None
-        if COHERE_AVAILABLE and settings.COHERE_API_KEY:
+        self._cohere_initialized = False
+        
+        logger.info(f"LegalRAG Engine inicializado en {working_dir} ({len(self.documents)} documentos cargados del disco) - lazy initialization enabled")
+
+    def _ensure_initialized(self):
+        """Lazy initialization de Cohere y LightRAG cuando se necesiten"""
+        if self._initialized:
+            return
+        
+        # Inicializar cliente Cohere
+        if not self._cohere_initialized and COHERE_AVAILABLE and settings.COHERE_API_KEY:
             self.cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
             logger.info("Cliente Cohere inicializado")
-        else:
+            self._cohere_initialized = True
+        elif not self._cohere_initialized:
             logger.warning("Cohere no disponible: falta SDK o COHERE_API_KEY")
-    
-        if LIGHTRAG_AVAILABLE:
+        
+        # Inicializar LightRAG
+        if LIGHTRAG_AVAILABLE and not self._initialized:
             self._initialize_lightrag()
-    
-        logger.info(f"LegalRAG Engine inicializado en {working_dir} ({len(self.documents)} documentos cargados del disco)")
+        
+        self._initialized = True
 
     # ── Persistencia de documentos en disco ──────────────────────────────
     
@@ -400,6 +413,9 @@ class LegalRAGEngine:
             top_k: Documentos finales (default: settings.RERANK_TOP_K)
             rerank_candidates: Candidatos iniciales (default: settings.RERANK_CANDIDATES)
         """
+        # Lazy initialization de componentes pesados
+        self._ensure_initialized()
+        
         top_k = top_k or settings.RERANK_TOP_K
         rerank_candidates = rerank_candidates or settings.RERANK_CANDIDATES
         
