@@ -674,183 +674,183 @@ async def legal_query_stream(
                 print(f"DEBUG legal_query_stream: Exception adding message: {e}")
                 # Continue without adding message for debugging
 
-    cached_result = optimizer.get_cached(cache_key)
-    if cached_result:
-        cached_payload = cached_result if isinstance(cached_result, dict) else {}
-        response_payload = jsonable_encoder(cached_payload.get("response", {}))
-        cached_text = _extract_response_text(response_payload, language)
-        await _persist_assistant_response(
-            conversation_id,
-            principal_id,
-            response_payload,
-            language,
-            {
-                "sources": cached_payload.get("sources", []),
-                "validation": cached_payload.get("validation", {}),
-            },
-        )
-
-        async def cached_stream_generator():
-            if cached_text:
-                yield _ndjson_event({"type": "chunk", "delta": cached_text})
-            yield _ndjson_event(
+        cached_result = optimizer.get_cached(cache_key)
+        if cached_result:
+            cached_payload = cached_result if isinstance(cached_result, dict) else {}
+            response_payload = jsonable_encoder(cached_payload.get("response", {}))
+            cached_text = _extract_response_text(response_payload, language)
+            await _persist_assistant_response(
+                conversation_id,
+                principal_id,
+                response_payload,
+                language,
                 {
-                    "type": "final",
-                    "data": {
-                        "success": True,
-                        "query": query,
-                        "language": language,
-                        "cached": True,
-                        **cached_payload,
-                    },
-                }
+                    "sources": cached_payload.get("sources", []),
+                    "validation": cached_payload.get("validation", {}),
+                },
             )
 
+            async def cached_stream_generator():
+                if cached_text:
+                    yield _ndjson_event({"type": "chunk", "delta": cached_text})
+                yield _ndjson_event(
+                    {
+                        "type": "final",
+                        "data": {
+                            "success": True,
+                            "query": query,
+                            "language": language,
+                            "cached": True,
+                            **cached_payload,
+                        },
+                    }
+                )
+
+            return StreamingResponse(
+                cached_stream_generator(),
+                media_type="application/x-ndjson",
+                headers={
+                    "Cache-Control": "no-cache, no-transform",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        async def stream_generator():
+            try:
+                streamed_text = ""
+
+                rag_result = await app.state.rag_engine.query_with_rerank(query_for_processing)
+                documents = rag_result.get("documents", [])
+                enriched_prompt, enriched_context = (
+                    app.state.context_engineer.build_legal_prompt(
+                        query=query_for_processing,
+                        documents=documents,
+                        language=language,
+                    )
+                )
+
+                async for chunk in app.state.legal_agent.stream_general_text(
+                    query_for_processing,
+                    rag_result,
+                    language,
+                    enriched_prompt=enriched_prompt,
+                ):
+                    if chunk:
+                        streamed_text += chunk
+                        yield _ndjson_event({"type": "chunk", "delta": chunk})
+
+                response = app.state.legal_agent.build_general_response_from_text(
+                    text=streamed_text,
+                    query=query_for_processing,
+                )
+
+                if hasattr(response, "model_dump"):
+                    response_payload = response.model_dump()
+                elif hasattr(response, "dict"):
+                    response_payload = response.dict()
+                else:
+                    response_payload = response
+
+                optimizer.track(enriched_prompt or query_for_processing, str(response_payload))
+
+                validated = await app.state.response_validator.validate(
+                    response_data=response_payload,
+                    rag_result=rag_result,
+                    query=query_for_processing,
+                    language=language,
+                    enriched_context=enriched_context,
+                )
+
+                final_response = validated.answer_data
+                validation_meta = validated.validation_report.model_dump()
+                
+                # Traducir respuesta de español a quechua si el idioma original era quechua
+                if original_language == "quechua":
+                    translation_service = TranslationService()
+                    
+                    # Extraer el texto de respuesta
+                    if isinstance(final_response, dict):
+                        response_text = _extract_response_text(final_response, "spanish")
+                    else:
+                        response_text = str(final_response)
+                    
+                    # Truncamiento forzado a 1000 caracteres (Google Translate maneja mejor que NLLB-200)
+                    MAX_RESPONSE_LENGTH = 1000
+                    if len(response_text) > MAX_RESPONSE_LENGTH:
+                        response_text = response_text[:MAX_RESPONSE_LENGTH] + "..."
+                    
+                    translation_result = await translation_service.translate(
+                        text=response_text,
+                        source_lang="es",
+                        target_lang="qu"
+                    )
+                    
+                    if translation_result.get("success"):
+                        translated_text = translation_result["translated_text"]
+                        # Actualizar la respuesta con el texto traducido
+                        if isinstance(final_response, dict):
+                            final_response["answer"] = translated_text
+                            final_response["respuesta_quechua"] = translated_text
+                        else:
+                            final_response = translated_text
+
+                result_payload = {
+                    "response": final_response,
+                    "sources": validated.sources,
+                    "validation": validation_meta,
+                    "metadata": {
+                        "rerank_scores": rag_result.get("rerank_scores", []),
+                        "retrieval_method": rag_result.get("method", "unknown"),
+                        "total_candidates": rag_result.get("total_candidates", 0),
+                        "enriched_context": {
+                            "location": enriched_context.get("detected_location"),
+                            "legal_topic": enriched_context.get("legal_topic"),
+                            "urgency": enriched_context.get("urgency_level"),
+                        },
+                        "optimizer_stats": optimizer.get_session_stats(),
+                    },
+                }
+
+                if validated.is_reliable:
+                    optimizer.cache_response(cache_key, result_payload)
+
+                await _persist_assistant_response(
+                    conversation_id,
+                    principal_id,
+                    final_response,
+                    language,
+                    {"sources": validated.sources, "validation": validation_meta},
+                )
+
+                yield _ndjson_event(
+                    {
+                        "type": "final",
+                        "data": {
+                            "success": True,
+                            "query": query,
+                            "language": language,
+                            "cached": False,
+                            **result_payload,
+                        },
+                    }
+                )
+            except Exception as stream_error:
+                _log_failure("legal_query_stream_failed", stream_error, request)
+                yield _ndjson_event(
+                    {
+                        "type": "error",
+                        "error": "Legal query stream failed",
+                    }
+                )
+
         return StreamingResponse(
-            cached_stream_generator(),
+            stream_generator(),
             media_type="application/x-ndjson",
             headers={
                 "Cache-Control": "no-cache, no-transform",
                 "X-Accel-Buffering": "no",
             },
         )
-
-    async def stream_generator():
-        try:
-            streamed_text = ""
-
-            rag_result = await app.state.rag_engine.query_with_rerank(query_for_processing)
-            documents = rag_result.get("documents", [])
-            enriched_prompt, enriched_context = (
-                app.state.context_engineer.build_legal_prompt(
-                    query=query_for_processing,
-                    documents=documents,
-                    language=language,
-                )
-            )
-
-            async for chunk in app.state.legal_agent.stream_general_text(
-                query_for_processing,
-                rag_result,
-                language,
-                enriched_prompt=enriched_prompt,
-            ):
-                if chunk:
-                    streamed_text += chunk
-                    yield _ndjson_event({"type": "chunk", "delta": chunk})
-
-            response = app.state.legal_agent.build_general_response_from_text(
-                text=streamed_text,
-                query=query_for_processing,
-            )
-
-            if hasattr(response, "model_dump"):
-                response_payload = response.model_dump()
-            elif hasattr(response, "dict"):
-                response_payload = response.dict()
-            else:
-                response_payload = response
-
-            optimizer.track(enriched_prompt or query_for_processing, str(response_payload))
-
-            validated = await app.state.response_validator.validate(
-                response_data=response_payload,
-                rag_result=rag_result,
-                query=query_for_processing,
-                language=language,
-                enriched_context=enriched_context,
-            )
-
-            final_response = validated.answer_data
-            validation_meta = validated.validation_report.model_dump()
-            
-            # Traducir respuesta de español a quechua si el idioma original era quechua
-            if original_language == "quechua":
-                translation_service = TranslationService()
-                
-                # Extraer el texto de respuesta
-                if isinstance(final_response, dict):
-                    response_text = _extract_response_text(final_response, "spanish")
-                else:
-                    response_text = str(final_response)
-                
-                # Truncamiento forzado a 1000 caracteres (Google Translate maneja mejor que NLLB-200)
-                MAX_RESPONSE_LENGTH = 1000
-                if len(response_text) > MAX_RESPONSE_LENGTH:
-                    response_text = response_text[:MAX_RESPONSE_LENGTH] + "..."
-                
-                translation_result = await translation_service.translate(
-                    text=response_text,
-                    source_lang="es",
-                    target_lang="qu"
-                )
-                
-                if translation_result.get("success"):
-                    translated_text = translation_result["translated_text"]
-                    # Actualizar la respuesta con el texto traducido
-                    if isinstance(final_response, dict):
-                        final_response["answer"] = translated_text
-                        final_response["respuesta_quechua"] = translated_text
-                    else:
-                        final_response = translated_text
-
-            result_payload = {
-                "response": final_response,
-                "sources": validated.sources,
-                "validation": validation_meta,
-                "metadata": {
-                    "rerank_scores": rag_result.get("rerank_scores", []),
-                    "retrieval_method": rag_result.get("method", "unknown"),
-                    "total_candidates": rag_result.get("total_candidates", 0),
-                    "enriched_context": {
-                        "location": enriched_context.get("detected_location"),
-                        "legal_topic": enriched_context.get("legal_topic"),
-                        "urgency": enriched_context.get("urgency_level"),
-                    },
-                    "optimizer_stats": optimizer.get_session_stats(),
-                },
-            }
-
-            if validated.is_reliable:
-                optimizer.cache_response(cache_key, result_payload)
-
-            await _persist_assistant_response(
-                conversation_id,
-                principal_id,
-                final_response,
-                language,
-                {"sources": validated.sources, "validation": validation_meta},
-            )
-
-            yield _ndjson_event(
-                {
-                    "type": "final",
-                    "data": {
-                        "success": True,
-                        "query": query,
-                        "language": language,
-                        "cached": False,
-                        **result_payload,
-                    },
-                }
-            )
-        except Exception as stream_error:
-            _log_failure("legal_query_stream_failed", stream_error, request)
-            yield _ndjson_event(
-                {
-                    "type": "error",
-                    "error": "Legal query stream failed",
-                }
-            )
-
-    return StreamingResponse(
-        stream_generator(),
-        media_type="application/x-ndjson",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-        },
-    )
     except Exception as e:
         print(f"DEBUG legal_query_stream: Exception in endpoint: {e}")
         import traceback
