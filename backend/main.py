@@ -610,6 +610,8 @@ async def legal_query_stream(
     
     Si se proporciona conversation_id, guarda los mensajes sólo para su propietario.
     """
+    print(f"DEBUG legal_query_stream: principal={principal}, payload={payload}")
+    
     # Temporary fix for debugging: use a default principal ID when auth is disabled
     principal_id = principal.id if principal else "debug-user"
     
