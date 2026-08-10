@@ -1,43 +1,59 @@
-## Guia sobre el Regimen de Visitas
+## Guía sobre el Régimen de Visitas
 
 <!-- image -->
 
-El regimen devisitases un derecho fundamental del ninopara mantenercontactoyfortalecer el vinculo afectivocon elprogenitorcon el que no convive.Suprincipal objetivo esgarantizar el desarrollointegral,psiquicoyemocional delmenor,priorizandosiempresuinteressuperior.
+El régimen de visitas es un derecho fundamental del niño para mantener contacto y fortalecer el vinculo afectivo con el progenitor con el que no convive: Su principal objetivo es garantizar el desarrollo integral, psiquico y emocional del menor, priorizando siempre su interés superior.
 
-## &amp;Como se estableceel Regimen deVisitas?
+## iCómo se establece el Régimen de Visitas?
 
-## Es un derecho del nino
+## Modalidades y Aspectos Clave
 
-Sufinalidadesconservarlosvinculosafectivos del menorconambospadres.
-
-Via 1:Conciliaci6n Extrajudicial
-
-Es la viamasrapida yflexible
-
-Via2:
-
-ProcesoJudicial
-
-Sinohayacuerdo,unjuez defamiliafijaelregimen devisitas.
-
-## Modalidadesy Aspectos Clave
+## Es un derecho del niño
 
 ## Tipos de Visitas
 
-Supervisadas
+Su finalidad es conservar los vínculos afectivos del menor con ambos padres.
+
+<!-- image -->
+
+Vía I: Conciliación Extrajudicial
+
+Vía 2: Proceso Judicial
+
+<!-- image -->
+
+Es la vía más rápida y flexible
+
+El no pagar la pensión de alimentos no elimina el derecho a las visitas.
 
 Con externamiento (fuera de casa)
+
+<!-- image -->
+
+<!-- image -->
+
+<!-- image -->
+
+Supervisadas
+
+<!-- image -->
 
 Virtuales
 
 Con pernocta
 
-## &amp;Que pasa si se incumple?
+## iQué pasa si se incumple?
 
-Elincumplimientoreiteradodelregimendevisitas puedegenerarlavariaciondelatenencia.
+El incumplimiento reiterado del régimen de visitas puede generar la variación de la tenencia.
 
-## Visitas y Pension de Alimentos
-
-Elnopagarlapensionde alimentosnoelimina el derecho alasvisitas.
+## Visitas y Pensión de Alimentos
 
 NotebookLM
+
+Si no hay acuerdo; un juez de familia fija el régimen de visitas.
+
+<!-- image -->
+
+<!-- image -->
+
+<!-- image -->

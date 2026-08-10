@@ -39,12 +39,13 @@ DATABASE_NAME=juridica_db
 DATABASE_USER=juridica_user
 DATABASE_PASSWORD=juridica_password
 
-# Neo4j (opcional - para grafo de conocimiento)
-NEO4J_ENABLED=false
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=your-neo4j-password
-NEO4J_DATABASE=neo4j
+# Configuración de Grafo de Conocimiento
+LOAD_LOCAL_KG=true  # Usar grafo local (recomendado para desarrollo)
+NEO4J_ENABLED=false  # Neo4j Aura (opcional, requiere configuración adicional)
+# NEO4J_URI=neo4j+s://tu-instancia-aura.databases.neo4j.io
+# NEO4J_USER=tu_usuario
+# NEO4J_PASSWORD=tu_password
+# NEO4J_DATABASE=tu_database
 ```
 
 ### Start Development
@@ -87,11 +88,13 @@ Use this single command after completing the dependency and environment setup ab
 ## 🏗️ Arquitectura
 
 ### Backend (FastAPI)
-- **RAG**: LightRAG con grafos de conocimiento
+- **RAG**: LightRAG con grafos de conocimiento (local o Neo4j Aura)
 - **LLM**: Cohere (embeddings, reranking, generación)
+- **Modelo**: command-r7b-12-2024
 - **Traducción**: Google Translate API (español ↔ quechua)
 - **Validación**: Pipeline anti-alucinación con Pydantic
 - **Procesamiento PDF**: Docling para extracción estructurada
+- **Prompt Templates**: Respuestas conversacionales estilo ChatGPT/Gemini
 
 ### Frontend (Next.js)
 - Clean Architecture (domain/application/infrastructure/presentation)
@@ -102,7 +105,7 @@ Use this single command after completing the dependency and environment setup ab
 - **PostgreSQL**: Chat persistente (Docker container en puerto 5433)
 - **Redis**: Caché de sesiones (Docker container)
 - **SQLite**: Consultas y estadísticas (desarrollo)
-- **Neo4j** (opcional): Grafo de conocimiento para LightRAG
+- **Grafo de Conocimiento**: LightRAG local (NetworkX) o Neo4j Aura (opcional)
 
 ### Visualización de Base de Datos
 
@@ -161,28 +164,48 @@ INFO memory
 INFO clients
 ```
 
-### Neo4j (opcional)
+### Configuración del Grafo de Conocimiento
 
-Para usar Neo4j como almacenamiento del grafo de conocimiento:
+El sistema soporta dos modos de almacenamiento del grafo de conocimiento:
 
-```bash
-# Iniciar Neo4j con Docker
-docker run -d \
-  --name juridica_neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/tu_password \
-  neo4j:latest
-
-# Habilitar en backend/.env
-NEO4J_ENABLED=true
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=tu_password
-NEO4J_DATABASE=neo4j
-
-# Acceder a Neo4j Browser
-# http://localhost:7474
+**1. Grafo Local (Recomendado para Desarrollo)**
+```env
+LOAD_LOCAL_KG=true
+NEO4J_ENABLED=false
 ```
+- Usa NetworkX para almacenamiento local
+- Archivos en `backend/docs/knowledge_graph/`
+- 18 documentos legales pre-procesados incluidos
+- Más rápido y sin dependencias externas
+
+**2. Neo4j Aura (Opcional para Producción)**
+```env
+LOAD_LOCAL_KG=false
+NEO4J_ENABLED=true
+NEO4J_URI=neo4j+s://tu-instancia-aura.databases.neo4j.io
+NEO4J_USER=tu_usuario
+NEO4J_PASSWORD=tu_password
+NEO4J_DATABASE=tu_database
+```
+- Grafo de conocimiento en la nube
+- Escalable para grandes volúmenes
+- Requiere instancia de Neo4j Aura
+
+### Estilo de Respuestas Conversacionales
+
+El sistema utiliza prompt templates optimizados para respuestas naturales, similares a ChatGPT/Gemini:
+
+- ✅ **Respuestas naturales** sin formatos rígidos
+- ✅ **Tono empático y conversacional**
+- ✅ **Adaptación a cada situación específica**
+- ✅ **Integración fluida de información** en párrafos naturales
+- ✅ **Sensibilidad cultural** para comunidades rurales
+
+Los templates se encuentran en `backend/context/prompt_templates.py` y cubren:
+- Violencia familiar (Ley 30364)
+- Pensión de alimentos
+- Derechos de identidad
+- Consultas legales generales
 
 ## 📁 Estructura del Proyecto
 
@@ -207,6 +230,21 @@ ia-juridica/
 ```
 
 ## 🔧 Solución de Problemas
+
+### Grafo de Conocimiento
+
+**Problema: Las respuestas son genéricas y no usan los documentos procesados**
+- **Causa**: LightRAG no está inicializado correctamente o no está usando el grafo local
+- **Solución**: Verificar que `LOAD_LOCAL_KG=true` en `backend/.env`
+- **Verificación**: En los logs debería aparecer `"LegalRAG Engine inicializado en ./docs/knowledge_graph (18 documentos cargados del disco)"`
+
+**Problema: El sistema intenta usar Neo4j pero falla**
+- **Causa**: Configuración de Neo4j incorrecta o credenciales inválidas
+- **Solución**: Cambiar a `LOAD_LOCAL_KG=true` y `NEO4J_ENABLED=false` para modo local
+
+**Problema: Respuestas muy estructuradas con secciones fijas**
+- **Causa**: Prompt templates configurados para formato estructurado
+- **Solución**: Los templates ya están actualizados para estilo conversacional en `backend/context/prompt_templates.py`
 
 ### Chat Persistence Issues
 

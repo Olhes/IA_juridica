@@ -1,4 +1,4 @@
-## El Régimen de Visitas en el Peru: Guia Integral
+## El Régimen de Visitas en el Perú: Guía Integral
 
 Conceptos, procesos, modalidades y el impacto de la Ley 31590
 
@@ -6,57 +6,69 @@ Conceptos, procesos, modalidades y el impacto de la Ley 31590
 
 <!-- image -->
 
-## "Mas que un derecho delos padres, es una necesidad del nino.
+NotebookLM
 
-Interes Superior del Nino
+## (( 'Más que un derecho de los padres, es una necesidad del niño &gt;
 
-## Definicion Central
+Interés Superior del Niño
 
-El "derecho de visitas" es el contacto, comunicaciony estancia entre padrese hijos no cohabitantes. Aunque es ejercido por los padres, la jurisprudencia lo define primordialmente comounderechodel menor.
+## Definición Central
+
+El "derecho de visitas" es el contacto, comunicación y estancia entre padres e hijos no cohabitantes. Aunque es ejercido por los padres, la jurisprudencia lo define primordialmente como un derecho del menor.
 
 ## Objetivo
 
-Conservar los vinculos afectivos para no afectar el desarrollo integral psiquico y emocional del nino.
+Conservar los vínculos afectivos para no afectar el desarrollo integral psíquico y emocional del niño.
 
-## iComo se origina el regimen?
+NotebookLM
+
+## ëCómo se origina el régimen?
 
 <!-- image -->
 
-Matrimonial (presuncion) oExtramatrimonial (reconocimiento voluntario 0 judicial - Art. 402 CC).
+Matrimonial (presunción) 0 Extramatrimonial (reconocimiento voluntario 0 judicial Art. 402 CC).
+
+2. Patria Potestad
 
 Deber y derecho de cuidar a los hijos (Arts. 74 y 418).
 
-<!-- image -->
-
 Un padre ejerce la tenencia, el otro solicita las visitas.
 
-<!-- image -->
-
-## Las dos vias para establecer el régimen
+Base Legal: Artículo 88 del Código de los Niños y Adolescentes.
 
 <!-- image -->
 
-## Via Conciliacion
+NotebookLM
 
-## La opcion optima
-
-Amparada en la Ley 26872. Las partes determinan un acuerdo mutuo. Fomenta una mejor relacion paterno-filial.
+## Las dos vías para establecer el régimen
 
 <!-- image -->
 
-## Via Judicial
+## Vía Conciliación
 
-## Cuandonohayacuerdo
+La opción óptima
 
-El Juez de Familia decide basado en el interés superior del nino. Se establece mediante sentencia judicial.
+Amparada en la 26872. Las partes determinan un acuerdo mutuo. Fomenta una mejor relación paterno-filial. Ley
 
-## Requisitos: Via Conciliacion
+El Juez de Familia decide basado en el interés superior del niño. Se establece mediante sentencia judicial.
 
-Procedimiento sencillobasado en el acuerdomutuo.
+NotebookLM
 
-- Copia deDNI del solicitante.
-- Copia del acta de nacimientodel hijo(a).
-- Copia de acta de matrimonioo inscripciondeunionde hecho (si aplica).
+<!-- image -->
+
+## Requisitos: Vía Conciliación
+
+Procedimiento sencillo basado en el acuerdo mutuo.
+
+<!-- image -->
+
+Copia de DNI del solicitante.
+
+Copia del acta de nacimiento del hijo(a).
+
+<!-- image -->
+
+Copia de acta de matrimonio 0 inscripción de unión de hecho (si aplica).
 
 <!-- image -->
 
@@ -64,49 +76,53 @@ Procedimiento sencillobasado en el acuerdomutuo.
 
 <!-- image -->
 
-## Requisitos: Via Judicial
+NotebookLM
+
+## Requisitos: Vía Judicial
 
 Se presentan ante el Juez de Familia junto con la demanda.
 
 <!-- image -->
 
-Nota:Basadoenlaseccion4.2delaguiaJuris.pe
+Nota: Basado en la sección 4.2 de la Juris pe guía
 
-## Modalidades de Visita: iDonde y como?
+NotebookLM
 
-## Con Externamiento
+## Modalidades de Visita: ëDónde y cómo?
 
-<!-- image -->
-
-## Sin Externamiento
-
-<!-- image -->
-
-Facultad de sacar al hijo del hogar donde vive con el otro progenitor (paseos, salidas).
-
-El padre visita al hijo DENTRO del hogar donde reside el menor.
+| Con Externamiento                                                                         | Sin Externamiento                                               |
+|-------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
+| Facultad de sacar al hijo del hogar donde vive con el otro progenitor (paseos, salidas) . | El padre visita al hijo DENTRO del hogar donde reside el menor. |
 
 ## Visitas Supervisadas
 
-Si existe riesgo, el juez puede ordenar supervision por el otro padre, un familiar o un tercero.
+Si existe riesgo; el juez puede ordenar supervisión por el otro padre, un familiar 0 un tercero.
 
-## ModalidadesModernas
+NotebookLM
 
-<!-- image -->
-
-El derecho a que el menor pase la nocheyduermaen laresidenciadel progenitor visitante.
+## Modalidades Modernas
 
 <!-- image -->
 
-Incorporadas post-pandemia. Uso de Google Meet, Zoom, WhatsApp para mantener la convivencia paterno-filial.
-
-## La extension del régimen a la familia
-
-El régimen no es exclusivo de los padres. Art. 90 del Codigo de los Ninos y Adolescentes.
+El derecho a que el menor pase la noche y duerma en la residencia del progenitor visitante.
 
 <!-- image -->
 
-## El impacto de la Ley 31590
+Incorporadas post-pandemia: Uso de Google Meet, Zoom, WhatsApp para mantener la convivencia paterno-filial.
+
+Nota: Basado en la sección 4.2 de la guía Juris pe.
+
+NotebookLM
+
+## La extensión del régimen a la familia
+
+El régimen no es exclusivo de los padres. Art. 90 del Código de los Niños y Adolescentes.
+
+<!-- image -->
+
+NotebookLM
+
+## Elimpacto de la Ley 31590
 
 Tenencia Compartida (Vigente desde octubre 2022)
 
@@ -114,60 +130,72 @@ Tenencia Compartida (Vigente desde octubre 2022)
 
 La norma general ahora es la Tenencia Compartida: los padres pasan igual periodo de tiempo con los hijos.
 
-## El Rol de lasVisitas Hoy
+## El Rol de las Visitas Hoy
 
-Si se impide la convivencia en el periodo correspondiente, o si se dicta tenenciaexclusiva,seactivaelregimendevisitas.
+Si se impide la convivencia en el periodo correspondiente; 0 si se dicta tenencia exclusiva, se activa el régimen de visitas.
 
-## é pasa si se incumple el régimen? iQué
+NotebookLM
+
+## ëQué pasa si se incumple el régimen?
 
 <!-- image -->
 
 <!-- image -->
 
-ADVERTENCIA: El incumplimiento puede generar la Variacion de la Tenencia (Art. 31 del Codigo de los Ninos y Adolescentes).
+ADVERTENCIA: El incumplimiento puede generar la Variación de la Tenencia (Art. 31 del Código de los Niños y Adolescentes) .
 
-## Mito Legal: “Si no pagas, no lo ves"
+NotebookLM
 
-## Procede el régimen de visitas si el padre no pag? la pension de alimentos?
+## Mito Legal: "Si no pagas, no lo ves"
 
-## Sl
+## ëProcede el régimen de visitas si el padre no pagó la pensión de alimentos?
 
-- Condicionar la visita al pago menoscaba al menor (Casacion 2154-2018).
-- las economicas.
-- Impedir el contacto contraviene el Interés Superior del Nino.
+Sí
 
-Ampliacion de visitas y deudas alimentarias
+- Condicionar la visita al pago menoscaba al menor (Casación 2154-2018) .
+- Se deben atender las necesidades emocionales y espirituales, no solo las económicas.
+- Impedir el contacto contraviene el Interés Superior del Niño.
 
-## Si debo alimentos, puedo pedir ampliar mis visitas? Si
+NotebookLM
 
-El incumplimiento economico no es impedimento para forjar una relacion paterno-filial adecuada.
+## Ampliación de visitas y deudas alimentarias debo alimentos, puedo pedir ampliar mis visitas? ëSi
 
-Importante: Esto es sin perjuicio de las medidas legales para cobrar la pension. La deuda economica corre por su propia via legal (Casacion 5007-2017).
+Sí
 
-## Conclusiones Clave
+El incumplimiento económico no es impedimento para forjar una relación paterno-filial adecuada.
+
+Importante: Esto es sin perjuicio de las medidas legales para cobrar la pensión. La deuda económica corre por su propia vía legal (Casación 5007-2017).
+
+NotebookLM
 
 01
 
-## Los hijos no son trofeos
-
-Obstaculizar el vinculo por conflictos de pareja dana irreversiblemente al menor.
-
 02
 
-## Derecho vs. Deber
+03
 
-Visitar es un derecho, pero también un deber moral. La ley sanciona el impedimento con la variacion de tenencia.
+## Los hijos no son trofeos
 
-## 03 Conciliacion
+## Derecho VS. Deber
+
+Obstaculizar el vínculo por conflictos de pareja daña irreversiblemente al menor.
+
+Visitar es un derecho; pero también un deber moral. La ley sanciona el impedimento con la variación de tenencia:
 
 Es el mecanismo ideal para adaptar horarios y asegurar el cumplimiento voluntario.
 
-## jurispe J
+NotebookLM
+
+Conciliación
+
+## Conclusiones Clave
+
+<!-- image -->
 
 ## Profundiza tus conocimientos
 
-- Diplomado de Redaccion Civil Aplicada (Inicio Enero 2026)
-- Diplomado de Asistente en Funcion Fiscal (Inicio Febrero 2026)
+- Diplomado de Redacción Civil Aplicada (Inicio Enero 2026)
+- Diplomado de Asistente en Función Fiscal (Inicio Febrero 2026)
 - Diplomado en Derecho de Familia
 
 <!-- image -->
@@ -181,3 +209,5 @@ Es el mecanismo ideal para adaptar horarios y asegurar el cumplimiento voluntari
 <!-- image -->
 
 <!-- image -->
+
+NotebookLM

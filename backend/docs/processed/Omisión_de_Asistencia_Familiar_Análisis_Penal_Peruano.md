@@ -1,135 +1,182 @@
-## El Delito de Omision de AsistenciaFamiliar
+## El Delito de Omisión de Asistencia Familiar
 
-Analisis dogmatico, tipicidad y consecuencias penales enelordenamientoperuano
-
-<!-- image -->
-
-Basadoenel analisisjuridicodeLPPasionporel Derecho
-
-## La Gran Excepcion Constitucional
-
-## La Regla General
+Análisis dogmático, tipicidad y consecuencias penales en el ordenamiento peruano
 
 <!-- image -->
 
-No hay prision por deudas.
+Basado en el análisis jurídico de LP Pasión por el Derecho
 
-Art. 2, inc. 24, lit. C, ConstitucionPoliticadelPeru
+NotebookLM
 
-La Excepcion
+## La Gran Excepción Constitucional
 
-<!-- image -->
+La Regla General
 
-El mandato judicial por incumplimiento de deberesalimentarios.
-
-<!-- image -->
-
-## Justificacion Criminologica: Por que interviene el Derecho Penal?
+La Excepción
 
 <!-- image -->
 
-## Principio de Intervencion Minima
+<!-- image -->
 
-"Solo los bienes juridicos de mayor importancia material y necesidaddeproteccion merecen tutela penal."
+No hay prisión por deudas.
 
-—Mir Puig
+Art. 2, inc. 24, lit. C, Constitución Política del Perú
 
-No es una criminalizacion de deudas, es la proteccion ante la vulneracion de la subsistencia.
+Obligación Civil
 
-## Naturaleza del Delito: Omision Propia
+El mandato judicial por incumplimiento de deberes alimentarios.
 
-## Omisi6n Propia (Art. 149 CP)
+Incumplimiento de Resolución
+
+Sanción Penal
+
+NotebookLM
+
+## Justificación Criminológica: ëPor qué interviene el Derecho Penal?
 
 <!-- image -->
 
-Mero incumplimiento de un deber establecidopor resolucion judicial. El sujeto no realiza la conductadebida.
+## Principio de Intervención Mínima
 
-## Comision por Omisi6n
+"Solo los bienes jurídicos de mayor importancia material y necesidad de protección merecen tutela penal:"
 
-Delito demera inactividad
+Mir Puig
 
-Requiere la no evitacion deun riesgo (ej. dejar morir a alguien).
+No es una criminalización de deudas, es la protección ante la vulneración de la subsistencia.
+
+NotebookLM
+
+## Naturaleza del Delito: Omisión Propia
 
 <!-- image -->
 
-BaseLegal:Art.13delCodigoPenal
+Base Legal: Art. 13 del Código Penal
 
-## Anatomia del Articulo 149: El: lTipol Base
+NotebookLM
 
-"El que e omite cumplir su obligacion de prestar los alimentos que establece una resolucion judicial... 99
+## Anatomía del Artículo 149: El Tipo Base
 
-RequisitoPrevio: Proceso Civil +
+66 El que omite cumplir su obligación de prestar los alimentos que establece una resolución judicial.. 99
 
-NotificacionValida
+Requisito Previo: Proceso Civil Notificación Válida
 
-## Consecuencia Juridica
+## Consecuencia Jurídica
 
-Pena privativa delibertad no mayor de 3 anos
+Pena privativa de libertad no mayor de 3 años
 
 Servicio comunitario (20 a 52 jornadas)
 
 Sin perjuicio de cumplir el mandato judicial.
 
-Conducta: Inaccionante normaimperativa
+Conducta: Inacción ante norma imperativa
 
-## Agravantes y Modalidades Especificas
+NotebookLM
 
-<!-- image -->
-
-<!-- image -->
+## Agravantes y Modalidades Específicas
 
 <!-- image -->
 
 <!-- image -->
+
+- Simulación: Fingir otra obligación de alimentos .
+- Renuncia Maliciosa: Dejar el trabajo intencionalmente.
+- Lesión Grave (Pena: 2 a 4 años)
+- Muerte (Pena: 3 a 6 años)
+
+Pena: 1a4 años
+
+Si pudieron ser previstos.
+
+NotebookLM
 
 ## Los Sujetos del Delito
 
 <!-- image -->
 
+NotebookLM
+
 ## La Responsabilidad Subsidiaria
 
-Orden de Prelaci6n (Art. 475 C6digo Civil)
+Orden de Prelación (Art. 475 Código Civil)
 
 <!-- image -->
 
-El Estadoacude al circulo familiar extendido para asegurar la supervivencia.
+El Estado acude al círculo familiar extendido para asegurar la supervivencia.
+
+NotebookLM
 
 ## Tipicidad: Lo Objetivo vs. Lo Subjetivo
 
 <!-- image -->
 
-Tipicidad Objetiva (Hechos)
+Tipicidad Subjetiva (Intención)
 
-1. Existencia de Resolucion Judicial firme.
-2. Conocimiento del requerimiento.
-3. Omision del pago en el plazo otorgado.
-
-<!-- image -->
-
-## DOLO
-
-1. Conciencia de la obligacion.
-2. Voluntad de incumplir.
-
-## El Dolo en la Omision
+- 1 Existencia de Resolución Judicial firme.
+- 2 Conocimiento del requerimiento.
+- 1 Conciencia de la obligación.
+- 3. Omisión del pago en el plazo otorgado.
 
 <!-- image -->
 
-## EjemplodeMalaFe
+DOLO
 
-Elobligadopideaunparientequelodemande para simular cargaprocesaly reducirla cuota.
+- 2 Voluntad de incumplir.
 
-Casacion639-2017-Puno:Sin0sepruebaeldolo,aplicaelprincipioindubioproreo.
+NotebookLM
+
+## El Dolo en la Omisión
+
+Conocimiento
+
+4
+
+Voluntad
+
+DOLO
+
+## Ejemplo de Mala Fe
+
+El obligado pide a un pariente que lo demande para simular carga procesal y reducir la cuota.
+
+Casación 639-2017-Puno: Si no se prueba el dolo, aplica el principio in dubio pro reo.
+
+NotebookLM
+
+## Consumación y Permanencia
+
+MOMENTO INSTANTÁNEO DE CONSUMACIÓN
+
+Requerimiento Judicial Inter Medium
+
+Vencimiento del Plazo Inter Bold
+
+(Situación antijurídica mantenida) Inter Medium
+
+## Prescripción:
+
+Se computa desde el día siguiente de vencido el requerimiento.
+
+EFECTOS PERMANENTES
+
+NotebookLM
+
+## Gausas de Justificación: ;Guándo NO es delito?
 
 <!-- image -->
 
-## de Justificacion: &amp;CuandoNO es delito? Causas
+<!-- image -->
+
+Requisito: Debe ser un hecho real apreciado por la experiencia, no una impresión personal.
+
+NotebookLM
+
+## Realidad Social y Problemática
 
 <!-- image -->
 
-Requisito: Debe ser un hecho real apreciado por la experiencia, no una impresion personal.
+<!-- image -->
 
-## Realidad Socialy Problematica
+NotebookLM
 
 <!-- image -->
 
@@ -137,20 +184,22 @@ Requisito: Debe ser un hecho real apreciado por la experiencia, no una impresion
 
 <!-- image -->
 
-## Conclusion Final
+NotebookLM
 
-"La criminalizacionse da apartir de lapresencia de eun bien juridicodegranrelevancia,comoes la familia.
+## Conclusión Final
+
+66 La criminalización se da a partir de la presencia de un 95 bien jurídico de gran relevancia; como es la familia.
 
 ## Checklist para el Litigante
 
-- [ ] Hubo proceso civil previo?
+- [ ] iHubo proceso civil previo?
 
-- [ ] Existeliquidacion aprobada?
+- [ ] iExiste liquidación aprobada?
 
-- [ ] Hubo notificacion valida?
+- [ ] iHubo notificación válida?
 
-- [ ] Persisteel incumplimiento doloso?
+- [ ] iPersiste el incumplimiento doloso?
 
-AccionPenal Procedente
+Acción Penal Procedente
 
-<!-- image -->
+NotebookLM

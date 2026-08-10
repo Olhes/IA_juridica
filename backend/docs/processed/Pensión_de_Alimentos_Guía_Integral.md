@@ -1,126 +1,16 @@
-## PENSIONDEALIMENTOS TEORIAYPRACTICA[2025]
+"El primer bien que una persona posee en el orden jurídico es su vida. La primera necesidad es su conservación ' 7 Doménico Barbero
+
+## PENSIÓN DE ALIMENTOS TEORIA Y PRÁCTICA [2025]
 
 <!-- image -->
 
-Un analisis integral del derecho a la subsistencia y el deber de solidaridad familiar.
+Un análisis integral del derecho a la subsistencia y el deber de solidaridad familiar.
 
 Lato
 
-Basadoenlanormativaactual del CodigoCivilPeruanoyel CodigodelosNinosyAdolescentes.
+Basado en la normativa actual del Código Civil Peruano Código de los Niños y Adolescentes. Yel
 
-Nivel de Dependencia
-
-## La Filosofia de la Necesidad: El Ciclo de Dependencia
-
-Infancia:
-
-DependenciaAbsoluta
-
-El Estado de Necesidad
-
-La incapacidad fisica omental deuna personaparaproveersesupropio
-
-sustento.
-
-Vejez/Enfermedad:
-
-RetornoalaDependencia
-
-Adultez:
-
-Autosufciencia
-
-个
-
-EtapadeVida
-
-Solidaridad Familiar
-
-El deber éticoylegal desocorromutuo quetransforma unaobligacionnatural en una juridica.
-
-16:9
-
-## Los Pilares Constitucionales y Convencionales
-
-Codigo Civil/
-
-NormativaNacional
-
-Convencionsobre losDerechosdelNino
-
-Art.27:
-
-nivel devida
-
-Q
-
-S
-
-Constitucion
-
-(Art.4y6)
-
-Politica
-
-11111111:5104
-
-nino, madre y
-
-Proteccional anciano.Deber
-
-dar seguridad.
-
-deeducary
-
-Derechoaun adecuado
-
-spiritual).
-
-(fisico,mental,
-
-JULUUUON
-
-Fundamento: La Dignidad Humana
-
-Interes del Nino
-
-Superior
-
-11111111-10E
-
-rector de
-
-Criterio todaslas
-
-judiciales.
-
-medidas
-
-JULUUUUU
-
-## Definicion Integral: Mas que Solo Comida
-
-El AspectoDoble del Derecho Alimentario (Art. 472 CC&amp; Art. 92 CNA)
-
-- 1.AspectoMaterial (Subsistencia)
-
-<!-- image -->
-
-Sustento
-
-<!-- image -->
-
-<!-- image -->
-
-Habitacion
-
-Vestido
-
-- 2.Aspecto Espiritual(Desarrollo)
-
-<!-- image -->
-
-Educacion/lnstruccion
+NotebookLM
 
 <!-- image -->
 
@@ -128,15 +18,7 @@ Educacion/lnstruccion
 
 <!-- image -->
 
-Salud/Psicologia
-
-Recreacion
-
-Capacitacion Laboral
-
-Nota Importante: Incluye tambien los gastos de embarazo de la madre, desde la concepcion hasta el postparto.
-
-## Caracteristicas de un Derecho “Personalisimo'
+## 66 Características de un Derecho Personalísimo"
 
 ## INTRANSMISIBLE
 
@@ -144,164 +26,159 @@ No se hereda ni se cede a terceros.
 
 <!-- image -->
 
+## INEMBARGABLE
+
 ## IRRENUNCIABLE
 
-No se puede abdicar, seria abdicara lavida.
+Intocable por acreedores externos.
+
+No se puede abdicar; sería abdicar a la vida.
+
+INCOMPENSABLE
 
 ## INTRANSIGIBLE
 
-El derechonosenegocia, solo el monto.
+No se cruza con deudas del beneficiario.
 
-Referencia: Art. 487 del Codigo Civil Peruano.
+El derecho no se negocia; soloelmonto.
 
-## INEMBARGABLE
+Referencia: Art. 487 del Código Civil Peruano.
 
-Intocable por acreedoresexternos.
+NotebookLM
 
-## INCOMPENSABLE
+16.9
 
-Nosecruza condeudas del beneficiario.
+## El Círculo de la Reciprocidad
 
-## El Circulo de la Reciprocidad
-
-El deber de asistencia fluye en ambas direcciones (Art. 474 CC).
+El deber de asistencia fluye en ambas direcciones (Art. 474 CC)
 
 <!-- image -->
 
-Principio de Solidaridad: La obligacion se basa en el parentesco. Un hijo adulto debe asistir a su padreen indigencia, asi como el padreasistioal hijoenla infancia.
+Principio de Solidaridad: La obligación se basa en el parentesco. Un hijo adulto debe asistir a su padre en indigencia; así como el padre asistió al hijo en la infancia:
 
-## Prelacion: La Jerarquia de los Obligados
+NotebookLM
 
-:A quién se reclama primero? (Art. 475 CC)
+## Prelación: La Jerarquía de los Obligados
 
-<!-- image -->
-
-## DerechodeExcusion
-
-El demandadopuede pedir que se cobre primeroalobligadode mayor jerarquia.
-
-Excepcion (Art. 478): Si el obligado principal pone en peligro su propia subsistencia, la deuda pasa al siguiente en la lista.
-
-## El Prorrateo y el Limite de Embargabilidad
-
-Distribucion equitativa ante recursos limitados.
-
-Prorrateoentre beneficiarios
-
-60% MAXIMO EMBARGABLE
+iAquién se reclama primero? (Art. 475 CC)
 
 <!-- image -->
 
-Regla de Oro (Art. 648 CPC): El embargopor alimentos tiene un tope legal del 60% de los ingresos totales.
+Derecho de Excusión
 
-Definicion deProrrateo:Si aparece unnuevohijoo reclamante, el 60% disponible se redistribuye proporcionalmente.Nadie cobra el 100% si hay otros con derecho.
+El demandado puede que se cobre primero al obligado de mayor jerarquía. pedir
 
-40% INTOCABLE Garantia de subsistencia del deudor.
+Excepción (Art; 478): Si el obligado principal pone en peligro su propia subsistencia; la deuda pasa al siguiente en la lista.
 
-## La Ecuaci6n de Calculo (Art. 481 CC)
+16.9
 
-NECESIDADES Edad Salud Educacion
+NotebookLM
 
-El cuidadodelacasay loshijosse considera aporteeconomicodel progenitor custodio.
+## El Prorrateo y el Límite de Embargabilidad
+
+Distribución equitativa ante recursos limitados.
+
+Prorrateo entre beneficiarios
+
+609 MÁXIMO EMBARGABLE
 
 <!-- image -->
 
-Principio de Proporcionalidad: La pension es "Ad Necessitatem' (para lo necesario), no para enriquecimiento.
+Regla de Oro (Art. 648 CPC): Elembargo por alimentos tiene un tope legal del 60% de los ingresos totales.
 
-POSIBILIDADES Ingresos Cargas Deudas
+Definición de Prorrateo: Si aparece un nuevo hijo 0 reclamante; el 60% disponible se redistribuye proporcionalmente. Nadie cobra el 100% si hay otros con derecho.
 
-## Investigacion de la Capacidad Economica
+INTOCABLE
+
+409 Garantía de subsistencia del deudor.
+
+16.9
+
+NotebookLM
+
+<!-- image -->
+
+NotebookLM
+
+## Investigación de la Capacidad Económica
 
 Poderes del Juez para combatir el fraude (Art. 564 CPC)
 
 <!-- image -->
 
-## Realidad vs. Mito:
+Realidad vs. Mito:
 
-El desempleono exime del pago. Si el deudor alega 'no tener trabajo",el Juez puede investigar de oficio sus cuentas y patrimonio en tiemporealpara determinar su verdadera capacidad.
+El desempleo no exime del pago. Si el deudor alega no tener trabajo" el Juez puede investigar de oficio sus cuentas y patrimonio en tiempo real para determinar su verdadera capacidad.
 
-## La Variabilidad de la Pension (Art. 482 CC)
+16.9
 
-Una sentencia revisable ante cambios de vida.
-
-AUMENTO DEPENSION
-
-SENTENCIA (REVISABLE)
-
-REDUCCION DEPENSION
-
-Incrementode necesidades (ej. Universidad)
+NotebookLM
 
 <!-- image -->
 
-<!-- image -->
+NotebookLM
 
-Disminucion de ingresos (ej.Desempleo involuntario)
+## Exoneración Judicial (Art. 483 CC)
 
-<!-- image -->
+El cese de la obligación por sentencia.
 
-Disminucion de necesidades
+1 Peligro de Subsistencia
 
-Certificaate
-
-## Ajuste Automatico:
-
-Si la pension se fij6 en porcentaje (%), elmontocambia automaticamenteal cambiarel sueldo, sinnecesidad de nuevo juicio.
-
-NUEVA PENSION AJUSTADA
-
-## Exoneracion Judicial (Art. 483 CC)
-
-El cese de la obligacionpor sentencia.
+Cuando pagar la pensión impide al propio alimentante sobrevivir. El derecho a la propia vida es el límite:
 
 <!-- image -->
 
-<!-- image -->
+Nota: La exoneración no es automática; se debe demandar judicialmente
 
-Nota: La exoneracion no es automatica; se debe demandar judicialmente.
+16.0
 
-## 2. Desaparicion de la Necesidad
-
-Cuandoel beneficiario cumple 18 anos y no estudia, o elex-conyuge contrae nuevo matrimonio.
-
-## La Excepcion: Alimentos Mayores de 18 Anos Prorroga del derecho (Art.424 CC)
-
-18ANOS
-
-Excepciones
-
-Estudios Exitosos
-
-(Hasta los 28 anos)
-
-Requiere progreso academicoy notas aprobatorias. No aplica si hay atrasoinjustificado.
-
-Incapacidad Fisica oMental
-
-Debidamente comprobada.Puedeser vitalicia.
+NotebookLM
 
 <!-- image -->
+
+NotebookLM
+
+## Extinción Automática (Art. 486 CC)
+
+El fin definitivo de la obligación:
+
+Muerte del Obligado
+
+Muerte del Alimentista
+
+## Consecuencias Legales
+
+- 1.Ladeuda es personal: No se hereda la obligación de seguir pagando a futuro.
+- 2 Deudas pasadas: Los herederos sí deben pagar las pensiones devengadas (no cobradas) y los gastos funerarios.
+
+16.9
+
+NotebookLM
 
 ## Conclusiones Clave
 
 <!-- image -->
 
-## INTEGRALIDAD
-
-Alimentos =Vida.No es solo comida;abarca educacion,salud, vivienda y recreacion.
+<!-- image -->
 
 <!-- image -->
+
+## INTEGRALIDAD
 
 ## PROPORCIONALIDAD
 
-Elcalculoesunabalanza constanteentrela Necesidad del ninoy la Posibilidad del padre.
+PRIORIDAD
 
-<!-- image -->
+Alimentos = Vida. No es solo comida; abarca educación; salud, vivienda y recreación.
 
-## PRIORIDAD
+Elcálculo es una balanza constante entre la Necesidad del niño y la Posibilidad del padre
 
-El Interes Superior del Nino prima sobre cualquier deuda patrimonial.
+El Interés Superior del Niño prima sobre cualquier deuda patrimonial.
 
-"La ley asegura que la solidaridad familiar prevalezca sobre la indiferencia individual.
+"La asegura que la solidaridad familiar 99 prevalezca sobre la indiferencia individual ley
 
-Presentaci6nbasadaenelarticulojuridicodeSaulJoseCocaGuzmanparaLPDerecho(2025).
+Presentación basada en el artículo jurídico de Saúl José Coca Guzmán para LP Derecho (2025).
+
+1ó.9
+
+NotebookLM

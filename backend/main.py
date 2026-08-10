@@ -246,6 +246,23 @@ async def load_heavy_components(rag_engine, processed_dir):
         print(
             f"Documentos en memoria: {len(rag_engine.documents)} ({loaded} nuevos)"
         )
+        
+        # Insertar documentos en LightRAG si no están ya en el grafo
+        if len(rag_engine.documents) > 0:
+            print("Insertando documentos en LightRAG...")
+            inserted_count = 0
+            for doc_id, doc_data in rag_engine.documents.items():
+                try:
+                    await rag_engine.add_document(
+                        doc_data["content"],
+                        doc_data["metadata"],
+                        doc_id
+                    )
+                    inserted_count += 1
+                except Exception as e:
+                    print(f"Error insertando documento {doc_id}: {e}")
+            print(f"Documentos insertados en LightRAG: {inserted_count}")
+        
         print("Componentes pesados cargados correctamente")
     except Exception as e:
         print(f"Error cargando componentes pesados: {e}")
