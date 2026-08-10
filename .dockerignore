@@ -21,3 +21,5 @@ backend/docs/knowledge_graph
 .env
 .env.local
 .env.production
+**/.env
+**/.env.*
