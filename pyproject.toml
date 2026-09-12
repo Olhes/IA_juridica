@@ -32,6 +32,9 @@ dependencies = [
   "click==8.2.2",
   "googletrans>=4.0.2",
   "neo4j==5.26.0",
+  "email-validator>=2.3.0",
+  "pyjwt>=2.13.0",
+  "passlib[bcrypt]>=1.7.4",
 ]
 
 [project.optional-dependencies]

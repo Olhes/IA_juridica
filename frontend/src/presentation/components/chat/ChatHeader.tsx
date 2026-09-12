@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Globe,
   Moon,
@@ -8,10 +9,14 @@ import {
   Sun,
   Wifi,
   WifiOff,
+  LogIn,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import type { SupportedLanguage } from '../../../domain/legal/types';
+import { useAuth } from '../AuthProvider';
 
 interface ChatHeaderProps {
   currentLanguage: SupportedLanguage;
@@ -30,15 +35,19 @@ const i18n = {
     langQU:  'Quechua',
     themeLight: 'Cambiar a modo claro',
     themeDark:  'Cambiar a modo oscuro',
+    login: 'Acceder',
+    logout: 'Cerrar sesión',
   },
   quechua: {
     appName: 'IA Jurídica',
     online:  'Sistema kachkan',
-    offline: 'Sistema millk’aykun',
+    offline: 'Sistema millk\'aykun',
     langES:  'Español',
     langQU:  'Quechua',
     themeLight: 'Lliphlliq rikhuri',
     themeDark:  'Tutayaq rikhuri',
+    login: 'Yaykuy',
+    logout: 'Lluqsiy',
   },
 } as const;
 
@@ -76,6 +85,18 @@ export function ChatHeader({
   sidebarToggle,
 }: ChatHeaderProps) {
   const t = i18n[currentLanguage];
+  const { user, isAuthenticated, logout } = useAuth();
+  const router = useRouter();
+
+  const handleAuth = () => {
+    if (isAuthenticated) {
+      logout();
+    } else {
+      // Iniciar Google OAuth directamente
+      window.location.href = 'http://localhost:8000/auth/google';
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30
       bg-white/80 dark:bg-gray-900/80
@@ -135,6 +156,38 @@ export function ChatHeader({
 
           {/* Dark mode toggle */}
           <ThemeToggle language={currentLanguage} />
+
+          {/* Auth button */}
+          <button
+            type="button"
+            onClick={handleAuth}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
+              bg-slate-100 hover:bg-slate-200
+              dark:bg-gray-800 dark:hover:bg-gray-700
+              text-slate-600 dark:text-slate-300
+              transition-all duration-200 hover:scale-105 active:scale-95"
+          >
+            {isAuthenticated ? (
+              <>
+                {user?.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.username || 'Usuario'}
+                    className="w-6 h-6 rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">{user?.full_name || user?.username || 'Usuario'}</span>
+                <LogOut className="w-4 h-4" />
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span className="hidden sm:inline">{t.login}</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </header>

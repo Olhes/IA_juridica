@@ -11,7 +11,9 @@ import {
   Users,
 } from 'lucide-react';
 import { type KeyboardEvent, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { SupportedLanguage } from '../../../domain/legal/types';
+import { useAuth } from '../AuthProvider';
 
 interface ChatInputProps {
   onSend: (query: string) => void;
@@ -70,6 +72,8 @@ export function ChatInput({
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const t = i18n[language];
+  const { isAuthenticated } = useAuth();
+  const router = useRouter();
 
   const trimmed = text.trim();
   const canSend = trimmed.length > 0 && !isLoading;
@@ -77,6 +81,13 @@ export function ChatInput({
 
   const handleSend = () => {
     if (!canSend) return;
+    
+    // Requerir autenticación para enviar mensajes
+    if (!isAuthenticated) {
+      router.push('/login');
+      return;
+    }
+    
     onSend(trimmed);
     setText('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';

@@ -116,6 +116,15 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: Optional[str] = None
     API_DOCS_ENABLED: Optional[bool] = None
     
+    # Configuración OAuth 2.0 Google
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    GOOGLE_FRONTEND_CALLBACK_URI: str = os.getenv("GOOGLE_FRONTEND_CALLBACK_URI", "http://localhost:3000/auth/callback")
+    GOOGLE_AUTHORIZATION_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+    GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
+    
     # Configuración de Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUESTS: int = 100
