@@ -273,7 +273,7 @@ SELECT * FROM conversations_schema.messages ORDER BY created_at DESC LIMIT 5;
 
 ### PostgreSQL Connection Issues
 
-Si tienes problemas conectando a PostgreSQL, revisa `POSTGRES_CONNECTION_ISSUES.md` para un análisis detallado de todos los errores encontrados y sus soluciones.
+Si tienes problemas conectando a PostgreSQL, revisa `docs/operations/POSTGRES_CONNECTION_ISSUES.md` para un análisis detallado de todos los errores encontrados y sus soluciones.
 
 **Resumen rápido:**
 - El container Docker PostgreSQL usa puerto **5433** (no 5432)
@@ -312,11 +312,14 @@ docker exec -it juridica_redis redis-cli ping
 
 ## 📚 Documentación Adicional
 
-- `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
-- `API_DOC.md` - Documentación completa de la API
-- `POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL
-- `DOCUMENTATION.md` - Documentación técnica detallada
-- `CHANGELOG_MIGRACION_COHERE.md` - Historial de migración a Cohere
+- `docs/README.md` - Índice de documentación (tabla documento → qué explica → a quién le sirve)
+- `docs/operations/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
+- `docs/api/API_DOC.md` - Documentación completa de la API
+- `docs/operations/POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL
+- `docs/evaluations/CHANGELOG_MIGRACION_COHERE.md` - Historial de migración a Cohere
+- `docs/architecture/KNOWLEDGE_GRAPH_SETUP.md` - Setup del grafo de conocimiento
+- `docs/architecture/CLOUD_PDF_PIPELINE.md` - Pipeline PDF en la nube
+- `docs/operations/DEPLOY_RENDER.md` - Despliegue en Render
 
 ## 🎯 Temas Legales Soportados
 
