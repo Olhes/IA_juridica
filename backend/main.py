@@ -39,7 +39,8 @@ from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
 from database.redis_adapter import redis_adapter
 from modules.chat.services.chat_service import chat_service
-from modules.chat.controllers.chat_routes import router as chat_router
+from modules.chat.routes.chat_routes import router as chat_router
+from modules.auth.routes.auth_routes import router as auth_router
 
 # ── Módulos de validación y optimización ──────────────────────────────
 from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
@@ -319,6 +320,7 @@ app.add_middleware(
 
 # Registrar rutas de chat persistente
 app.include_router(chat_router)
+app.include_router(auth_router)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -808,10 +810,11 @@ async def legal_query_stream(
                     else:
                         response_text = str(final_response)
                     
-                    # Truncamiento forzado a 1000 caracteres (Google Translate maneja mejor que NLLB-200)
-                    MAX_RESPONSE_LENGTH = 1000
+                    # Aumentar límite para traducción completa (Google Translate maneja hasta 5000 caracteres)
+                    MAX_RESPONSE_LENGTH = 5000
                     if len(response_text) > MAX_RESPONSE_LENGTH:
-                        response_text = response_text[:MAX_RESPONSE_LENGTH] + "..."
+                        logger.warning(f"Respuesta muy larga ({len(response_text)} chars), truncando a {MAX_RESPONSE_LENGTH}")
+                        response_text = response_text[:MAX_RESPONSE_LENGTH]
                     
                     translation_result = await translation_service.translate(
                         text=response_text,

@@ -46,7 +46,15 @@ NEO4J_ENABLED=false  # Neo4j Aura (opcional, requiere configuración adicional)
 # NEO4J_USER=tu_usuario
 # NEO4J_PASSWORD=tu_password
 # NEO4J_DATABASE=tu_database
+
+# Google OAuth 2.0 (opcional)
+GOOGLE_CLIENT_ID=tu_client_id_aqui
+GOOGLE_CLIENT_SECRET=tu_client_secret_aqui
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+GOOGLE_FRONTEND_CALLBACK_URI=http://localhost:3000/auth/callback
 ```
+
+Para configurar Google OAuth, consulta la guía completa en `OAUTH_SETUP.md`.
 
 ### Start Development
 
@@ -312,6 +320,7 @@ docker exec -it juridica_redis redis-cli ping
 
 ## 📚 Documentación Adicional
 
+- `OAUTH_SETUP.md` - Configuración completa de Google OAuth 2.0
 - `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
 - `API_DOC.md` - Documentación completa de la API
 - `POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL

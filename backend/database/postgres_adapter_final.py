@@ -559,6 +559,276 @@ class PostgreSQLAdapter:
                 ]
         
         return await loop.run_in_executor(None, search_sync)
+    
+    # ── Métodos para Autenticación y Usuarios ─────────────────────────────────────
+    async def create_user(self, email: str, username: str, password_hash: str, 
+                         full_name: str = None, role: str = 'user') -> Optional[Dict[str, Any]]:
+        """Crear un nuevo usuario"""
+        if not self.conn:
+            raise DatabaseUnavailableError("PostgreSQL unavailable")
+        
+        loop = asyncio.get_event_loop()
+        
+        def create_sync():
+            with self.conn.cursor() as cursor:
+                try:
+                    cursor.execute("""
+                        INSERT INTO auth_schema.users (email, username, password_hash, full_name, role)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id, email, username, full_name, role, is_active, created_at
+                    """, (email, username, password_hash, full_name, role))
+                    
+                    result = cursor.fetchone()
+                    self.conn.commit()
+                    
+                    return {
+                        'id': str(result[0]),
+                        'email': result[1],
+                        'username': result[2],
+                        'full_name': result[3],
+                        'role': result[4],
+                        'is_active': result[5],
+                        'created_at': result[6].isoformat()
+                    }
+                except Exception as e:
+                    self.conn.rollback()
+                    raise e
+        
+        return await loop.run_in_executor(None, create_sync)
+
+    async def update_user(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Actualizar un usuario existente"""
+        if not self.conn:
+            raise DatabaseUnavailableError("PostgreSQL unavailable")
+
+        loop = asyncio.get_event_loop()
+
+        def update_sync():
+            with self.conn.cursor() as cursor:
+                try:
+                    # Construir la consulta dinámicamente
+                    set_clauses = []
+                    values = []
+                    for key, value in updates.items():
+                        if key in ['full_name', 'picture', 'username']:
+                            set_clauses.append(f"{key} = %s")
+                            values.append(value)
+
+                    if not set_clauses:
+                        return None
+
+                    values.append(user_id)
+                    query = f"""
+                        UPDATE auth_schema.users
+                        SET {', '.join(set_clauses)}
+                        WHERE id = %s
+                        RETURNING id, email, username, full_name, picture, role, is_active, created_at
+                    """
+
+                    cursor.execute(query, values)
+                    result = cursor.fetchone()
+                    self.conn.commit()
+
+                    if result:
+                        return {
+                            'id': str(result[0]),
+                            'email': result[1],
+                            'username': result[2],
+                            'full_name': result[3],
+                            'picture': result[4],
+                            'role': result[5],
+                            'is_active': result[6],
+                            'created_at': result[7].isoformat()
+                        }
+                    return None
+                except Exception as e:
+                    self.conn.rollback()
+                    raise e
+
+        return await loop.run_in_executor(None, update_sync)
+
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Obtener un usuario por email"""
+        if not self.conn:
+            return None
+        
+        loop = asyncio.get_event_loop()
+        
+        def get_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, email, username, full_name, role, password_hash, is_active, last_login, created_at
+                    FROM auth_schema.users
+                    WHERE email = %s AND is_active = true
+                """, (email,))
+                
+                result = cursor.fetchone()
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result[0]),
+                    'email': result[1],
+                    'username': result[2],
+                    'full_name': result[3],
+                    'role': result[4],
+                    'password_hash': result[5],
+                    'is_active': result[6],
+                    'last_login': result[7].isoformat() if result[7] else None,
+                    'created_at': result[8].isoformat()
+                }
+        
+        return await loop.run_in_executor(None, get_sync)
+    
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Obtener un usuario por ID"""
+        if not self.conn:
+            return None
+        
+        loop = asyncio.get_event_loop()
+        
+        def get_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, email, username, full_name, role, is_active, last_login, created_at
+                    FROM auth_schema.users
+                    WHERE id = %s
+                """, (user_id,))
+                
+                result = cursor.fetchone()
+                if not result:
+                    return None
+                
+                return {
+                    'id': str(result[0]),
+                    'email': result[1],
+                    'username': result[2],
+                    'full_name': result[3],
+                    'role': result[4],
+                    'is_active': result[5],
+                    'last_login': result[6].isoformat() if result[6] else None,
+                    'created_at': result[7].isoformat()
+                }
+        
+        return await loop.run_in_executor(None, get_sync)
+    
+    async def update_last_login(self, user_id: str) -> bool:
+        """Actualizar el último login de un usuario"""
+        if not self.conn:
+            return False
+        
+        loop = asyncio.get_event_loop()
+        
+        def update_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE auth_schema.users
+                    SET last_login = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (user_id,))
+                self.conn.commit()
+                return True
+        
+        return await loop.run_in_executor(None, update_sync)
+    
+    async def get_user_roles(self, user_id: str) -> List[Dict[str, Any]]:
+        """Obtener los roles de un usuario"""
+        if not self.conn:
+            return []
+        
+        loop = asyncio.get_event_loop()
+        
+        def get_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT r.id, r.name, r.description, ur.assigned_at
+                    FROM auth_schema.roles r
+                    INNER JOIN auth_schema.user_roles ur ON r.id = ur.role_id
+                    WHERE ur.user_id = %s
+                """, (user_id,))
+                
+                results = cursor.fetchall()
+                return [
+                    {
+                        'id': str(row[0]),
+                        'name': row[1],
+                        'description': row[2],
+                        'assigned_at': row[3].isoformat()
+                    }
+                    for row in results
+                ]
+        
+        return await loop.run_in_executor(None, get_sync)
+    
+    async def get_user_permissions(self, user_id: str) -> List[str]:
+        """Obtener todos los permisos de un usuario (a través de sus roles)"""
+        if not self.conn:
+            return []
+        
+        loop = asyncio.get_event_loop()
+        
+        def get_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT p.name
+                    FROM auth_schema.permissions p
+                    INNER JOIN auth_schema.role_permissions rp ON p.id = rp.permission_id
+                    INNER JOIN auth_schema.roles r ON rp.role_id = r.id
+                    INNER JOIN auth_schema.user_roles ur ON r.id = ur.role_id
+                    WHERE ur.user_id = %s
+                """, (user_id,))
+                
+                results = cursor.fetchall()
+                return [row[0] for row in results]
+        
+        return await loop.run_in_executor(None, get_sync)
+    
+    async def assign_role_to_user(self, user_id: str, role_name: str, assigned_by: str = None) -> bool:
+        """Asignar un rol a un usuario"""
+        if not self.conn:
+            return False
+        
+        loop = asyncio.get_event_loop()
+        
+        def assign_sync():
+            with self.conn.cursor() as cursor:
+                try:
+                    cursor.execute("""
+                        INSERT INTO auth_schema.user_roles (user_id, role_id, assigned_by)
+                        VALUES (%s, (SELECT id FROM auth_schema.roles WHERE name = %s), %s)
+                        ON CONFLICT (user_id, role_id) DO NOTHING
+                    """, (user_id, role_name, assigned_by))
+                    self.conn.commit()
+                    return True
+                except Exception as e:
+                    self.conn.rollback()
+                    raise e
+        
+        return await loop.run_in_executor(None, assign_sync)
+    
+    async def has_permission(self, user_id: str, permission_name: str) -> bool:
+        """Verificar si un usuario tiene un permiso específico"""
+        if not self.conn:
+            return False
+        
+        loop = asyncio.get_event_loop()
+        
+        def check_sync():
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM auth_schema.permissions p
+                        INNER JOIN auth_schema.role_permissions rp ON p.id = rp.permission_id
+                        INNER JOIN auth_schema.roles r ON rp.role_id = r.id
+                        INNER JOIN auth_schema.user_roles ur ON r.id = ur.role_id
+                        WHERE ur.user_id = %s AND p.name = %s
+                    )
+                """, (user_id, permission_name))
+                
+                return cursor.fetchone()[0]
+        
+        return await loop.run_in_executor(None, check_sync)
 
 
 # Instancia global del adaptador
