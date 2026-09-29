@@ -82,7 +82,7 @@ async def get_current_user(request: Request):
     access_token = request.cookies.get('access_token')
     if not access_token:
         raise HTTPException(status_code=401, detail="No autenticado")
-    
+
     # Decodificar token
     security_service = SecurityService()
     try:
@@ -93,17 +93,18 @@ async def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail="Token expirado")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    
+
     # Obtener usuario de la base de datos
     db = PostgreSQLAdapter()
+    await db.initialize()  # Asegurar que la conexión esté inicializada
     user = await db.get_user_by_id(payload.get("user_id"))
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     roles = await db.get_user_roles(user['id'])
     role_names = [r['name'] for r in roles]
-    
+
     return UserResponse(
         id=user['id'],
         email=user['email'],

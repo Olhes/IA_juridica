@@ -220,16 +220,17 @@ class AuthService {
 
   async getCurrentUser(): Promise<User | null> {
     if (this.user) return this.user;
-    
-    if (this.token) {
-      try {
-        await this.fetchCurrentUser();
-        this.saveToStorage();
-      } catch {
-        return null;
-      }
+
+    // Siempre intentar obtener el usuario del backend
+    // Con Google OAuth, los tokens están en cookies httpOnly
+    try {
+      await this.fetchCurrentUser();
+      this.token = 'from_cookie'; // Marcar que el token viene de cookie
+      this.notifyListeners();
+    } catch {
+      return null;
     }
-    
+
     return this.user;
   }
 

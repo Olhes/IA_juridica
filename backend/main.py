@@ -318,7 +318,7 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
-# Registrar rutas de chat persistente
+# Registrar rutas de chat persistente (DESPUÉS del middleware)
 app.include_router(chat_router)
 app.include_router(auth_router)
 
