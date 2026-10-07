@@ -10,6 +10,7 @@ from loguru import logger
 
 from .chunking_strategies import ContextualChunker
 from .prompt_templates import PromptManager, PromptType
+from .conversation_prompt import with_conversation
 from modules.language.services.language_detector import LanguageDetector
 
 # Mapeo de tipos de consulta a PromptType
@@ -122,11 +123,11 @@ class ContextEngineer:
         """
         Procesa documento con chunking contextual y metadatos culturales
 
-        Args:
+        Argumentos:
             content: Contenido del documento
             metadata: Metadatos del documento
 
-        Returns:
+        Retorna:
             Lista de chunks enriquecidos con contexto
         """
         try:
@@ -385,12 +386,12 @@ class ContextEngineer:
         """
         Genera prompt contextualizado para un agente
 
-        Args:
+        Argumentos:
             query: Consulta del usuario
             agent_type: Tipo de agente
             user_context: Contexto del usuario
 
-        Returns:
+        Retorna:
             Tuple con prompt y contexto enriquecido
         """
         try:
@@ -436,7 +437,7 @@ class ContextEngineer:
 
         except Exception as e:
             logger.error(f"Error generando prompt contextualizado: {str(e)}")
-            # Fallback a prompt básico
+            # Alternativa: instrucción básica
             return self.prompt_manager.get_system_prompt(agent_type), {}
 
     def build_legal_prompt(
@@ -444,6 +445,8 @@ class ContextEngineer:
         query: str,
         documents: List[Dict[str, Any]],
         language: str = "spanish",
+        history=None,
+        context=None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Construye prompt legal optimizado para Cohere con contexto cultural.
@@ -451,12 +454,12 @@ class ContextEngineer:
         Integra: clasificación de consulta → detección de ubicación →
         enriquecimiento cultural → PromptManager.build_prompt_for_cohere()
 
-        Args:
+        Argumentos:
             query: Consulta del usuario
             documents: Documentos rerankeados desde query_with_rerank()
             language: Idioma de respuesta
 
-        Returns:
+        Retorna:
             Tuple (prompt_completo, contexto_enriquecido)
         """
         try:
@@ -512,13 +515,18 @@ class ContextEngineer:
                 f"urgencia={urgency}, docs={len(documents)}"
             )
 
-            return prompt, enriched_context
+            return with_conversation(prompt, history, context), enriched_context
 
         except Exception as e:
             logger.error(f"Error construyendo prompt legal: {e}")
-            # Fallback: prompt básico sin enriquecimiento
+            # Alternativa: instrucción básica sin enriquecimiento
             basic_prompt = self.prompt_manager.get_system_prompt("general", language)
-            return f"{basic_prompt}\n\nConsulta: {query}", {}
+            return (
+                with_conversation(
+                    f"{basic_prompt}\n\nConsulta: {query}", history, context
+                ),
+                {},
+            )
 
     def _detect_location(self, text: str) -> Optional[str]:
         """Detecta mención de ubicaciones conocidas"""
@@ -544,10 +552,10 @@ class ContextEngineer:
         """
         Obtiene recomendaciones culturales basadas en el contexto
 
-        Args:
+        Argumentos:
             context: Contexto de la consulta
 
-        Returns:
+        Retorna:
             Lista de recomendaciones culturales
         """
         recommendations = []
@@ -583,11 +591,11 @@ class ContextEngineer:
         """
         Valida que una respuesta sea culturalmente apropiada
 
-        Args:
+        Argumentos:
             response: Respuesta generada
             context: Contexto original
 
-        Returns:
+        Retorna:
             Resultado de validación cultural
         """
         validation_result = {

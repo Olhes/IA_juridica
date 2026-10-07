@@ -64,7 +64,7 @@ class ResponseValidator:
     Inicialización recomendada: una sola instancia por request o en el lifespan de la app
     (el CrossChecker tiene estado interno cacheado del corpus RAG).
 
-    Args:
+    Argumentos:
         rag_engine:        LegalRAGEngine – se accede a .documents y .cohere_client
         cohere_client:     AsyncClient de Cohere del LegalAgent (reutilización, sin doble instancia)
         context_engineer:  ContextEngineer para validación cultural (opcional)
@@ -110,14 +110,14 @@ class ResponseValidator:
         """
         Pipeline principal de validación.
 
-        Args:
+        Argumentos:
             response_data:    Dict serializado de GeneralLegalResponse (o similar)
             rag_result:       Resultado de rag_engine.query_with_rerank()
             query:            Consulta original del usuario
             language:         Idioma de la respuesta
             enriched_context: Contexto cultural del ContextEngineer (opcional)
 
-        Returns:
+        Retorna:
             ValidatedResponse con answer_data validado e informe completo
         """
         t0 = time.monotonic()
@@ -269,7 +269,7 @@ class ResponseValidator:
                 for p in pasos
             )
 
-        # Fallback: serializar todo a string
+        # Alternativa: serializar todo como cadena de texto
         return str(response_data)
 
     def _compute_avg_rag_score(self, rag_result: Dict[str, Any]) -> float:
@@ -291,7 +291,7 @@ class ResponseValidator:
                 parts.append(f"[{source}]\n{content}")
             return "\n\n---\n\n".join(parts)
 
-        # Fallback: usar answer del RAG
+        # Alternativa: usar la respuesta del RAG
         answer = rag_result.get("answer", "")
         return str(answer)[:2000] if answer else ""
 

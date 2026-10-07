@@ -201,7 +201,7 @@ class Settings(BaseSettings):
         return self.is_production() or self.ANONYMOUS_SESSION_COOKIE_SECURE
     
     def get_openai_config(self) -> dict:
-        """Configuración OpenAI (legacy)"""
+        """Configuración de OpenAI (heredada)."""
         return {
             "api_key": self.OPENAI_API_KEY,
             "model": self.OPENAI_MODEL,
@@ -210,7 +210,7 @@ class Settings(BaseSettings):
         }
     
     def get_cohere_config(self) -> Dict[str, Any]:
-        """Configuración Cohere (principal)"""
+        """Configuración de Cohere (principal)."""
         return {
             "api_key": self.COHERE_API_KEY,
             "embed_model": self.COHERE_EMBED_MODEL,

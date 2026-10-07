@@ -89,11 +89,11 @@ class LanguageDetector:
         """
         Detecta el idioma del texto
         
-        Args:
+        Argumentos:
             text: Texto a analizar
             fallback: Idioma por defecto si no se puede detectar
             
-        Returns:
+        Retorna:
             Código de idioma detectado
         """
         try:
@@ -116,7 +116,7 @@ class LanguageDetector:
                 if auto_result:
                     return auto_result
             
-            # Fallback a resultado de reglas
+            # Alternativa: resultado de las reglas
             return rule_result
             
         except Exception as e:
@@ -265,7 +265,7 @@ class LanguageDetector:
         """
         Detecta idioma con nivel de confianza
         
-        Returns:
+        Retorna:
             Tuple con (idioma_detectado, confianza)
         """
         try:
@@ -322,7 +322,7 @@ class LanguageDetector:
         """
         Detecta variante regional del quechua
         
-        Returns:
+        Retorna:
             Código de variante detectada o None
         """
         # Indicadores por variante
@@ -383,11 +383,11 @@ class LanguageDetector:
         """
         Detecta si el texto mezcla idiomas
         
-        Args:
+        Argumentos:
             text: Texto a analizar
             threshold: Umbral para considerar mezcla
             
-        Returns:
+        Retorna:
             True si detecta mezcla de idiomas
         """
         stats = self.get_detection_stats(text)

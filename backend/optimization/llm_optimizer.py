@@ -83,7 +83,7 @@ class LLMOptimizer:
     El caché es in-process (dict en memoria). Para producción multi-instancia
     se puede reemplazar el backend por Redis; la interfaz es idéntica.
 
-    Args:
+    Argumentos:
         cache_ttl_seconds:  TTL de entradas cacheadas (default: 3600 = 1 hora)
         max_cache_size:     Máximo de entradas en caché (LRU simple)
         chars_per_token:    Factor de estimación de tokens (default: 4)
@@ -113,7 +113,7 @@ class LLMOptimizer:
         """
         Busca una respuesta cacheada para el prompt dado.
 
-        Returns:
+        Retorna:
             Payload cacheado si hay cache hit válido, None si no.
         """
         key = self._hash(prompt)
@@ -174,12 +174,12 @@ class LLMOptimizer:
           - "center_cut": preserva inicio + fin (los más densos en info legal)
           - "tail_cut":   trunca solo el final (preserva instrucciones al inicio)
 
-        Args:
+        Argumentos:
             prompt:    Prompt completo a comprimir
             max_chars: Límite máximo en caracteres
             strategy:  "center_cut" | "tail_cut"
 
-        Returns:
+        Retorna:
             Prompt comprimido (o el original si ya cabe)
         """
         if len(prompt) <= max_chars:
@@ -211,7 +211,7 @@ class LLMOptimizer:
         """
         Registra el uso de tokens de una llamada LLM y retorna las métricas.
 
-        Returns:
+        Retorna:
             Dict con tokens de esta llamada y totales de sesión.
         """
         p_tokens = self.estimate_tokens(prompt)

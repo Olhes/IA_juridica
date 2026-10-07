@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 export const CORE_SERVICES = ["postgres", "redis"];
-export const BACKEND_HEALTH_URL = "http://localhost:8000/health";
+export const BACKEND_HEALTH_URL = "http://localhost:8000/ready";
 const READINESS_TIMEOUT_MS = 120_000;
 const READINESS_POLL_MS = 1_000;
 
@@ -165,8 +165,10 @@ export function startHostProcesses({
       throw new Error("pnpm did not provide npm_execpath for the Windows development launcher.");
     }
 
-    // Run pnpm's JavaScript entrypoint directly so cmd.exe never parses the commands.
-    return spawnProcess(nodePath, [pnpmExecPath, ...concurrentlyArgs], { stdio: "inherit" });
+    // pnpm puede proporcionar un ejecutable standalone o un entrypoint JS.
+    return /\.exe$/i.test(pnpmExecPath)
+      ? spawnProcess(pnpmExecPath, concurrentlyArgs, { stdio: "inherit" })
+      : spawnProcess(nodePath, [pnpmExecPath, ...concurrentlyArgs], { stdio: "inherit" });
   }
 
   return spawnProcess(

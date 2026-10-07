@@ -134,11 +134,11 @@ class AntiHallucinationLayer:
         """
         Analiza una respuesta del LLM en busca de señales de alucinación.
 
-        Args:
+        Argumentos:
             response:  Texto generado por el LLM (puede ser JSON serializado o texto plano)
             rag_score: Score de relevancia promedio de los chunks RAG usados (0–1)
 
-        Returns:
+        Retorna:
             HallucinationReport con risk_score y lista de flags
         """
         if not response or not response.strip():

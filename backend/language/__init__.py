@@ -42,11 +42,11 @@ class LanguageHandler:
         """
         Procesa consulta completa: detección + traducción si es necesario
 
-        Args:
+        Argumentos:
             query: Consulta del usuario
             target_language: Idioma deseado para la respuesta (opcional)
 
-        Returns:
+        Retorna:
             Diccionario con información procesada
         """
         try:
@@ -101,13 +101,13 @@ class LanguageHandler:
         """
         Procesa respuesta para el usuario: traducción si es necesario
 
-        Args:
+        Argumentos:
             response: Respuesta generada
             source_language: Idioma de la respuesta
             target_language: Idioma deseado para el usuario
             context: Contexto adicional para traducción
 
-        Returns:
+        Retorna:
             Diccionario con respuesta procesada
         """
         try:

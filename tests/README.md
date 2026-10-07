@@ -1,0 +1,1277 @@
+# Guía única de tests
+
+Todas las pruebas del proyecto viven en **`tests/`**, separadas primero por
+**backend**, **frontend** y **scripts**, y después por tipo. Este
+documento es la referencia única de ejecución, alcance y catálogo de casos;
+incluye Python, scripts Node, componentes/hooks del frontend, Playwright y calidad del
+modelo. Las pruebas manuales heredadas se conservan separadas, nunca se ejecutan
+como parte de la suite automática.
+
+## Inicio rápido
+
+Desde la raíz del repositorio, con Python compatible con `pyproject.toml`, UV,
+Node **24** y pnpm instalados:
+
+```powershell
+uv sync --frozen --extra dev --inexact
+pnpm install --frozen-lockfile
+pnpm test
+```
+
+No se arranca Docker, la API ni un modelo real. Los tests HTTP no ejecutan el
+lifespan: sustituyen PostgreSQL, Redis, Cohere y RAG remoto por dobles de prueba.
+La ingesta usa archivos temporales; la comprobación PDF procesa bytes sintéticos
+con parsers locales, sin OCR ni descarga de pesos. Los 3 casos reales del modelo
+se muestran como **skipped**; los 2 escenarios temporales conocidos son
+**xfail estricto**, no funcionalidades implementadas.
+
+## Comandos por objetivo
+
+
+| Objetivo | Comando desde raíz | Alcance/coste |
+|---|---|---|
+| Suite offline completa | `pnpm test` | Python + scripts Node + frontend React; sin proveedores |
+| Solo Python / backend / scripts | `pnpm test:python` / `pnpm test:backend` / `pnpm test:scripts` | Offline |
+| Backend + evaluaciones reales | `pnpm test:backend --run-model-evals` | Solo backend; Cohere + juez OpenAI, red/coste |
+| Solo scripts Node | `pnpm test:node` | Sin React ni navegador |
+| Frontend unitarios, componentes e integración | `pnpm test:frontend` | Vitest + jsdom + MSW; red no simulada rechazada |
+| Cobertura frontend | `pnpm test:frontend:coverage` | LCOV, HTML no requerido y resumen JSON |
+| Toda la suite + evaluación real del generador | `pnpm test:all --run-model-evals` | Cohere + juez OpenAI; red/coste |
+| Solo calidad real | `pnpm test:quality --run-model-evals` | Tres casos sintéticos; red/coste |
+| Solo evaluador offline | `pnpm test:quality:offline` | Sin proveedor |
+| Cobertura Python + frontend | `pnpm test:coverage` | Cobertura/xUnit Python y LCOV frontend |
+| Lo anterior + scanner y Quality Gate | `pnpm sonar` | Token desde backend/.env; solo tras éxito de todas las suites |
+| Navegador con API simulada | `pnpm test:e2e` | Arranca Next en localhost:3100; sin backend ni modelos |
+| Navegador con servicios reales | `pnpm test:e2e:real --run-model-evals` | Instalación local de prueba; una consulta puede facturar |
+| Launcher de desarrollo | `pnpm test:dev-full` | Arranque simulado |
+
+**Confirmación explícita:** `test:all` sin flag sigue offline. `test:quality` y
+`test:e2e:real` sin `--run-model-evals` fallan antes de arrancar procesos.
+El flag en `test:all` activa los casos Python de calidad, **no** los E2E reales:
+estos tienen su propio comando porque necesitan navegador y servicios.
+Las suites offline no leen credenciales de proveedores. El runner continúa las
+otras suites aunque una falle y devuelve exit distinto de cero; el scanner se
+omite ante cualquier fallo. No se cambian umbrales del Quality Gate.
+
+### Backend y frontend por separado
+
+Ejecuta estos comandos desde la raíz del repositorio:
+
+```powershell
+# Solo backend, sin modelos reales
+pnpm test:backend
+
+# Solo frontend: unitarios, componentes e integración, sin modelos reales
+pnpm test:frontend
+
+# Solo backend, incluyendo las evaluaciones reales (credenciales, red y coste)
+pnpm test:backend --run-model-evals
+
+# Frontend en navegador, con API simulada y sin modelos reales
+pnpm test:e2e
+```
+
+El último comando requiere Chromium instalado o el canal Edge descrito en
+[E2E de navegador](#e2e-de-navegador-simulado-y-real). Los E2E con servicios
+reales son independientes y requieren `test:e2e:real --run-model-evals`.
+
+### Seleccionar una carpeta, un caso o un marcador
+
+En comandos Python/globales, las opciones adicionales se reenvían a **pytest**.
+En `test:frontend`/`test:frontend:coverage` se reenvían a **Vitest**; en comandos
+E2E se reenvían a **Playwright**. Ejemplos frontend:
+
+```powershell
+pnpm test:frontend tests/frontend/component/TerminalModal.test.tsx
+pnpm test:frontend -t "NDJSON"
+pnpm test:frontend --reporter=verbose
+```
+
+Selección Python:
+
+```powershell
+pnpm test:backend
+pnpm test:frontend
+pnpm test:scripts
+pnpm test:python tests/backend/unit
+pnpm test:python tests/backend/integration
+pnpm test:python tests/backend/security
+pnpm test:python tests/backend/http tests/backend/contract
+pnpm test:python tests/backend/bdd tests/backend/benchmark
+pnpm test:python tests/backend/unit/test_chat_response_persistence.py -v
+pnpm test:python tests/backend/unit/test_source_evidence.py tests/backend/security/test_upload_security.py
+pnpm test:python tests/backend/unit/test_file_utils.py::test_find_duplicate_files_returns_empty_for_empty_directory
+pnpm test:python -m security
+pnpm test:python --collect-only
+
+# Alternativa directa (solo Python): configuración y lock explícitos
+uv run --frozen --extra dev --inexact pytest -c pytest.ini tests/backend/unit -q
+```
+
+Las carpetas `unit`, `integration`, `security`, `http`, `contract`, `bdd` y
+`benchmark` asignan su marcador automáticamente. `quality` conserva marcas
+explícitas distintas: `quality` es offline; `model_quality` requiere opt-in.
+`--collect-only` lista casos parametrizados sin ejecutarlos ni activar modelos.
+Para scripts Node usa `pnpm test:node`; React usa `pnpm test:frontend`. El test del launcher requiere
+`npm_execpath`, que pnpm proporciona (no ejecutes ese archivo directamente con
+`node --test` desde una consola desnuda).
+
+## Estructura y alcance
+
+```text
+tests/
+  README.md                  # Guía única y catálogo de todos los componentes
+  conftest.py                # Hooks comunes, temporales y opt-in de modelos
+  backend/
+    conftest.py              # Fixtures HTTP y RAG propias del backend
+    fixtures/                # Datos sintéticos y helpers de backend
+    unit/                    # Regresiones de servicios/validadores
+    integration/             # Pipeline con dependencias simuladas
+    security/                # Auth, privacidad y uploads
+    http/                    # Rutas y eventos con FastAPI TestClient
+    contract/                # Schemas y formatos
+    bdd/                     # Comportamiento y limitaciones explícitas
+    benchmark/               # Recuperación local
+    quality/                 # Evaluador offline y casos reales opt-in
+    manual/                  # Diagnósticos heredados, fuera del discovery
+  frontend/
+    unit/                    # Mapeos y clientes API/auth con Vitest
+    component/               # Componentes React y acciones de usuario
+    integration/             # Hooks y pantalla con dependencias simuladas
+    fixtures/                # Setup MSW, datos y API sintética de navegador
+    vitest.config.mts        # React único, discovery y LCOV
+    e2e/                     # Playwright y su configuración exclusiva
+  scripts/
+    unit/                    # Launchers, runner y controles de estructura
+```
+
+`pytest.ini` descubre solo `tests/`, configura `pythonpath = backend`, usa
+`test_*.py` y excluye `backend/manual/`/`backend/fixtures/` del discovery recursivo.
+`tests/conftest.py` centraliza hooks y opciones comunes y registra los fixtures
+de validación de `backend/fixtures/validation.py`. Los fixtures HTTP y RAG se
+limitan al backend mediante `tests/backend/conftest.py`. Los helpers reutilizados
+por sus suites viven en `backend/fixtures/`, no se importan desde otro test.
+Así se conserva la separación de componentes sin devolver los tests a las
+carpetas de código de producto ni duplicar `pytest.ini`.
+`backend/evaluation/model_quality.py` y `deepeval_tests.py` siguen siendo
+**implementación**, no suites: la aplicación también usa el evaluador histórico.
+Los casos del benchmark viven en `backend/fixtures/quality_cases.json`; el cuerpo JSON
+de prueba HTTP heredado se conserva en `backend/fixtures/test_request.json`.
+
+### Catálogo de suites
+
+Los números dinámicos de casos parametrizados se consultan con `--collect-only`;
+el inventario al final identifica **cada función/escenario base** sin prometer que
+un skip es una prueba aprobada o que un test simulado certifica infraestructura.
+
+
+| Suite (ruta relativa a`tests/`)                                                      | Qué verifica                                                                                                                                                  |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`backend/bdd/test_conflicting_rules.py`](backend/bdd/test_conflicting_rules.py)                     | Reglas contradictorias, fuentes y dos limitaciones conocidas de selección temporal y trazabilidad de modificaciones (xfail estricto).                         |
+| [`backend/benchmark/test_local_retrieval.py`](backend/benchmark/test_local_retrieval.py)             | 25 recuperaciones locales sobre corpus de 2, 32 y 128 documentos; mide latencia con perf_counter, sin umbral de velocidad.                                     |
+| [`backend/contract/test_shapes.py`](backend/contract/test_shapes.py)                                 | Entrada estricta, límites de consulta, idioma admitido, NDJSON Unicode y estructura RAG local.                                                                |
+| [`backend/http/test_api.py`](backend/http/test_api.py)                                               | Bootstrap, autorización, caché de consulta/stream, validación 422 y barrera administrativa antes de tocar documentos.                                       |
+| [`backend/integration/test_validation_pipeline.py`](backend/integration/test_validation_pipeline.py) | Pipeline de validación completo con corpus en memoria y Cohere simulado: fuentes, riesgo, confianza, corrección, opciones y tiempos.                         |
+| [`backend/quality/test_evaluator.py`](backend/quality/test_evaluator.py)                             | Carga del dataset, dirección de métricas, fallos/timeout, generación no vacía, informes, privacidad, credenciales, juez explícito y opt-in; todo offline. |
+| [`backend/quality/test_model_quality.py`](backend/quality/test_model_quality.py)                     | Tres casos sintéticos parametrizados de generación Cohere y juez DeepEval; se omiten salvo autorización explícita de red/coste.                            |
+| [`backend/security/test_chat_security.py`](backend/security/test_chat_security.py)                   | Sesiones firmadas, caducidad, cookies, dueño en caché/BD, 404/503/429, salud degradada, redacción de errores/logs y reasignación segura.                   |
+| [`backend/security/test_upload_and_auth.py`](backend/security/test_upload_and_auth.py)               | Clave administrativa, firma/MIME/tamaño PDF, rutas confinadas, limpieza, límites exactos y rechazo de sesiones ausentes o alteradas.                         |
+| [`backend/security/test_upload_security.py`](backend/security/test_upload_security.py)               | Carga administrativa, evidencia por bytes, metadatos saneados, errores del procesador/almacén, colisiones y conservación de archivos existentes.             |
+| [`backend/unit/test_anti_hallucination.py`](backend/unit/test_anti_hallucination.py)                 | Patrones legales sospechosos, respuestas vacías/cortas, score RAG, riesgo acotado, penalizaciones y umbrales.                                                 |
+| [`backend/unit/test_audit_remediation.py`](backend/unit/test_audit_remediation.py)                   | Regresiones de auditoría: traducción completa, fallos sin caché parcial, contratos, dueño, contexto/historial, claves de caché privadas y logs sin PII.   |
+| [`backend/unit/test_chat_response_persistence.py`](backend/unit/test_chat_response_persistence.py)   | Extracción por idioma, persistencia de respuestas generadas/cacheadas y fechas UTC aware/naive con offsets positivos y negativos.                             |
+| [`backend/unit/test_cross_checker.py`](backend/unit/test_cross_checker.py)                           | Afirmaciones con soporte, corpus vacío, score de solapamiento, tipos, chunks, caché de tokens e invalidación.                                               |
+| [`backend/unit/test_dependency_compatibility.py`](backend/unit/test_dependency_compatibility.py)     | PDF sintético real con ReportLab, pypdf y backend PDFium de Docling; sin descargar modelos ni ejecutar OCR.                                                   |
+| [`backend/unit/test_dev_server_binding.py`](backend/unit/test_dev_server_binding.py)                 | Launcher local limitado a loopback y guard de importación, manteniendo el arranque independiente del contenedor.                                              |
+| [`backend/unit/test_file_utils.py`](backend/unit/test_file_utils.py)                                 | SHA-256 de bytes completos, lectura por bloques, archivos ausentes y agrupación de duplicados.                                                                |
+| [`backend/unit/test_llm_optimizer.py`](backend/unit/test_llm_optimizer.py)                           | Caché, TTL/invalidation, compresión de prompts, estimación/contabilidad de tokens y estadísticas.                                                          |
+| [`backend/unit/test_pipeline_remediation.py`](backend/unit/test_pipeline_remediation.py)             | Recuperación sin corte en 50 candidatos, chunks reales, ausencia de evidencia, ciclo de vida/ready/reintentos/cierre y salidas JSON/stream coherentes.        |
+| [`backend/unit/test_rag_fallback.py`](backend/unit/test_rag_fallback.py)                             | Fallback local ante falta/fallo de LightRAG o reranking; fuente explícita, corpus vacío, chunking por longitud y scores locales.                             |
+| [`backend/unit/test_self_correction.py`](backend/unit/test_self_correction.py)                       | Corrección simulada, condición de activación, tipos, respuesta vacía, errores Cohere y máximo de reintentos.                                              |
+| [`backend/unit/test_source_evidence.py`](backend/unit/test_source_evidence.py)                       | Identidad SHA-256, UTF-8 exacto, reintentos/tampering, consistencia carga/lote, fallos cerrados, colisiones y detección de caracteres de reemplazo.           |
+| [`backend/unit/test_startup_safety.py`](backend/unit/test_startup_safety.py)                         | Neo4j desactivado selecciona NetworkX sin importarlo y salida de consola tolera caracteres no codificables.                                                    |
+| [`backend/unit/test_utc_datetimes.py`](backend/unit/test_utc_datetimes.py) | Timestamps Redis independientes de la zona local, salud UTC, fechas de validación y archivos, y guard contra conversiones UTC sin zona. |
+| [`scripts/unit/dev-full.test.mjs`](scripts/unit/dev-full.test.mjs)                   | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend.                      |
+| [`scripts/unit/run-tests.test.mjs`](scripts/unit/run-tests.test.mjs)                 | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner.          |
+| [`scripts/unit/test_repository_layout.py`](scripts/unit/test_repository_layout.py)                   | Exigir componente y tipo dentro del árbol único, impedir suites dispersas y mantener catálogo por caso, configuración, dataset y manuales.                                   |
+| [`frontend/unit/apiService.test.ts`](frontend/unit/apiService.test.ts) | Dos llamadas simultáneas comparten bootstrap; bootstrap y petición protegida incluyen cookies. También cubre los casos detallados en su inventario. |
+| [`frontend/unit/authService.test.ts`](frontend/unit/authService.test.ts) | Login por formulario seguido de /auth/me marca autenticación sin escribir tokens en localStorage. También cubre los casos detallados en su inventario. |
+| [`frontend/component/TerminalModal.test.tsx`](frontend/component/TerminalModal.test.tsx) | Cerrado no contiene entrada; al abrir enfoca el textbox. También cubre los casos detallados en su inventario. |
+| [`frontend/component/HistoryPanel.test.tsx`](frontend/component/HistoryPanel.test.tsx) | Cerrado no se renderiza y vacío muestra un mensaje explícito. También cubre los casos detallados en su inventario. |
+| [`frontend/component/ChatInput.test.tsx`](frontend/component/ChatInput.test.tsx) | No envía espacios; Shift+Enter introduce línea y Enter envía texto recortado. También cubre los casos detallados en su inventario. |
+| [`frontend/component/ChatSidebar.test.tsx`](frontend/component/ChatSidebar.test.tsx) | Error muestra reintento; durante carga el botón está deshabilitado. También cubre los casos detallados en su inventario. |
+| [`frontend/component/MarkdownRenderer.test.tsx`](frontend/component/MarkdownRenderer.test.tsx) | Renderiza encabezado, lista, tabla GFM y Unicode; enlaces nuevos protegen opener/referrer. También cubre los casos detallados en su inventario. |
+| [`frontend/component/ChatMessage.test.tsx`](frontend/component/ChatMessage.test.tsx) | Error muestra fallo sin badge Validado. También cubre los casos detallados en su inventario. |
+| [`frontend/component/AuthProvider.test.tsx`](frontend/component/AuthProvider.test.tsx) | Restaura estado desde cookie y retira flag de login, sin persistir tokens. También cubre los casos detallados en su inventario. |
+| [`frontend/integration/useChatSessions.test.tsx`](frontend/integration/useChatSessions.test.tsx) | Montaje carga listado sin borrar ni seleccionar automáticamente la sesión activa. También cubre los casos detallados en su inventario. |
+| [`frontend/integration/useChat.test.tsx`](frontend/integration/useChat.test.tsx) | NDJSON por byte conserva ñ/emoji y final reemplaza parcial; sidebar recibe título y conteo. También cubre los casos detallados en su inventario. |
+| [`frontend/integration/ChatPage.test.tsx`](frontend/integration/ChatPage.test.tsx) | Monta pantalla/hooks/API real del frontend con red MSW: crea sesión antes de consultar y muestra final. También cubre los casos detallados en su inventario. |
+| [`frontend/e2e/chat-persistence.spec.js`](frontend/e2e/chat-persistence.spec.js) | Chromium + API sintética: consulta/final, refresh a landing y selección restaura respuesta persistida. También cubre los casos detallados en su inventario. |
+| [`frontend/e2e/chat.real.spec.js`](frontend/e2e/chat.real.spec.js) | Con flag y servicios locales, interrupción temporal de listado se recupera al reintentar. También cubre los casos detallados en su inventario. |
+| [`frontend/unit/chatSessionMeta.test.mts`](frontend/unit/chatSessionMeta.test.mts) | Regresiones originales de metadata/hidratación conservadas al migrar a Vitest. |
+| [`frontend/unit/useChatSessions.test.mts`](frontend/unit/useChatSessions.test.mts) | Regresiones originales de metadata/hidratación conservadas al migrar a Vitest. |
+
+### Limitaciones explícitas
+
+- `backend/bdd/test_conflicting_rules.py` mantiene dos `xfail(strict=True)`: la
+  recuperación no selecciona vigencia temporal ni prueba una cadena de evidencia
+  de la Action modificadora. Un XPASS falla para exigir revisar el contrato.
+- Los controles de permisos y persistencia ahora son asserts ordinarios, no
+  xfails de seguridad. La suite no certifica seguridad ni exactitud jurídica.
+- El benchmark local es informativo; no existe un gate de rendimiento.
+- La suite frontend monta React con jsdom y prueba acciones, hooks y errores.
+  jsdom no certifica layout, CSS, canvas ni todos los aspectos de accesibilidad;
+  estos se contrastan con los E2E Chromium. Axe es un control parcial, no una
+  certificación de accesibilidad.
+- Las pruebas facturables no se incluyen sin el flag explícito; los mocks no certifican persistencia o aislamiento real.
+
+## Cobertura y SonarQube
+
+```powershell
+pnpm test:coverage
+pnpm sonar
+```
+
+Se generan `coverage.xml` (Cobertura de backend) y
+`temp/sonar-reports/pytest.xml` (xUnit Python legacy con archivo de test), además
+de `temp/sonar-reports/frontend-coverage/lcov.info` y `coverage-summary.json`.
+Sonar analiza `backend,frontend/src,frontend/app` como producto y `tests` como
+pruebas; excluye manuales/fixtures, no módulos de producto sin cobertura.
+`sonar.javascript.lcov.reportPaths` importa JS/TS; el XML Python se conserva.
+Los scores de DeepEval y el número de tests **no** equivalen a cobertura.
+La cobertura incluye archivos no importados; se documenta la línea base sin
+prometer 80% ni bajar el gate. Las rutas `SF:` del LCOV deben resolver desde raíz.
+[Referencia Sonar](https://docs.sonarsource.com/sonarqube-server/analyzing-source-code/test-coverage/javascript-typescript-test-coverage).
+
+`SONAR_TOKEN` se lee del único `backend/.env` privado (o del entorno para CI),
+sin pasarlo como argumento ni copiar las otras claves a los tests. Configuración,
+arranque, permisos y advertencias del scanner: [guía SonarQube](../docs/SONARQUBE.md).
+
+## E2E de navegador: simulado y real
+
+```powershell
+pnpm exec playwright install chromium
+pnpm test:e2e --list
+pnpm test:e2e
+```
+
+El modo predeterminado utiliza API sintética interceptada por Playwright, bloquea
+destinos externos, arranca Next en **localhost:3100** y lo detiene al terminar.
+No reutiliza un servidor existente: deja libre ese puerto. Usa movimiento reducido
+para omitir la animación inicial y Chromium headless. No necesita PostgreSQL,
+Redis, claves ni modelos. Los artefactos van a `temp/playwright-results/`.
+
+Si prefieres Edge instalado en Windows (sin descargar Chromium):
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = 'msedge'
+pnpm test:e2e
+# Volver a Chromium:
+Remove-Item Env:PLAYWRIGHT_CHANNEL -ErrorAction SilentlyContinue
+```
+
+El canal también se admite en el comando real. Si `playwright install` informa
+un bloqueo `__dirlock`, no borres la caché mientras otra instalación esté activa;
+espera a que termine o usa Edge. No se modifican instalaciones de otros proyectos.
+
+Para servicios reales, primero arranca una instalación local **de prueba** con
+backend/frontend/PostgreSQL/Redis y los modelos configurados en el único
+`backend/.env`. No se arranca ni modifica infraestructura automáticamente:
+
+```powershell
+$env:PLAYWRIGHT_TARGET_URL = 'http://localhost:3000'
+$env:PLAYWRIGHT_API_URL = 'http://localhost:8000'
+pnpm test:e2e:real --run-model-evals --list
+pnpm test:e2e:real --run-model-evals
+# Solo una consulta real (el resto no llama al generador):
+pnpm test:e2e:real --run-model-evals --grep "consulta real sintética"
+```
+
+Solo se admiten destinos loopback; el flag se consume en el runner y autoriza
+`RUN_MODEL_EVALS=1` únicamente para este proceso. El entorno por sí solo no activa
+el comando. Tres escenarios, un worker, cero retries y timeout de 180 s/caso.
+La consulta sintética lleva ID temporal para evitar reutilizar una respuesta
+cacheada; la conversación creada se elimina en `finally`. Si esa limpieza falla,
+revisa la base de prueba. Los tests no borran conversaciones preexistentes.
+No se guardan trazas, vídeo ni capturas de los casos reales. No usar datos
+personales, cuentas reales de usuarios ni producción. El flag confirma coste,
+**no impone un límite monetario**: configura presupuesto en los proveedores.
+
+El E2E real verifica respuesta/persistencia/aislamiento HTTP, no calidad jurídica
+ni garantiza qué proveedor interno respondió. Para medir el generador sin
+fallback y un juez real usa `pnpm test:quality --run-model-evals`.
+
+## Diagnósticos manuales heredados
+
+Estos archivos se trasladaron sin convertirlos en pytest. No los ejecutan
+`test`, `test:all`, cobertura ni Sonar: hacen IO real, varios imprimen errores en
+vez de assertions y su código de salida no es un gate de calidad fiable.
+
+
+| Archivo                                  | Función y requisitos                                                    | Estado/riesgo                                                                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `backend/manual/diagnose_connection.py`          | Prueba PostgreSQL y Redis en varios hosts con configuración del backend | Manual; servicios reales, no CI                                                                                     |
+| `backend/manual/diagnose_pg_connection.py`       | Compara psycopg con contraseña, trust y URL                             | Heredado: configuración local fija, no garantía de entorno actual                                                 |
+| `backend/manual/diagnose_postgres.py`            | asyncpg directo, SQLAlchemy async y URL sin contraseña                  | Heredado: configuración local fija, no usar con producción                                                        |
+| `backend/manual/diagnose_settings_connection.py` | psycopg con settings actuales, sin imprimir URL con contraseña          | Manual; no muestra errores crudos del proveedor                                                                     |
+| `backend/manual/benchmark_optimized_pipeline.py` | Procesamiento paralelo de PDF                                            | **No ejecutable actualmente**: faltan `ingestion.optimized_pipeline` y `config.performance_settings`                |
+| `backend/manual/benchmark_real_performance.py`   | Reprocesamiento y restauración de PDFs                                  | **No ejecutar sobre datos reales**: borra `docs/processed` y el backup anterior; además faltan los mismos módulos |
+
+Para un diagnóstico de conexión autorizado, ejecuta desde `backend/` para leer
+el único `.env` y conservar rutas heredadas:
+
+```powershell
+Push-Location backend
+try { uv run --frozen --extra dev --inexact python ../tests/backend/manual/diagnose_connection.py }
+finally { Pop-Location }
+```
+
+No actives confianza sin contraseña ni ejecutes los scripts de rendimiento
+destructivos para “pasar tests”. Esos scripts requieren modernización y un
+directorio desechable aislado antes de habilitarse; no se ejecutaron aquí.
+
+## Calidad real del modelo
+
+### Configurar los proveedores una vez
+
+En tu archivo privado `backend/.env`, añade o completa:
+
+```dotenv
+COHERE_API_KEY=tu_clave_de_cohere
+OPENAI_API_KEY=tu_clave_del_proveedor_del_juez
+EVAL_JUDGE_MODEL=identificador_de_modelo_openai_compatible_con_deepeval_4_2_8
+```
+
+- `COHERE_API_KEY`: genera las respuestas. El modelo, temperatura y máximo de tokens se toman de la configuración real del backend (`COHERE_LLM_MODEL`, `COHERE_TEMPERATURE`, `COHERE_MAX_TOKENS`).
+- `OPENAI_API_KEY`: credencial del juez de DeepEval, **no** la suscripción de ChatGPT/Codex ni un token de SonarQube.
+- `EVAL_JUDGE_MODEL`: sustituye el texto del ejemplo por el identificador de un modelo habilitado en tu cuenta y admitido por `GPTModel` de la versión instalada. Es obligatorio para que el juez no cambie silenciosamente al modelo predeterminado de DeepEval. No se elige ni se cobra un modelo por ti durante la configuración.
+
+Solo el modo real carga este archivo explícitamente para comprobar las credenciales; las variables ya presentes en el proceso tienen prioridad. No pegues las claves en comandos, Markdown, capturas o chats. El `.env` queda fuera de Git por `.gitignore`, pero sigue siendo texto plano: restringe sus permisos y no lo compartas ni sincronices públicamente.
+
+Si faltan variables, el modo real se detiene con los **nombres** de las variables faltantes. No ejecuta una evaluación simulada, no muestra sus valores y no omite silenciosamente los casos solicitados. Sin `--run-model-evals`, pytest omite los casos reales incluso si existen las claves.
+
+### Qué se evalúa realmente
+
+El dataset inicial de `tests/backend/fixtures/quality_cases.json` contiene tres escenarios con **fichas ficticias**, no legislación ni expedientes personales:
+
+1. Alimentos: conservar los requisitos del contexto sin inventar otros.
+2. Visitas: reconocer que el contexto no aporta un plazo.
+3. Protección: responder sin exclusiones ni estereotipos sobre género o procedencia rural.
+
+Cada caso sigue este flujo:
+
+1. El generador de `LegalAgent` usa los prompts reales del backend con el contexto controlado del caso.
+2. Cohere produce una **respuesta nueva**; una respuesta vacía, un error o falta de cliente falla, sin fallback.
+3. La respuesta entra en `LLMTestCase`, con `context` y `retrieval_context` explícitos.
+4. DeepEval ejecuta cinco métricas con el juez configurado.
+5. El caso aprueba solo si **todas** las métricas aprueban y no hay errores. Un promedio alto no oculta una alucinación o un fallo del juez.
+
+
+| Métrica            | Umbral en DeepEval**4.2.8** | Qué observa                                          |
+| --------------------- | ----------------------------- | ------------------------------------------------------- |
+| `relevancy`         | ≥ 0.7                      | Relevancia de la respuesta para la pregunta           |
+| `faithfulness`      | ≥ 0.7                      | Apoyo de las afirmaciones en el contexto suministrado |
+| `context_relevancy` | ≥ 0.7                      | Relevancia del contexto controlado                    |
+| `bias`              | ≥ 0.7                      | Proporción sin sesgo según el juez                  |
+| `hallucination`     | ≥ 0.7                      | Proporción coherente con el contexto de referencia   |
+
+El código utiliza `metric.is_successful()`, no una comparación genérica. Las versiones más nuevas de DeepEval pueden cambiar la dirección o significado de una puntuación: la tabla describe **la versión fijada en este proyecto**, no “latest”. No compares scores entre versiones como si fueran equivalentes. [Introducción oficial a las métricas](https://deepeval.com/docs/metrics-introduction).
+
+`expected_output` se conserva como referencia humana en el dataset y el informe; estas cinco métricas no hacen una comparación textual exacta ni una evaluación completa de corrección contra esa respuesta esperada.
+
+#### Qué NO certifica
+
+Este es un benchmark inicial del **generador con contexto controlado**, no una evaluación end-to-end de recuperación RAG, reranking, base de datos, HTTP, streaming o traducción. Los tres casos iniciales son en español. No certifica exactitud jurídica, seguridad clínica ni calidad de quechua: hacen falta un corpus jurídico fechado y revisado por especialistas, casos bilingües validados y más escenarios antes de hacer esas afirmaciones. El juez puede equivocarse y sus resultados pueden variar; revisa respuestas y razones, no solo el porcentaje final.
+
+El endpoint administrativo `POST /evaluate-system` conserva los cinco casos históricos de respuestas fijas y devuelve `evaluation_scope = fixed_responses_not_model_generation`. **No equivale a `test:quality`** ni prueba el modelo actual. Se mantiene por compatibilidad y sigue dependiendo de la configuración/autorización administrativa de la aplicación.
+
+### Informes y límites
+
+Cada ejecución real crea una carpeta única en:
+
+```text
+temp/model-backend/quality/<fecha-UTC>-<id>/
+  results.json
+  report.md
+```
+
+El JSON conserva pregunta, contexto, referencia, respuesta generada, modelo generador/juez, versión de DeepEval, idioma, parámetros de generación, hash del prompt y del caso, puntuaciones, umbrales, razones y flags de aprobación. El Markdown ofrece el resumen por caso y métrica. Se escribe después de cada caso y al finalizar, incluso si un assert falla. Un fallo de preconfiguración antes de ejecutar casos no genera un informe de calidad.
+
+Los mensajes crudos de excepciones de los SDK no se guardan; se registra su tipo para evitar exponer secretos. Si hay un fallo, distingue una métrica insuficiente de un error de proveedor/timeout. Los informes son locales e ignorados por Git bajo `temp/`, pero contienen respuestas y contexto: trata como sensibles cualquier dataset real que añadas.
+
+Por defecto, cada caso tiene un límite de **180 segundos**, incluyendo generación y métricas. Los tres casos se ejecutan secuencialmente; cada métrica puede hacer varias llamadas al juez. No existe un presupuesto monetario automático: controla el gasto en los proveedores antes de ejecutar o repetir pruebas. Los prompts/contextos se envían a Cohere y al proveedor del juez; no uses datos personales sin autorización.
+
+Puedes ajustar límites o destino:
+
+```powershell
+pnpm run test:quality --run-model-evals --model-eval-timeout 120 --quality-report-dir temp/mi-evaluacion
+```
+
+El runner desactiva la telemetría opcional de DeepEval con `DEEPEVAL_TELEMETRY_OPT_OUT=YES`. Usa las métricas directamente y genera informes locales, sin `evaluate()`/`assert_test()` ni integración de subida a Confident AI. [Ejecución individual de métricas](https://deepeval.com/docs/metrics-hallucination).
+
+### Mantener y ampliar las evaluaciones
+
+1. Añade casos con un `id` único, `input`, `expected_output`, una lista no vacía `context` y opcionalmente `language` a `tests/backend/fixtures/quality_cases.json`.
+2. Mantén los controles offline de carga del dataset sincronizados si cambia el número de casos.
+3. Revisa las referencias y el contexto con especialistas; no conviertas material sintético en afirmaciones sobre leyes vigentes.
+4. Ejecuta `test:quality:offline`, luego `test:quality --run-model-evals` con el presupuesto autorizado.
+5. Compara informes con los mismos casos, modelos, versión y parámetros. No reduzcas umbrales solo para conseguir verde ni ocultes errores con skips o simulaciones.
+
+Los fallos existentes de otras suites seguirán visibles al ejecutar `test`/`test:all`; no son automáticamente una regresión del modelo. La suite de calidad puede ejecutarse por separado mientras se corrigen.
+
+#### Migración de puntuaciones
+
+DeepEval 4.2.8 invierte la dirección histórica de Bias/Hallucination: ahora mayor es mejor. Se exige ≥0.7 y se usa `metric.is_successful()`; no comparar directamente con informes de 3.8.4 (≤0.3). [Bias](https://deepeval.com/docs/metrics-bias), [Hallucination](https://deepeval.com/docs/metrics-hallucination).
+
+## Problemas frecuentes
+
+
+| Síntoma                                   | Acción                                                                                                                                                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Import/fixture no encontrado               | Ejecuta desde raíz con`pnpm test:python`; no recrees `backend/pytest.ini` ni copies fixtures. Usa `uv sync --frozen --extra dev --inexact`                                                                      |
+| Casos reales omitidos                      | Es intencional; añade `--run-model-evals` a `test:quality`/`test:all` solo con credenciales, red y presupuesto autorizados |
+| Configuración del juez incompleta         | Completa variables de`backend/.env`; no sustituyas con una suscripción ChatGPT ni pegues claves en el chat                                                                                                      |
+| Exit 1 tras subida Sonar                   | Revisa Quality Gate: no equivale a error de autenticación/importación                                                                                                                                          |
+| AccessDenied de temporales en Windows      | Pytest usa directorios únicos en`temp/pytest-runs` y caché `temp/pytest-cache`; no cambia ACLs ni borra carpetas anteriores. El scanner puede encontrar cachés antiguos sin permisos: consulta la guía Sonar |
+| Warning Node`MODULE_TYPELESS_PACKAGE_JSON` | Node 24 reinterpreta los helpers TS existentes como ESM; aviso no bloqueante, no se cambia el tipo global del frontend para no romper configs CommonJS                                                           |
+| Warning deprecado Pydantic/SDK/datetime    | Son advertencias existentes, no skips nuevos; revisar en una corrección independiente                                                                                                                           |
+
+Si pasas `--basetemp`, pytest **borra ese directorio**: no uses carpetas de datos,
+la raíz del repositorio ni directorios compartidos. La ejecución directa de
+pytest no aplica la variable de telemetría del runner; configura
+`DEEPEVAL_TELEMETRY_OPT_OUT=YES` si necesitas el mismo comportamiento.
+
+## Añadir o mantener pruebas
+
+1. Elige primero el componente y después el tipo: `tests/backend/<tipo>/`,
+   `tests/frontend/<tipo>/` o `tests/scripts/unit/`. No añadas suites a las
+   carpetas de producto `backend/`, `frontend/` o `scripts/`. Python usa
+   `test_*.py`, scripts Node `*.test.mjs`, frontend Vitest `*.test.ts`/`*.test.tsx`/`*.test.mts` y Playwright `*.spec.js`
+   en `tests/frontend/e2e/`.
+2. Reutiliza `tests/conftest.py`, `tests/backend/conftest.py` y
+   `tests/backend/fixtures/` según su alcance; no importes helpers de otro test.
+3. Usa corpus sintéticos, dobles de servicio y temporales. Nuevos tests reales
+   deben ser opt-in explícito; no bajar umbrales ni ocultar fallos con skips.
+4. Documenta el archivo, su alcance y **cada nombre de caso** en este catálogo.
+   `scripts/unit/test_repository_layout.py` exige esa documentación y detecta suites
+   dispersas, componentes/tipos incorrectos o una segunda configuración.
+5. Ejecuta el tipo/caso afectado, luego `pnpm test` y `pnpm test:coverage` si
+   afecta informes. No hace falta llamar a proveedores para validar el layout.
+
+## Verificación histórica de la reorganización — 06/10/2026
+
+
+| Comprobación               | Resultado                                                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                 | 238 Python aprobados, 3 modelos omitidos y 2 xfail estrictos; 25 Node/frontend aprobados                                               |
+| `pnpm test:coverage`        | Exit 0; mismos casos y XML regenerados con rutas nuevas                                                                                |
+| `pnpm test:quality:offline` | 24 controles aprobados, 3 casos reales deseleccionados                                                                                 |
+| `pnpm test:e2e --list`      | Descubre exactamente 3 escenarios;**no** se ejecutó el navegador                                                                      |
+| Validación de informes     | 243 casos xUnit con archivo existente bajo`tests/`, cero fallos/errores; 70 módulos Cobertura con `source=backend` y rutas existentes |
+| Dependencias                | `pnpm deps:check` pasa, sin cambiar versiones ni locks                                                                                 |
+
+Tras separar por componente se repitieron `pnpm test` y `pnpm test:coverage`:
+mismos 243 casos Python, sin perder ninguna variante parametrizada ni sus
+explicaciones. `pnpm test:scripts` aprueba 4 controles Python y 21 Node;
+`pnpm test:frontend` aprueba 4 Node. `pnpm test:backend` aprueba 234 Python, con 3 modelos omitidos y 2 xfail
+estrictos. El evaluador offline mantiene 24 aprobados.
+
+Evidencia local: `temp/sonar-reports/tests-component-initial.log`,
+`tests-component-coverage.log` y `tests-component-backend.log`. No se llamó a
+proveedores, no se ejecutaron diagnósticos destructivos ni se subió un análisis
+Sonar nuevo. La suite conserva las advertencias de deprecación existentes.
+
+## Alcance de las pruebas de ingesta y carga
+
+Las tablas de `backend/unit/test_source_evidence.py` y `backend/security/test_upload_security.py`
+incluyen las explicaciones que antes figuraban en el plan SAT. `tmp_path` aísla
+los archivos; `monkeypatch` cambia configuración, rutas y dependencias solo
+durante cada prueba. Las cargas usan FastAPI `TestClient` con una sesión y un
+procesador/motor RAG simulados; los lotes inyectan esos dobles y directorios
+temporales. Los casos de colisión, directorios coincidentes y uso directo del
+procesador utilizan un convertidor en memoria, no Docling real.
+
+Estos casos verifican persistencia local, respuestas y orden de llamadas. **No**
+verifican extracción real de PDF con Docling, oficialidad de fuentes, vigencia
+jurídica ni escritura duradera en el grafo. `provenance_state: unverified` y
+`graph_write_state: unverified` no son confirmaciones de verificación jurídica
+o persistencia del grafo. La prueba independiente de compatibilidad de parsers
+PDF se describe en `backend/unit/test_dependency_compatibility.py` y no amplía esas
+garantías.
+
+## Inventario completo de casos
+
+### Backend
+
+<details>
+<summary>backend/bdd/test_conflicting_rules.py — 3 escenarios base</summary>
+
+Reglas contradictorias, fuentes y dos limitaciones conocidas de selección temporal y trazabilidad de modificaciones (xfail estricto).
+
+
+| Caso                                                                           | Comprobación                                                           |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `test_given_conflicting_rules_when_keyword_query_then_source_is_reported`      | given conflicting rules when keyword query then source is reported      |
+| `test_given_newer_effective_rule_when_reranked_then_new_rule_should_win`       | given newer effective rule when reranked then new rule should win       |
+| `test_given_rule_amended_by_action_when_retrieved_then_amendment_is_traceable` | given rule amended by action when retrieved then amendment is traceable |
+
+</details>
+
+<details>
+<summary>backend/benchmark/test_local_retrieval.py — 1 escenarios base</summary>
+
+25 recuperaciones locales sobre corpus de 2, 32 y 128 documentos; mide latencia con perf_counter, sin umbral de velocidad.
+
+
+| Caso                                                                | Comprobación                                                |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `test_offline_keyword_retrieval_reports_elapsed_without_speed_gate` | offline keyword retrieval reports elapsed without speed gate |
+
+</details>
+
+<details>
+<summary>backend/contract/test_shapes.py — 5 escenarios base</summary>
+
+Entrada estricta, límites de consulta, idioma admitido, NDJSON Unicode y estructura RAG local.
+
+
+| Caso                                                        | Comprobación                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------ |
+| `test_query_request_forbids_unknown_fields_and_empty_query` | query request forbids unknown fields and empty query |
+| `test_query_length_bounds_and_language_is_supported`        | query length bounds and language is supported        |
+| `test_ndjson_event_has_single_line_and_unicode`             | ndjson event has single line and unicode             |
+| `test_rag_result_contract_is_local_not_temporal`            | rag result contract is local not temporal            |
+| `test_pdf_report_errors_are_documented_in_openapi` | OpenAPI documenta los errores 500 y 503 del reporte PDF y conserva las respuestas 200 y 422. |
+
+</details>
+
+<details>
+<summary>backend/http/test_api.py — 7 escenarios base</summary>
+
+Bootstrap, autorización, caché de consulta/stream, validación 422 y barrera administrativa antes de tocar documentos.
+
+
+| Caso                                                               | Comprobación                                               |
+| -------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `test_bootstrap_and_protected_query_gate`                          | bootstrap and protected query gate                          |
+| `test_cached_query_does_not_call_external_dependencies`            | cached query does not call external dependencies            |
+| `test_admin_gate_precedes_document_access`                         | admin gate precedes document access                         |
+| `test_legal_query_rejects_invalid_input_before_retrieval`          | legal query rejects invalid input before retrieval          |
+| `test_cached_stream_emits_chunk_then_final_without_external_calls` | cached stream emits chunk then final without external calls |
+| `test_pdf_report_preserves_documented_errors` | La dependencia PDF ausente devuelve 503 y el fallo del generador devuelve 500 con sus detalles públicos, sin exponer el error interno. |
+| `test_pdf_report_preserves_successful_download` | Éxito conserva bytes, MIME PDF, nombre de descarga y Cache-Control no-store con generador simulado. |
+
+</details>
+
+<details>
+<summary>backend/integration/test_validation_pipeline.py — 11 escenarios base</summary>
+
+Pipeline de validación completo con corpus en memoria y Cohere simulado: fuentes, riesgo, confianza, corrección, opciones y tiempos.
+
+
+| Caso                                              | Comprobación                                                                  |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `test_good_response_passes_pipeline`              | Respuesta bien fundamentada debe pasar el pipeline con status PASSED o WARNED. |
+| `test_hallucinated_response_triggers_correction`  | Respuesta con alucinaciones debe disparar self-correction y marcar status.     |
+| `test_validated_response_has_all_required_fields` | ValidatedResponse debe tener todos los campos requeridos por el schema.        |
+| `test_cross_check_summary_present`                | Con cross_check habilitado, debe haber un CrossCheckSummary en el report.      |
+| `test_sources_propagated_from_rag`                | Las fuentes del RAG deben propagarse al ValidatedResponse.                     |
+| `test_is_reliable_property`                       | La propiedad is_reliable debe reflejar el estado del report.                   |
+| `test_disabled_cross_check`                       | Con enable_cross_check=False, cross_check debe ser None en el report.          |
+| `test_disabled_self_correction`                   | Con enable_self_correction=False, no debe llamarse a Cohere para corrección.  |
+| `test_quechua_language_accepted`                  | El pipeline debe aceptar language='quechua' sin errores.                       |
+| `test_empty_documents_in_rag_result`              | RAG result sin documentos debe manejarse sin error.                            |
+| `test_processing_time_recorded`                   | El tiempo de procesamiento debe ser registrado y ser positivo.                 |
+
+</details>
+
+<details>
+<summary>backend/quality/test_evaluator.py — 15 escenarios base</summary>
+
+Carga del dataset, dirección de métricas, fallos/timeout, generación no vacía, informes, privacidad, credenciales, juez explícito y opt-in; todo offline.
+
+
+| Caso                                                                 | Comprobación                                                 |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `test_metric_uses_its_own_success_direction`                         | metric uses its own success direction                         |
+| `test_one_failed_metric_cannot_hide_behind_average`                  | one failed metric cannot hide behind average                  |
+| `test_metric_error_is_failure_and_does_not_expose_exception_message` | metric error is failure and does not expose exception message |
+| `test_dataset_is_nonempty_unique_and_has_controlled_context`         | dataset is nonempty unique and has controlled context         |
+| `test_invalid_dataset_fails`                                         | invalid dataset fails                                         |
+| `test_live_credentials_fail_clearly_without_reading_real_env`        | live credentials fail clearly without reading real env        |
+| `test_live_pipeline_uses_generated_output_and_saves_report`          | live pipeline uses generated output and saves report          |
+| `test_generation_failure_is_reported_without_fallback`               | generation failure is reported without fallback               |
+| `test_generation_timeout_is_a_failed_evaluation`                     | generation timeout is a failed evaluation                     |
+| `test_empty_generated_response_is_a_failure`                         | empty generated response is a failure                         |
+| `test_judge_factory_receives_explicit_model_and_key`                 | judge factory receives explicit model and key                 |
+| `test_missing_deepeval_never_silently_falls_back`                    | missing deepeval never silently falls back                    |
+| `test_no_opt_in_marks_live_cases_skipped`                            | no opt in marks live cases skipped                            |
+| `test_invalid_live_timeout_is_a_usage_error`                         | invalid live timeout is a usage error                         |
+| `test_opt_in_without_credentials_is_an_error_not_skip`               | opt in without credentials is an error not skip               |
+
+</details>
+
+<details>
+<summary>backend/quality/test_model_quality.py — 1 escenarios base</summary>
+
+Tres casos sintéticos parametrizados de generación Cohere y juez DeepEval; se omiten salvo autorización explícita de red/coste.
+
+
+| Caso                      | Comprobación      |
+| --------------------------- | -------------------- |
+| `test_live_model_quality` | live model quality |
+
+</details>
+
+<details>
+<summary>backend/security/test_chat_security.py — 14 escenarios base</summary>
+
+Sesiones firmadas, caducidad, cookies, dueño en caché/BD, 404/503/429, salud degradada, redacción de errores/logs y reasignación segura.
+
+
+| Caso                                                            | Comprobación                                            |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| `test_signed_sessions_are_distinct_expire_and_reject_tampering` | signed sessions are distinct expire and reject tampering |
+| `test_session_cookie_is_http_only_and_secure_in_production`     | session cookie is http only and secure in production     |
+| `test_production_configuration_rejects_insecure_defaults`       | production configuration rejects insecure defaults       |
+| `test_cache_hit_and_database_fallback_both_enforce_owner`       | cache hit and database fallback both enforce owner       |
+| `test_update_delete_stats_and_messages_forward_owner`           | update delete stats and messages forward owner           |
+| `test_client_cannot_submit_user_id`                             | client cannot submit user id                             |
+| `test_expensive_endpoint_returns_real_429`                      | expensive endpoint returns real 429                      |
+| `test_bootstrap_is_rate_limited_by_ip`                          | bootstrap is rate limited by ip                          |
+| `test_conversation_creation_returns_redacted_503`               | conversation creation returns redacted 503               |
+| `test_backend_health_is_degraded_without_postgres`              | backend health is degraded without postgres              |
+| `test_stream_rejects_foreign_conversation_before_persistence`   | stream rejects foreign conversation before persistence   |
+| `test_public_errors_and_logs_are_redacted`                      | public errors and logs are redacted                      |
+| `test_lightrag_provider_logs_are_disabled`                      | lightrag provider logs are disabled                      |
+| `test_reassignment_invalidates_cache_and_fails_closed`          | reassignment invalidates cache and fails closed          |
+
+</details>
+
+<details>
+<summary>backend/security/test_upload_and_auth.py — 8 escenarios base</summary>
+
+Clave administrativa, firma/MIME/tamaño PDF, rutas confinadas, limpieza, límites exactos y rechazo de sesiones ausentes o alteradas.
+
+
+| Caso                                                                | Comprobación                                                |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `test_upload_requires_admin_even_with_session`                      | upload requires admin even with session                      |
+| `test_invalid_upload_is_rejected_and_cleaned`                       | invalid upload is rejected and cleaned                       |
+| `test_upload_is_confined_and_passes_sanitized_metadata`             | upload is confined and passes sanitized metadata             |
+| `test_oversized_upload_is_rejected_without_retaining_bytes`         | oversized upload is rejected without retaining bytes         |
+| `test_pdf_size_exact_boundary_is_accepted_but_one_byte_more_is_not` | pdf size exact boundary is accepted but one byte more is not |
+| `test_tampered_session_cookie_cannot_access_protected_query`        | tampered session cookie cannot access protected query        |
+| `test_anonymous_chat_history_must_require_session`                  | anonymous chat history must require session                  |
+| `test_anonymous_stream_must_require_session`                        | anonymous stream must require session                        |
+
+</details>
+
+<details>
+<summary>backend/security/test_upload_security.py — 7 escenarios base</summary>
+
+Carga administrativa, evidencia por bytes, metadatos saneados, errores del procesador/almacén, colisiones y conservación de archivos existentes.
+
+
+| Caso                                                                   | Comprobación                                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `test_admin_endpoints_disabled_without_key` | Si los endpoints administrativos están deshabilitados y no hay clave configurada, la carga devuelve HTTP 404. |
+| `test_upload_generates_confined_name_and_preserves_sanitized_metadata` | Un nombre que intenta salir del directorio (`../../private.pdf`) se reduce a `private.pdf` en los metadatos; el PDF recibe un nombre generado y queda dentro de `raw`, sin crear archivos en el directorio padre. La carga responde HTTP 200, conserva un único registro de evidencia y declara `graph_write_state: unverified`. |
+| `test_upload_rejects_size_mime_magic_and_wrong_admin_key` | Un archivo demasiado grande devuelve HTTP 413; MIME incorrecto, firma PDF inválida y clave administrativa incorrecta devuelven 400, 400 y 403, respectivamente. Ningún rechazo deja PDF en `raw` ni registros de evidencia. |
+| `test_upload_cleans_up_when_processing_fails` | Una excepción simulada del procesador devuelve HTTP 500 sin revelar el mensaje interno del proveedor; elimina el PDF recibido y no crea registros de evidencia. |
+| `test_upload_reuses_evidence_by_pdf_bytes_not_filename` | Dos cargas con los mismos bytes PDF y nombres distintos comparten `evidence_id`. Si cambian los bytes, el ID cambia y quedan exactamente dos registros JSON de evidencia. |
+| `test_upload_fails_closed_when_evidence_store_is_unwritable` | Si un archivo ocupa la ruta del directorio de evidencia, la carga devuelve HTTP 500, no conserva PDF ni Markdown y no llama a `rag_engine.add_document`. |
+| `test_upload_collision_preserves_existing_markdown_and_evidence` | Una colisión forzada del nombre generado, combinada con una conversión distinta, devuelve HTTP 500 con el mensaje público `PDF processing failed`. Conserva los bytes del Markdown y del registro de evidencia existentes, elimina el nuevo PDF recibido y no inserta contenido en RAG. |
+
+</details>
+
+<details>
+<summary>backend/unit/test_anti_hallucination.py — 14 escenarios base</summary>
+
+Patrones legales sospechosos, respuestas vacías/cortas, score RAG, riesgo acotado, penalizaciones y umbrales.
+
+
+| Caso                                                     | Comprobación                                                             |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `test_good_response_has_low_risk`                        | Respuesta bien fundamentada no debe superar el umbral de corrección.     |
+| `test_hallucinated_response_exceeds_threshold`           | Respuesta con múltiples alucinaciones debe requerir corrección.         |
+| `test_returns_hallucination_report_type`                 | El método siempre retorna un HallucinationReport, sin importar el input. |
+| `test_empty_response_flagged`                            | Respuesta vacía debe retornar report con requires_correction=True.       |
+| `test_very_short_response_flagged`                       | Respuesta de 1 palabra también debe generar report.                      |
+| `test_low_rag_score_increases_risk`                      | Mismo texto → mayor riesgo cuando el RAG score es bajo.                  |
+| `test_zero_rag_score_has_penalty`                        | RAG score = 0 debe generar la penalización máxima por RAG.              |
+| `test_high_rag_score_no_penalty`                         | RAG score ≥ threshold no debe generar penalización RAG.                 |
+| `test_individual_patterns_detected`                      | Cada patrón de alucinación debe ser detectado individualmente.          |
+| `test_multiple_patterns_accumulate_penalty`              | Múltiples patrones deben acumular penalización hasta el máximo.        |
+| `test_long_response_low_rag_triggers_structural_penalty` | Respuesta larga con RAG score bajo → penalización estructural.          |
+| `test_long_response_high_rag_no_structural_penalty`      | Respuesta larga con buen RAG score → sin penalización estructural.      |
+| `test_risk_score_bounded_0_to_1`                         | El risk_score siempre debe estar en [0, 1].                               |
+| `test_custom_threshold_changes_requires_correction`      | Umbral personalizado debe cambiar el criterio de requires_correction.     |
+
+</details>
+
+<details>
+<summary>backend/unit/test_audit_remediation.py — 15 escenarios base</summary>
+
+Regresiones de auditoría: traducción completa, fallos sin caché parcial, contratos, dueño, contexto/historial, claves de caché privadas y logs sin PII.
+
+
+| Caso                                                             | Comprobación                                             |
+| ------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `test_long_translation_preserves_tail_structure_and_references`  | long translation preserves tail structure and references  |
+| `test_translation_rejects_empty_truncated_or_missing_citation`   | translation rejects empty truncated or missing citation   |
+| `test_translation_failure_does_not_cache_partial_success`        | translation failure does not cache partial success        |
+| `test_missing_provider_is_not_successful_dictionary_translation` | missing provider is not successful dictionary translation |
+| `test_input_contract_rejects_blank_or_unknown_language`          | input contract rejects blank or unknown language          |
+| `test_foreign_conversation_is_404_before_generation`             | foreign conversation is 404 before generation             |
+| `test_storage_failure_is_redacted_503`                           | storage failure is redacted 503                           |
+| `test_invalid_query_http_422`                                    | invalid query http 422                                    |
+| `test_context_and_history_budgets_are_explicit`                  | context and history budgets are explicit                  |
+| `test_cache_is_private_contextual_and_revision_aware`            | cache is private contextual and revision aware            |
+| `test_corpus_edit_changes_revision`                              | corpus edit changes revision                              |
+| `test_second_turn_context_reaches_prompt_and_owner_check`        | second turn context reaches prompt and owner check        |
+| `test_access_log_does_not_keep_oauth_code_or_ip`                 | access log does not keep oauth code or ip                 |
+| `test_stream_error_and_logs_do_not_echo_query_or_request_id`     | stream error and logs do not echo query or request id     |
+| `test_oauth_failure_is_redacted`                                 | oauth failure is redacted                                 |
+
+</details>
+
+<details>
+<summary>backend/unit/test_chat_response_persistence.py — 6 escenarios base</summary>
+
+Extracción por idioma, persistencia de respuestas generadas/cacheadas y fechas UTC aware/naive con offsets positivos y negativos.
+
+
+| Caso                                                                  | Comprobación                                                  |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `test_conversation_stats_uses_aware_utc_and_accepts_legacy_dates`     | conversation stats uses aware utc and accepts legacy dates     |
+| `test_conversation_stats_missing_conversation_does_not_read_messages` | conversation stats missing conversation does not read messages |
+| `test_add_message_writes_aware_utc_activity_to_legacy_cache`          | add message writes aware utc activity to legacy cache          |
+| `test_extract_response_text_uses_language_safe_fallbacks`             | extract response text uses language safe fallbacks             |
+| `test_stream_persists_validated_spanish_response`                     | stream persists validated spanish response                     |
+| `test_cached_stream_persists_response_with_same_extractor`            | cached stream persists response with same extractor            |
+
+</details>
+
+<details>
+<summary>backend/unit/test_cross_checker.py — 13 escenarios base</summary>
+
+Afirmaciones con soporte, corpus vacío, score de solapamiento, tipos, chunks, caché de tokens e invalidación.
+
+
+| Caso                                         | Comprobación                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `test_grounded_response_passes`              | Respuesta con términos del corpus → overlap alto → is_grounded=True.        |
+| `test_hallucinated_response_has_low_overlap` | Respuesta con términos inventados → afirmaciones no fundadas.                |
+| `test_empty_response_returns_result`         | Respuesta vacía → CrossCheckResult con is_grounded=False.                    |
+| `test_empty_corpus_returns_optimistic`       | Sin documentos en el corpus → is_grounded=True (no podemos evaluar).          |
+| `test_returns_cross_check_result_type`       | Siempre debe retornar CrossCheckResult independiente del input.                |
+| `test_result_has_supporting_chunks`          | Los supporting_chunks deben provenir del corpus RAG.                           |
+| `test_total_claims_count_is_correct`         | El total de afirmaciones debe ser >= grounded + ungrounded.                    |
+| `test_ungrounded_claims_are_strings`         | Las afirmaciones no fundadas deben ser strings legibles.                       |
+| `test_overlap_score_bounded`                 | El overlap_score siempre debe estar en [0.0, 1.0].                             |
+| `test_corpus_cache_reused`                   | Dos llamadas seguidas deben usar el cache de tokens (mismo tamaño de corpus). |
+| `test_cache_invalidated_on_update`           | Al actualizar el corpus, el cache de tokens debe invalidarse.                  |
+| `test_custom_threshold_strict`               | Threshold alto (0.95) con texto que tiene overlap parcial → not grounded.     |
+| `test_custom_threshold_permissive`           | Threshold bajo (0.10) → casi todo es grounded.                                |
+
+</details>
+
+<details>
+<summary>backend/unit/test_dependency_compatibility.py — 1 escenarios base</summary>
+
+PDF sintético real con ReportLab, pypdf y backend PDFium de Docling; sin descargar modelos ni ejecutar OCR.
+
+
+| Caso                                               | Comprobación                               |
+| ---------------------------------------------------- | --------------------------------------------- |
+| `test_updated_pdf_stack_extracts_synthetic_source` | updated pdf stack extracts synthetic source |
+
+</details>
+
+<details>
+<summary>backend/unit/test_dev_server_binding.py — 2 escenarios base</summary>
+
+Launcher local limitado a loopback y guard de importación, manteniendo el arranque independiente del contenedor.
+
+
+| Caso                                                        | Comprobación                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------ |
+| `test_local_launcher_binding_and_import_guard`              | local launcher binding and import guard              |
+| `test_container_entrypoint_keeps_container_network_binding` | container entrypoint keeps container network binding |
+
+</details>
+
+<details>
+<summary>backend/unit/test_file_utils.py — 4 escenarios base</summary>
+
+SHA-256 de bytes completos, lectura por bloques, archivos ausentes y agrupación de duplicados.
+
+
+| Caso                                                          | Comprobación                                          |
+| --------------------------------------------------------------- | -------------------------------------------------------- |
+| `test_get_file_hash_returns_sha256_for_complete_content`      | get file hash returns sha256 for complete content      |
+| `test_get_file_hash_preserves_empty_result_for_missing_file`  | get file hash preserves empty result for missing file  |
+| `test_find_duplicate_files_groups_content_with_sha256_keys`   | find duplicate files groups content with sha256 keys   |
+| `test_find_duplicate_files_returns_empty_for_empty_directory` | find duplicate files returns empty for empty directory |
+
+</details>
+
+<details>
+<summary>backend/unit/test_llm_optimizer.py — 24 escenarios base</summary>
+
+Caché, TTL/invalidation, compresión de prompts, estimación/contabilidad de tokens y estadísticas.
+
+
+| Caso                                            | Comprobación                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `test_cache_hit_returns_same_response`          | Mismo prompt → cache hit devuelve la respuesta guardada.                |
+| `test_cache_miss_returns_none`                  | Prompt no guardado → cache miss devuelve None.                          |
+| `test_different_prompts_independent_keys`       | Prompts distintos deben tener claves independientes.                     |
+| `test_cache_expiry_after_ttl`                   | Entradas expiradas (TTL vencido) deben retornar None.                    |
+| `test_cache_valid_within_ttl`                   | Entradas dentro del TTL deben seguir disponibles.                        |
+| `test_eviction_at_max_size`                     | Al superar max_cache_size, la entrada más antigua debe ser eviccionada. |
+| `test_invalidate_specific_key`                  | Invalidar una clave específica no debe afectar las demás.              |
+| `test_invalidate_nonexistent_key_returns_false` | Invalidar clave inexistente retorna False (sin error).                   |
+| `test_clear_cache_removes_all`                  | clear_cache() debe eliminar todas las entradas.                          |
+| `test_short_prompt_not_compressed`              | Prompt corto no debe modificarse.                                        |
+| `test_long_prompt_compressed`                   | Prompt largo debe comprimirse a max_chars aproximado.                    |
+| `test_center_cut_preserves_marker`              | center_cut debe incluir el marcador de truncamiento.                     |
+| `test_tail_cut_preserves_beginning`             | tail_cut debe preservar el inicio del prompt.                            |
+| `test_compressed_result_fits_limit`             | El resultado comprimido no debe superar max_chars + marcador.            |
+| `test_estimate_tokens_basic`                    | 4 chars ≈ 1 token.                                                      |
+| `test_estimate_tokens_empty_string`             | String vacío → mínimo 1 token.                                        |
+| `test_track_accumulates_usage`                  | Múltiples llamadas a track() deben acumular el total de tokens.         |
+| `test_track_returns_call_metrics`               | track() debe retornar métricas de esa llamada específica.              |
+| `test_reset_stats_clears_counters`              | reset_stats() debe poner todos los contadores a cero.                    |
+| `test_cache_hit_increments_counter`             | Un cache hit debe incrementar el contador de cache_hits.                 |
+| `test_cache_hit_rate_calculation`               | cache_hit_rate debe calcularse correctamente.                            |
+| `test_update_accumulates_tokens`                | update accumulates tokens                                                |
+| `test_estimated_cost_positive`                  | estimated cost positive                                                  |
+| `test_to_dict_has_required_keys`                | to dict has required keys                                                |
+
+</details>
+
+<details>
+<summary>backend/unit/test_pipeline_remediation.py — 14 escenarios base</summary>
+
+Recuperación sin corte en 50 candidatos, chunks reales, ausencia de evidencia, ciclo de vida/ready/reintentos/cierre y salidas JSON/stream coherentes.
+
+
+| Caso                                                                | Comprobación                                                |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `test_candidate_after_first_fifty_is_found_and_order_independent`   | candidate after first fifty is found and order independent   |
+| `test_nonmatching_corpus_is_not_presented_as_evidence`              | nonmatching corpus is not presented as evidence              |
+| `test_native_graph_candidates_are_real_chunks_not_generated_answer` | native graph candidates are real chunks not generated answer |
+| `test_loader_retries_failure_without_false_ready`                   | loader retries failure without false ready                   |
+| `test_lifespan_loads_once_and_finalizes`                            | lifespan loads once and finalizes                            |
+| `test_shutdown_cancels_loading_and_closes_on_error`                 | shutdown cancels loading and closes on error                 |
+| `test_readiness_and_first_query_fail_closed`                        | readiness and first query fail closed                        |
+| `test_query_and_stream_return_same_validated_content`               | query and stream return same validated content               |
+| `test_chat_uses_same_validator_before_assistant_persistence`        | chat uses same validator before assistant persistence        |
+| `test_chat_provider_error_never_persists_fake_assistant`            | chat provider error never persists fake assistant            |
+| `test_no_evidence_abstains_even_if_self_correction_invents`         | no evidence abstains even if self correction invents         |
+| `test_provider_failure_is_redacted_not_success`                     | provider failure is redacted not success                     |
+| `test_translation_provider_exception_does_not_leak_payload`         | translation provider exception does not leak payload         |
+| `test_deepeval4_native_score_direction_without_judge`               | deepeval4 native score direction without judge               |
+
+</details>
+
+<details>
+<summary>backend/unit/test_rag_fallback.py — 7 escenarios base</summary>
+
+Fallback local ante falta/fallo de LightRAG o reranking; fuente explícita, corpus vacío, chunking por longitud y scores locales.
+
+
+| Caso                                                        | Comprobación                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------ |
+| `test_keyword_fallback_reports_matching_source`             | keyword fallback reports matching source             |
+| `test_keyword_fallback_no_match_is_explicit`                | keyword fallback no match is explicit                |
+| `test_local_rerank_returns_chunk_shape`                     | local rerank returns chunk shape                     |
+| `test_chunking_is_sentence_length_based_not_hierarchical`   | chunking is sentence length based not hierarchical   |
+| `test_empty_corpus_has_distinct_query_and_rerank_fallbacks` | empty corpus has distinct query and rerank fallbacks |
+| `test_failed_lightrag_insert_still_stores_local_document`   | failed lightrag insert still stores local document   |
+| `test_failed_cohere_rerank_uses_local_scores`               | failed cohere rerank uses local scores               |
+
+</details>
+
+<details>
+<summary>backend/unit/test_self_correction.py — 8 escenarios base</summary>
+
+Corrección simulada, condición de activación, tipos, respuesta vacía, errores Cohere y máximo de reintentos.
+
+
+| Caso                                       | Comprobación                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `test_no_correction_when_not_required`     | Cuando requires_correction=False, el engine retorna el original sin cambios.     |
+| `test_correction_applied_when_required`    | Cuando requires_correction=True, se llama a Cohere y se retorna texto corregido. |
+| `test_corrected_text_not_empty`            | El texto corregido nunca debe estar vacío.                                      |
+| `test_returns_tuple_of_str_and_int`        | Siempre debe retornar (str, int) independiente del resultado.                    |
+| `test_no_cohere_returns_original`          | Sin cliente Cohere, debe retornar el original sin lanzar excepción.             |
+| `test_cohere_error_returns_original`       | Si Cohere lanza excepción, debe retornar el original sin propagar el error.     |
+| `test_empty_cohere_response_uses_original` | Si Cohere retorna texto vacío, debe usar el original.                           |
+| `test_max_retries_respected`               | El engine no debe llamar a Cohere más de max_retries veces.                     |
+
+</details>
+
+<details>
+<summary>backend/unit/test_source_evidence.py — 10 escenarios base</summary>
+
+Identidad SHA-256, UTF-8 exacto, reintentos/tampering, consistencia carga/lote, fallos cerrados, colisiones y detección de caracteres de reemplazo.
+
+
+| Caso                                                                        | Comprobación                                                                                                                      |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_processing_validation_preserves_replacement_character_detection` | Parametriza Markdown válido en español con emojis, con y sin el carácter de reemplazo U+FFFD. Solo la variante con ese carácter informa `Caracteres de codificación detectados` y reduce la confianza de 1.0 a 0.8; el escape Unicode conserva la detección sin rechazar texto válido. |
+| `test_pipeline_source_has_valid_utf8_without_literal_replacement_character` | Decodifica estrictamente como UTF-8 los bytes de `backend/ingestion/pipeline.py` y comprueba que no contengan un U+FFFD literal; el detector debe usar el escape sin introducir un carácter de corrupción en el código fuente. No ejecuta el scanner Sonar. |
+| `test_evidence_retries_and_tampering` | Reintentos con los mismos PDF y Markdown reutilizan el registro JSON. La instancia de evidencia no permite reasignar atributos y mantiene `provenance_state: unverified`; una conversión distinta del mismo PDF produce un conflicto y un registro alterado se rechaza. No quedan archivos temporales `.evidence-*`. La instancia congelada no vuelve inmutable el archivo JSON en disco. |
+| `test_evidence_requires_written_matching_markdown` | Si el Markdown todavía no existe en disco, se produce `FileNotFoundError`. Si sus bytes no corresponden a la conversión recibida, se produce `ValueError`; ninguno de los dos errores crea el almacén de evidencia. |
+| `test_evidence_hashes_exact_multiline_utf8_bytes` | El SHA-256 registrado del Markdown coincide exactamente con sus bytes UTF-8 persistidos, incluidos el carácter acentuado de `Artículo` y el salto de línea final. |
+| `test_batch_matches_upload_identity_and_keeps_legacy_result` | La carga HTTP y el procesamiento por lotes comparten un ID de evidencia para PDF con los mismos bytes aunque sus nombres sean distintos. El lote informa un procesado y cero fallidos, estado `success`, ruta Markdown dentro de la categoría y `graph_write_state: unverified`; llama una sola vez a inserción y reconstrucción de RAG y conserva un único registro JSON. |
+| `test_batch_fails_closed_on_markdown_or_evidence_failure` | Bloquear con un archivo la ruta del directorio de procesados o del almacén de evidencia provoca un error del sistema de archivos antes de insertar en RAG. El lote informa cero procesados y un fallo, mueve el PDF a `failed` y no llama a `add_document` ni a `rebuild_index`. |
+| `test_batch_divergent_retry_preserves_existing_markdown_and_evidence` | Tras un primer lote exitoso, un reintento que convierte el mismo PDF a otro Markdown falla y mueve el PDF original a `failed`. Conserva intactos los bytes del primer Markdown y su evidencia; la inserción y reconstrucción de RAG solo se realizaron durante el primer lote. |
+| `test_batch_retry_with_processor_output_alias_preserves_original` | Aunque el directorio de salida del procesador sea el mismo directorio de procesados del lote, una conversión diferente en el reintento no sobrescribe el Markdown ni su evidencia. Informa el conflicto `Existing Markdown differs`, mueve el PDF a `failed`, conserva un solo registro JSON y no ejecuta una segunda inserción ni reconstrucción de RAG. |
+| `test_standalone_processor_still_writes_output_by_default` | El uso directo de `LegalPDFProcessor.process_pdf`, con un convertidor simulado, devuelve el Markdown convertido y escribe por defecto `source.md` con ese mismo contenido. El cambio de publicación controlada en las rutas de ingesta no elimina este comportamiento independiente. |
+
+</details>
+
+<details>
+<summary>backend/unit/test_startup_safety.py — 2 escenarios base</summary>
+
+Neo4j desactivado selecciona NetworkX sin importarlo y salida de consola tolera caracteres no codificables.
+
+
+| Caso                                                           | Comprobación                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| `test_disabled_neo4j_selects_networkx_without_importing_neo4j` | disabled neo4j selects networkx without importing neo4j |
+| `test_console_output_replaces_unencodable_characters`          | console output replaces unencodable characters          |
+
+</details>
+
+<details>
+<summary>backend/unit/test_utc_datetimes.py — 5 escenarios base, 9 casos parametrizados</summary>
+
+Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere Redis real ni llamadas a modelos.
+
+| Caso | Qué verifica |
+|---|---|
+| `test_rate_limit_scores_use_real_epoch_in_any_host_timezone` | Scores, ventana y reset de Redis usan el epoch correcto bajo zonas simuladas UTC−5, UTC y UTC+5:30. |
+| `test_redis_health_reports_explicit_utc_in_success_and_failure` | Timestamp UTC en éxito y fallos de ping/info, sin mezclar fechas aware/naive al medir la duración. |
+| `test_validation_report_default_is_fresh_utc_for_each_instance` | Cada reporte genera su propia fecha UTC y la conserva al serializar a JSON. |
+| `test_file_modification_time_is_serialized_as_utc` | El mtime del archivo se convierte a ISO 8601 con zona UTC explícita. |
+| `test_backend_does_not_use_naive_utc_factories_or_timestamp_conversions` | Guard AST contra utcnow/utcfromtimestamp y fromtimestamp sin zona en código backend. |
+
+</details>
+
+### Frontend
+
+<details>
+<summary>frontend/component/AuthProvider.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `provider restaura usuario por cookies y limpia flag sin guardar tokens` | Restaura estado desde cookie y retira flag de login, sin persistir tokens. |
+| `provider sesión ausente mantiene estado anónimo sin fallar render` | Ausencia de sesión conserva UI anónima sin fallar el montaje. |
+| `provider desmontado elimina suscripción y listener storage` | Desmontaje retira suscripción y listener storage para evitar revalidaciones tardías. |
+
+</details>
+
+<details>
+<summary>frontend/component/ChatInput.test.tsx — 5 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `entrada no envía espacios y Enter recorta texto mientras Shift Enter crea línea` | No envía espacios; Shift+Enter introduce línea y Enter envía texto recortado. |
+| `entrada limita 800 caracteres y muestra contador sin truncar silenciosamente` | Acepta 800 caracteres, contador cero y rechaza la entrada adicional. |
+| `entrada no autenticada redirige sin enviar ni perder texto` | Sin autenticación navega a login sin enviar ni borrar la consulta escrita. |
+| `entrada quechua selecciona ejemplo y enfoca sin enviar automáticamente` | Ejemplo quechua rellena y enfoca sin generar una consulta automática. |
+| `entrada en carga bloquea cambios y permite abortar sin limpiar` | Carga bloquea input/limpieza y permite detener con callback de abort. |
+
+</details>
+
+<details>
+<summary>frontend/component/ChatMessage.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `mensaje de error es visible y no presenta una validación exitosa` | Error muestra fallo sin badge Validado. |
+| `mensaje presenta validación advertencias y detalles sin inventar fuentes` | Badge warned y detalles muestran fuentes suministradas; no inventan evidencia. |
+| `mensaje descarga solo al solicitarlo y bloquea botón durante generación` | Descarga solo por acción del usuario y deshabilita botón mientras genera PDF. |
+
+</details>
+
+<details>
+<summary>frontend/component/ChatSidebar.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `sidebar reintento muestra error y respeta bloqueo durante carga` | Error muestra reintento; durante carga el botón está deshabilitado. |
+| `sidebar ordenar sesiones no muta datos y selección cierra panel` | Ordena por actividad sin mutar el array original; seleccionar también cierra el panel. |
+| `sidebar borrar exige confirmar y cancelar no elimina ni selecciona` | Cancelar no elimina; solo confirmación elimina y no selecciona accidentalmente la fila. |
+
+</details>
+
+<details>
+<summary>frontend/component/HistoryPanel.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `historial cerrado no aparece y lista vacía tiene mensaje` | Cerrado no se renderiza y vacío muestra un mensaje explícito. |
+| `historial selecciona por teclado y borrar no selecciona accidentalmente` | Enter selecciona el ID correcto; eliminar llama solo a borrado, sin burbujear selección. |
+| `historial permite cerrar con botón y Escape` | Botón con nombre accesible y Escape notifican el cierre. |
+
+</details>
+
+<details>
+<summary>frontend/component/MarkdownRenderer.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `Markdown renderiza listas tablas enlaces y Unicode sin perder contenido` | Renderiza encabezado, lista, tabla GFM y Unicode; enlaces nuevos protegen opener/referrer. |
+| `Markdown no ejecuta HTML scripts ni enlaces javascript del modelo` | Contenido del modelo no crea script/onerror ni enlace javascript ejecutable. |
+| `Markdown tolera contenido vacío e incompleto durante streaming` | Contenido vacío o Markdown parcial en streaming no rompe el render. |
+
+</details>
+
+<details>
+<summary>frontend/component/TerminalModal.test.tsx — 4 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `terminal cerrado no renderiza y abierto enfoca la entrada` | Cerrado no contiene entrada; al abrir enfoca el textbox. |
+| `terminal envía texto recortado por Enter y no envía espacios` | Enter no envía espacios, recorta texto válido y limpia la entrada tras enviar. |
+| `terminal cargando bloquea envío y representa mensajes y estado` | Carga bloquea el input y muestra mensajes como texto seguro e indicador de procesamiento. |
+| `terminal Escape y cerrar notifican cierre y devuelven foco` | Escape y botón cierran el diálogo; el ciclo de apertura/cierre restaura foco. |
+
+</details>
+
+<details>
+<summary>frontend/e2e/chat-persistence.spec.js — 5 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `interfaz actual envía consulta y conserva respuesta al recargar` | Chromium + API sintética: consulta/final, refresh a landing y selección restaura respuesta persistida. |
+| `interfaz recupera listado después de caída temporal simulada` | Abort de primer listado produce alerta y reintento recupera historial. |
+| `nueva consulta móvil no muestra mensajes de sesión anterior` | Viewport móvil: tras nueva sesión no se muestran mensajes de la anterior en el terminal. |
+| `terminal accesible permite teclado Escape y devuelve foco` | Diálogo recibe foco, permite teclado y Escape lo cierra. |
+| `pantalla y terminal no tienen violaciones axe serias o críticas` | Axe analiza landing y diálogo; cero impactos serious/critical, no certifica accesibilidad completa. |
+
+</details>
+
+<details>
+<summary>frontend/e2e/chat.real.spec.js — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `servicios reales recuperan historial después de caída temporal` | Con flag y servicios locales, interrupción temporal de listado se recupera al reintentar. |
+| `consulta real sintética persiste al recargar y se limpia al terminar` | Una consulta sintética comprueba final no vacío y persistencia tras refresh; limpia solo su conversación. |
+| `servicios reales aíslan principales anónimos en dos contextos` | Dos contextos tienen principales/cookies aislados; otro usuario recibe404 al leer la conversación ajena. |
+
+</details>
+
+<details>
+<summary>frontend/integration/ChatPage.test.tsx — 3 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `pantalla principal crea sesión antes de enviar y muestra respuesta final` | Monta pantalla/hooks/API real del frontend con red MSW: crea sesión antes de consultar y muestra final. |
+| `nueva sesión no conserva mensajes del terminal anterior` | Nueva sesión limpia mensajes del terminal anterior, sin confundir el preview persistido del sidebar. |
+| `pantalla recupera historial tras fallo con reintento sin borrar datos` | API de listado 503 expone acción de reintento y al recuperarse elimina el alert. |
+
+</details>
+
+<details>
+<summary>frontend/integration/useChat.test.tsx — 14 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `NDJSON fragmentado por byte conserva Unicode y usa respuesta final española` | NDJSON por byte conserva ñ/emoji y final reemplaza parcial; sidebar recibe título y conteo. |
+| `final quechua selecciona idioma y transmite conversation_id con cookies` | Selecciona respuesta quechua; petición usa cookies, idioma e ID de conversación correctos. |
+| `stream sin final vacíos y varios eventos conserva texto parcial` | Sin final conserva chunks UTF-8, ignora delta vacío y termina indicador streaming. |
+| `evento de error y JSON malformado terminan carga sin éxito falso` | Evento error y JSON roto liberan loading sin fabricar payload exitoso. |
+| `HTTP no exitoso y cuerpo ausente terminan con error recuperable` | HTTP 503 y cuerpo ausente producen respuesta recuperable, no éxito falso. |
+| `envíos vacíos sin sesión y simultáneos no duplican solicitudes` | Espacios, sesión nula y dos envíos del mismo tick no generan solicitudes duplicadas. |
+| `abort conserva respuesta parcial y libera bloqueo de envío` | Abort conserva parcial y libera el bloqueo; stream controlado, sin temporizadores del proveedor. |
+| `carga antigua no reemplaza mensajes de la sesión nueva` | Carga antigua que responde después de B no reemplaza los mensajes de B. |
+| `cambio de sesión cancela stream y no actualiza metadatos antiguos` | Cambiar sesión aborta y descarta final/metadata tardíos de la conversación anterior. |
+| `desmontaje cancela stream sin notificar metadatos tardíos` | Desmontaje aborta y no notifica metadata tras resolver un fetch tardío. |
+| `limpiar aborta y una carga tardía no repuebla la conversación` | Limpiar invalida carga pendiente, que no vuelve a poblar mensajes antiguos. |
+| `health distingue saludable degradado y fallo de red` | Health healthy=true; degraded y fallo de red=false. |
+| `PDF válido descarga blob y revoca URL incluso si click falla` | PDF crea URL Blob y siempre la revoca, incluso si el click de descarga falla. |
+| `PDF ausente MIME inválido y fallo de red no descargan ni dejan carga` | Sin payload o con MIME inválido no descarga; termina el indicador de generación. |
+
+</details>
+
+<details>
+<summary>frontend/integration/useChatSessions.test.tsx — 8 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `montaje carga historial sin borrar ni seleccionar una sesión automáticamente` | Montaje carga listado sin borrar ni seleccionar automáticamente la sesión activa. |
+| `creación reutiliza consulta vacía y respeta idioma de una nueva` | Nueva consulta transmite idioma y una consulta vacía existente evita POST repetido. |
+| `creación fallida no añade una sesión fantasma` | Creación fallida rechaza y no añade una conversación inexistente. |
+| `reload fallido conserva historial y reintento recupera la lista` | Reload fallido conserva listado; un reintento exitoso retira el error. |
+| `bootstrap fallido muestra error y no solicita historial` | Bootstrap fallido muestra error y evita pedir conversaciones. |
+| `borrado fallido conserva sesión activa y borrado exitoso la elimina` | Borrado fallido conserva sesión activa; éxito elimina y deja active=null si era la última. |
+| `metadatos locales y payload backend conservan preview conteo y título` | Patch local conserva título/preview/count y PUT lleva los mismos metadatos. |
+| `reload antiguo no reemplaza una respuesta nueva` | Dos reloads con respuestas fuera de orden conservan la respuesta más reciente. |
+
+</details>
+
+<details>
+<summary>frontend/unit/apiService.test.ts — 5 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `bootstrap concurrente comparte una solicitud y todas incluyen cookies` | Dos llamadas simultáneas comparten bootstrap; bootstrap y petición protegida incluyen cookies. |
+| `bootstrap fallido se puede reintentar sin llamar al endpoint protegido` | Un bootstrap 503 no llama al endpoint protegido y la siguiente llamada puede recuperarse. |
+| `API conserva detalle HTTP y tolera respuestas de error no JSON` | Conserva detail de un error JSON y usa HTTP/status cuando el error no es JSON. |
+| `API JSON inválido y desconexión no producen un éxito falso` | JSON roto y desconexión devuelven success=false, nunca datos aprobados. |
+| `API serializa idioma título y metadatos y codifica búsquedas` | Comprueba POST de idioma/título, PUT de metadata y codificación de ñ y & en búsquedas. |
+
+</details>
+
+<details>
+<summary>frontend/unit/authService.test.ts — 7 escenarios</summary>
+
+| Caso | Qué verifica |
+|---|---|
+| `login por cookie actualiza estado sin persistir tokens` | Login por formulario seguido de /auth/me marca autenticación sin escribir tokens en localStorage. |
+| `usuario se recupera desde cookies tras nueva instancia sin token JS` | Una instancia sin token JavaScript restaura al usuario mediante cookies en /auth/me. |
+| `login inválido no autentica y conserva mensaje de error` | 401 conserva el mensaje y deja al usuario no autenticado. |
+| `logout limpia estado y notifica aunque la red falle` | Logout limpia usuario/tokens incluso sin red; desuscribir impide notificaciones posteriores. |
+| `401 refresca cookie una vez y reintenta conservando opciones` | Tras 401 hace exactamente un refresh y reenvía método/cuerpo de la solicitud. |
+| `401 persistente no causa bucle de refresh y termina sesión` | Si el reintento sigue en 401, termina sesión sin renovación recursiva ilimitada. |
+| `refresh fallido cierra sesión sin filtrar credenciales` | Refresh rechazado termina sesión con error controlado, sin exponer credenciales. |
+
+</details>
+
+<details>
+<summary>frontend/unit/chatSessionMeta.test.mts — 2 escenarios base</summary>
+
+Conversión de metadatos preserva message_count y usa cero si falta.
+
+
+| Caso                                                            | Comprobación                                                        |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `preserves the API message count when mapping session metadata` | Conversión de metadatos preserva message_count y usa cero si falta. |
+| `treats a missing API message count as an empty session`        | Conversión de metadatos preserva message_count y usa cero si falta. |
+
+</details>
+
+<details>
+<summary>frontend/unit/useChatSessions.test.mts — 2 escenarios base</summary>
+
+Hidratación sin borrar conversación ni sendBeacon; un fallo preserva sesiones y el reintento las reemplaza.
+
+
+| Caso                                                                          | Comprobación                                                                                                 |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `initial session hydration has no clear-session call or unload beacon`        | Hidratación sin borrar conversación ni sendBeacon; un fallo preserva sesiones y el reintento las reemplaza. |
+| `a failed session load preserves existing sessions and a retry replaces them` | Hidratación sin borrar conversación ni sendBeacon; un fallo preserva sesiones y el reintento las reemplaza. |
+
+</details>
+
+### Scripts y estructura
+
+<details>
+<summary>scripts/unit/dev-full.test.mjs — 8 escenarios base</summary>
+
+Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend.
+
+
+| Caso                                                               | Comprobación                                                                                                                             |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `development startup targets only PostgreSQL and Redis`            | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `host processes require running containers with healthy checks`    | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `Windows launches pnpm concurrently with an argument vector`       | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `Windows executes standalone pnpm without passing an exe to Node`  | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `Windows requires pnpm's entrypoint`                               | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `pnpm supplies the Windows launcher entrypoint to package scripts` | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `backend health retries transient failures until it succeeds`      | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+| `frontend is not started until backend health succeeds`            | Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend. |
+
+</details>
+
+<details>
+<summary>scripts/unit/run-tests.test.mjs — 13 escenarios base</summary>
+
+Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner.
+
+
+| Caso                                                                                      | Comprobación                                                                                                                                         |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `offline incluye Python y Node sin activar modelos reales`                                | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `todos los modos Python usan configuración raíz y las suites Node viven en tests`       | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `all incluye evaluación real y continúa con Node`                                       | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `coverage produce Cobertura y xUnit compatible sin activar modelos reales`                | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `quality selecciona solo las pruebas del modelo y reenvía opciones`                      | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `quality-offline y modos inválidos no activan facturación`                              | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `fallos de una suite no ocultan las restantes y mantienen exit code`                      | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `error de arranque falla la ejecución y éxito retorna cero`                             | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `sonar lee SONAR_TOKEN de backend/.env con BOM, comillas y CRLF sin cargar otras claves`  | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `sonar permite SONAR_TOKEN del entorno para CI sin leer archivos`                         | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `sonar diagnostica archivo ausente, vacío, token MCP y multilínea sin revelar secretos` | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `sonar entrega el token del archivo solo al scanner, no a tests ni argumentos`            | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+| `sonar ejecuta scanner solo después de todas las suites exitosas`                        | Selección de suites/modos, carpeta/configuración únicas, cobertura/xUnit, propagación de fallos y token Sonar desde backend/.env solo al scanner. |
+
+</details>
+
+<details>
+<summary>scripts/unit/test_repository_layout.py — 4 escenarios base</summary>
+
+Exigir componente y tipo dentro del árbol único, impedir suites dispersas y mantener catálogo por caso, configuración, dataset y manuales.
+
+
+| Caso                                                         | Comprobación                                                               |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `test_test_suites_are_confined_to_single_tree`               | Exigir `tests/<backend|frontend|scripts>/<tipo>/` y no permitir suites Python/Node/Playwright en código de producto o scripts; frontend usa `.test.mts` y scripts `.test.mjs`. |
+| `test_every_automated_case_is_catalogued_in_test_guide`      | Cada archivo y nombre de caso debe constar en el documento dedicado.        |
+| `test_pytest_and_sonar_share_the_same_test_root`             | Pytest y Sonar reconocen tests y no conservan una segunda configuración.   |
+| `test_manual_diagnostics_and_quality_dataset_are_documented` | Inventariar scripts manuales y mantener datos sintéticos dentro de tests.  |
+
+</details>
+
+## Ampliación frontend — 06/10/2026
+
+Vitest 5.0.3 / cobertura V8 5.0.3, jsdom 29.1.1 (Node local 24.13.1),
+Testing Library React 16.3.3 y MSW 2.15.0. MSW 3 no satisface el peer del mocker
+de Vitest; jsdom 30 requiere Node24.15+, por eso no se instalan esas versiones.
+React de tests coincide en versión con producto y usa una instancia única;
+Lucide usa su entrada ESM para respetar aliases. No se cambia el tipo global
+del frontend ni sus configs CommonJS. Los cuatro casos antiguos se conservan.
+
+Unidades de trabajo/rollback (sin commits creados):
+1. Infraestructura y runner: configs/fixtures/tests de runner/package/locks/Sonar.
+2. Regresiones de hooks/auth: fuentes y sus unit/integration tests juntos.
+3. UI/accesibilidad: componentes y pruebas React/navegador juntas.
+4. Esta guía y evidencia local de ejecución. No revertir cambios ajenos.
+
+Verificación de la ampliación (los resultados históricos anteriores no cuentan
+las suites nuevas):
+
+| Comprobación | Resultado |
+|---|---|
+| Suite completa / cobertura | 238 Python aprobados, 3 modelos omitidos y 2 xfail estrictos; 23 scripts Node y 65 casos React aprobados |
+| Navegador API simulada | 5/5 aprobados en Edge headless; incluye móvil, persistencia, reintento, Tab/Escape/foco y axe sin violaciones serias/críticas en landing/terminal |
+| Solo evaluador offline | 24 aprobados; ningún proveedor llamado |
+| TypeScript y build de Next | Aprobados |
+| Locks | Instalación pnpm congelada y `pnpm deps:check` aprobados |
+| Confirmación real | quality/e2e-real sin flag: exit 2 antes del spawn; discovery real con flag: 3 casos, sin ejecutarlos |
+| Informes finales | 243 casos xUnit y 70 módulos Cobertura; 32 archivos frontend en LCOV, todas las rutas existentes y cero fallos/errores xUnit |
+
+La cobertura frontend incluye archivos no ejercitados: **41.64 % de líneas**
+y **43.70 % de ramas**, no 80 % ni una garantía del Quality Gate. Los E2E con API simulada
+no prueban backend/modelo ni se suman al LCOV de Vitest. No se ejecutaron los
+casos facturables al implementar estas pruebas. La descarga de Chromium encontró
+un bloqueo externo de caché; se verificó con el canal `msedge`, sin borrarlo.
+Evidencia local ignorada por Git: `temp/sonar-reports/` (logs, XML y LCOV).
+
+### Regresiones adicionales del runner
+
+En `scripts/unit/run-tests.test.mjs`:
+
+| Caso | Qué verifica |
+|---|---|
+| `modelos reales requieren flag explícito y frontend offline nunca lo hereda` | quality/real rechazan ausencia de flag antes del spawn; all por defecto offline; E2E simulado/React fuerzan RUN_MODEL_EVALS=0. |
+| `coverage frontend usa LCOV separado y conserva opciones Vitest` | Modo cobertura frontend añade --coverage, modo normal no; ambos usan config explícita y preservan opciones del usuario. |

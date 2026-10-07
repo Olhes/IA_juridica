@@ -18,14 +18,15 @@ class LegalPDFProcessor:
             allowed_formats=[InputFormat.PDF]
         )
     
-    async def process_pdf(self, pdf_path: str) -> str:
+    async def process_pdf(self, pdf_path: str, *, write_output: bool = True) -> str:
         """
         Procesa un PDF y retorna el contenido en markdown (asíncrono)
         
-        Args:
+        Argumentos:
             pdf_path: Ruta al archivo PDF
+            write_output: Indica si se debe guardar el Markdown en output_dir (valor predeterminado para llamadas independientes)
             
-        Returns:
+        Retorna:
             str: Contenido procesado en markdown
         """
         pdf_path = Path(pdf_path)
@@ -40,10 +41,10 @@ class LegalPDFProcessor:
         # Extraer contenido como markdown
         markdown_content = result.document.export_to_markdown()
         
-        # Guardar markdown procesado
-        output_file = self.output_dir / f"{pdf_path.stem}.md"
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(markdown_content)
+        if write_output:
+            output_file = self.output_dir / f"{pdf_path.stem}.md"
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
         
         # Retornar solo el markdown como espera main.py línea 95
         return markdown_content
@@ -52,10 +53,10 @@ class LegalPDFProcessor:
         """
         Versión detallada que retorna metadata adicional
         
-        Args:
+        Argumentos:
             pdf_path: Ruta al archivo PDF
             
-        Returns:
+        Retorna:
             Dict con markdown, metadata y estructura legal
         """
         pdf_path = Path(pdf_path)

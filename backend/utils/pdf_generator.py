@@ -580,12 +580,12 @@ def generate_legal_pdf(
     """
     Genera un PDF con la respuesta legal bilingüe.
 
-    Args:
+    Argumentos:
         query: Consulta original del usuario
         response_data: Diccionario con la respuesta (model_dump de GeneralLegalResponse)
         output_dir: Directorio de salida
 
-    Returns:
+    Retorna:
         Ruta absoluta del PDF generado
     """
     out = Path(output_dir)

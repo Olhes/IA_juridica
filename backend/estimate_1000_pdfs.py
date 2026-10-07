@@ -81,7 +81,7 @@ def main():
     print("🏗️  ARQUITECTURA SUGERIDA:")
     print("""
     ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-    │   Frontend     │    │   API Gateway   │    │   Load Balancer │
+    │   Interfaz     │    │ Puerta de enlace│    │ Balanceador de carga│
     │   (React)      │◄──►│   (FastAPI)     │◄──►│   (Nginx)       │
     └─────────────────┘    └──────────────────┘    └─────────────────┘
                                       │

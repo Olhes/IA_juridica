@@ -46,7 +46,7 @@ class PostgreSQLAdapter:
                             print(f"  ✅ Conexión exitosa via DATABASE_URL")
                             return conn
                         except Exception as e:
-                            print(f"  Error conectando via DATABASE_URL: {e}")
+                            print("PostgreSQL connection failed")
                             raise
                     else:
                         # Desarrollo local: configuración Docker
@@ -153,13 +153,13 @@ class PostgreSQLAdapter:
         def create_sync():
             with self.conn.cursor() as cursor:
                 try:
-                    # For debugging: use a fixed UUID for debug-user or generate one
+                    # Para depuración: usar un UUID fijo para debug-user o generar uno
                     actual_user_id = user_id
                     if user_id == "debug-user":
-                        # Use a fixed UUID for debug-user to avoid auth_schema dependency
+                        # Usar un UUID fijo para debug-user y evitar la dependencia de auth_schema.
                         actual_user_id = "00000000-0000-0000-0000-000000000001"
                     
-                    # Temporarily disable foreign key constraint for debugging
+                    # Deshabilitar temporalmente la restricción de clave foránea para depuración.
                     cursor.execute("SET session_replication_role = 'replica'")
                     
                     # Insertar conversación en conversations_schema

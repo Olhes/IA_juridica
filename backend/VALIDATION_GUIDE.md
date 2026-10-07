@@ -2,7 +2,7 @@
 
 ## Guía práctica del pipeline de validación — IA Jurídica
 
-> Última actualización: Febrero 2026  
+> Última actualización: Febrero 2026
 > Proyecto: `~/Documentos/IA_juridica/backend`
 
 ---
@@ -54,16 +54,17 @@ Busca patrones de texto que indican que el modelo inventó algo.
 Especializado en derecho peruano. No llama a ninguna API.
 
 **Patrones que detecta:**
-| Patrón | Ejemplo que detecta |
-|---|---|
-| `articulo_alto` | "artículo 9876 del Código Civil" |
-| `ley_corta` | "Ley N° 12 establece..." |
-| `monto_fijo_pension` | "la pensión mínima es de S/ 500" |
-| `incertidumbre_legal` | "posiblemente el artículo aplicable sea..." |
-| `casacion_incompleta` | "Casación 1234-25" (sin sala/región) |
-| `entidad_inexistente` | "Tribunal Constitucional Federal" |
-| `derogacion_no_verificada` | "fue derogado en 2020" (sin citar decreto) |
-| `plazo_exacto_inventado` | "el proceso dura exactamente 90 días" |
+
+| Patrón                      | Ejemplo que detecta                          |
+| ---------------------------- | -------------------------------------------- |
+| `articulo_alto`            | "artículo 9876 del Código Civil"           |
+| `ley_corta`                | "Ley N° 12 establece..."                    |
+| `monto_fijo_pension`       | "la pensión mínima es de S/ 500"           |
+| `incertidumbre_legal`      | "posiblemente el artículo aplicable sea..." |
+| `casacion_incompleta`      | "Casación 1234-25" (sin sala/región)       |
+| `entidad_inexistente`      | "Tribunal Constitucional Federal"            |
+| `derogacion_no_verificada` | "fue derogado en 2020" (sin citar decreto)   |
+| `plazo_exacto_inventado`   | "el proceso dura exactamente 90 días"       |
 
 **Parámetro clave:** `hallucination_threshold` en `main.py`
 
@@ -92,7 +93,7 @@ Si el `anti_hallucination` detecta un problema, este módulo le pide a Cohere
 que reescriba la respuesta incluyendo los problemas detectados y el contexto RAG
 como fuente de verdad. Máximo 2 reintentos.
 
-**Cuándo se activa:** Solo cuando `risk_score > hallucination_threshold`  
+**Cuándo se activa:** Solo cuando `risk_score > hallucination_threshold`
 **Cuándo NO se activa:** Con los valores actuales (threshold=0.7), casi nunca.
 Si quieres que se active más seguido, baja el threshold.
 
@@ -144,19 +145,19 @@ Aquí está cómo interpretarlo:
 
 ### Campo por campo
 
-| Campo                 | Qué significa                               | Valores posibles                       |
-| --------------------- | ------------------------------------------- | -------------------------------------- |
+| Campo                   | Qué significa                               | Valores posibles                               |
+| ----------------------- | -------------------------------------------- | ---------------------------------------------- |
 | `status`              | Estado general de la validación             | `passed` `warned` `corrected` `failed` |
-| `confidence`          | Nivel de confianza simplificado             | `high` `medium` `low`                  |
-| `confidence_score`    | Score numérico de confianza                 | 0.0 a 1.0                              |
-| `hallucination_risk`  | Riesgo de alucinación detectado             | 0.0 a 1.0                              |
-| `is_grounded`         | ¿La respuesta tiene soporte en el corpus?   | `true` `false`                         |
-| `corrections_applied` | Cuántas veces se autocorrigió               | 0, 1, 2                                |
-| `flags`               | Lista de patrones de alucinación detectados | Lista de strings                       |
-| `overlap_score`       | % de oraciones con soporte en RAG           | 0.0 a 1.0                              |
-| `ungrounded_claims`   | Oraciones sin soporte en el corpus          | Lista de strings                       |
-| `cultural_issues`     | Problemas de adecuación cultural            | Lista de strings                       |
-| `processing_time_ms`  | Tiempo que tomó validar                     | Milisegundos                           |
+| `confidence`          | Nivel de confianza simplificado              | `high` `medium` `low`                    |
+| `confidence_score`    | Score numérico de confianza                 | 0.0 a 1.0                                      |
+| `hallucination_risk`  | Riesgo de alucinación detectado             | 0.0 a 1.0                                      |
+| `is_grounded`         | ¿La respuesta tiene soporte en el corpus?   | `true` `false`                             |
+| `corrections_applied` | Cuántas veces se autocorrigió              | 0, 1, 2                                        |
+| `flags`               | Lista de patrones de alucinación detectados | Lista de strings                               |
+| `overlap_score`       | % de oraciones con soporte en RAG            | 0.0 a 1.0                                      |
+| `ungrounded_claims`   | Oraciones sin soporte en el corpus           | Lista de strings                               |
+| `cultural_issues`     | Problemas de adecuación cultural            | Lista de strings                               |
+| `processing_time_ms`  | Tiempo que tomó validar                     | Milisegundos                                   |
 
 ### Qué significa cada `status`
 
@@ -250,108 +251,18 @@ validation_config = ValidationConfig(
 
 ---
 
-## 6. Correr los tests con `uv`
+## 6. Pruebas automatizadas
 
-### Instalar dependencias de testing (solo la primera vez)
-
-```bash
-cd ~/Documentos/IA_juridica/backend
-uv add pytest pytest-asyncio pytest-mock pytest-cov --dev
-```
-
-### ⚠️ Importante — PYTHONPATH
-
-pytest necesita saber que los módulos (`validation/`, `optimization/`) viven en `backend/`.
-Tienes dos opciones, elige una:
-
-**Opción A — Escribirlo en cada comando (más simple):**
-
-```bash
-PYTHONPATH=. uv run pytest
-```
-
-**Opción B — Configurarlo una sola vez (recomendado):**
-Crea el archivo `backend/conftest.py` en la raíz (no dentro de `tests/`):
-
-```python
-import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
-```
-
-Después de esto, `uv run pytest` funciona directamente sin prefijo.
-
----
-
-### Verificar que los módulos importan bien (hacer esto primero)
-
-```bash
-PYTHONPATH=. uv run python -c "from validation import ResponseValidator; print('OK')"
-PYTHONPATH=. uv run python -c "from optimization import LLMOptimizer; print('OK')"
-```
-
-### Correr tests por módulo (de menor a mayor complejidad)
-
-```bash
-# 1. Optimizer (sin dependencias externas, más rápido)
-PYTHONPATH=. uv run pytest tests/unit/test_llm_optimizer.py -v
-
-# 2. Anti-hallucination (solo regex, offline)
-PYTHONPATH=. uv run pytest tests/unit/test_anti_hallucination.py -v
-
-# 3. Cross-checker (usa corpus en memoria)
-PYTHONPATH=. uv run pytest tests/unit/test_cross_checker.py -v
-
-# 4. Self-correction (usa mock de Cohere)
-PYTHONPATH=. uv run pytest tests/unit/test_self_correction.py -v
-
-# 5. Todos los unitarios juntos
-PYTHONPATH=. uv run pytest tests/unit/ -v
-
-# 6. Integración (pipeline completo con mocks)
-PYTHONPATH=. uv run pytest tests/integration/ -v
-```
-
-### Ver cobertura de código
-
-```bash
-PYTHONPATH=. uv run pytest tests/unit/ --cov=validation --cov=optimization --cov-report=term-missing
-```
-
-La columna `MISS` indica qué líneas no están siendo probadas.
-
-### Correr solo un test específico
-
-```bash
-# Por nombre del test
-PYTHONPATH=. uv run pytest tests/unit/test_anti_hallucination.py::TestAntiHallucinationLayer::test_good_response_has_low_risk -v
-
-# Por marcador
-PYTHONPATH=. uv run pytest -m unit -v
-PYTHONPATH=. uv run pytest -m integration -v
-```
-
----
+Todas las suites, fixtures, comandos y evaluaciones están documentados en
+[la guía única de tests](../tests/README.md). Se ejecutan desde la raíz del
+repositorio con `pnpm test`; no crees otro `conftest.py` ni instales paquetes
+sueltos fuera del lock. `pytest.ini` configura `pythonpath = backend` y
+`tests/conftest.py` comparte los mocks de validación.
 
 ## 7. Problemas comunes y soluciones
 
-### `ModuleNotFoundError: No module named 'validation'`
-
-Este es el error más común. pytest no encuentra los módulos porque no sabe
-que debe buscar desde `backend/`. Solución:
-
-```bash
-# Opción rápida: prefijo PYTHONPATH
-PYTHONPATH=. uv run pytest
-
-# Opción permanente: crear backend/conftest.py (en la raíz, no en tests/)
-import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
-```
-
-### `fixture not found: mock_cohere_client`
-
-El archivo `tests/conftest.py` no fue copiado o está en el lugar equivocado.
-Debe estar en `backend/tests/conftest.py`, no dentro de `unit/` o `integration/`.
+Los errores de discovery, fixtures y ejecución de tests se describen en
+[la guía de tests](../tests/README.md#problemas-frecuentes).
 
 ### `confidence: low` en todas las respuestas
 
@@ -454,7 +365,7 @@ LEGAL_HALLUCINATION_PATTERNS = [
 ]
 ```
 
-Luego agregar el test correspondiente en `tests/unit/test_anti_hallucination.py`:
+Luego agregar el test correspondiente en `tests/backend/unit/test_anti_hallucination.py`:
 
 ```python
 @pytest.mark.parametrize("text,expected_flag", [

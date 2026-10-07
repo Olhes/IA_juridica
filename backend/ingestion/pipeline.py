@@ -7,12 +7,13 @@ from tqdm import tqdm
 from modules.rag.services.lightrag_engine import LegalRAGEngine
 from utils.file_utils import FileUtils
 from config.settings import settings
+from ingestion.source_evidence import persist_source_evidence
 
 
 class LegalIngestionPipeline:
     """Pipeline completo para ingesta de documentos legales"""
 
-    def __init__(self, rag_engine=None, pdf_processor=None):
+    def __init__(self, rag_engine=None, pdf_processor=None, evidence_store_dir=None):
         self.pdf_processor = pdf_processor
         self.rag_engine = rag_engine or LegalRAGEngine()
         self.file_utils = FileUtils()
@@ -21,6 +22,10 @@ class LegalIngestionPipeline:
         self.raw_dir = Path("docs/raw_pdfs")
         self.processed_dir = Path("docs/processed")
         self.failed_dir = Path("docs/failed")
+        self.evidence_store_dir = (
+            Path(evidence_store_dir) if evidence_store_dir is not None
+            else Path(__file__).resolve().parents[1] / "docs" / "source_evidence"
+        )
 
         # Asegurar que existan los directorios
         self._ensure_directories()
@@ -40,7 +45,7 @@ class LegalIngestionPipeline:
         """
         Procesa todos los PDFs en el directorio raw_pdfs (incluyendo subdirectorios)
 
-        Returns:
+        Retorna:
             Dict con resultados del procesamiento
         """
         logger.info("Iniciando procesamiento batch de PDFs")
@@ -101,10 +106,10 @@ class LegalIngestionPipeline:
         """
         Procesa un solo PDF
 
-        Args:
+        Argumentos:
             pdf_path: Path al archivo PDF
 
-        Returns:
+        Retorna:
             Dict con resultado del procesamiento
         """
         # Usar ruta relativa para mantener estructura
@@ -118,15 +123,26 @@ class LegalIngestionPipeline:
             pdf_processor = self.pdf_processor
             if pdf_processor is None:
                 raise RuntimeError("PDF processor no inicializado")
-            markdown_content = await pdf_processor.process_pdf(str(pdf_path))
+            # Solo este pipeline escribe Markdown, después de la conversión y las comprobaciones de conflictos.
+            markdown_content = await pdf_processor.process_pdf(str(pdf_path), write_output=False)
 
             # 2. Guardar markdown procesado (mantener estructura de subdirectorios)
             processed_path = (
                 self.processed_dir / relative_path.parent / f"{filename}.md"
             )
             processed_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(processed_path, "w", encoding="utf-8") as f:
-                f.write(markdown_content)
+            markdown_bytes = markdown_content.encode("utf-8")
+            try:
+                with processed_path.open("xb") as f:
+                    f.write(markdown_bytes)
+            except FileExistsError:
+                # Los reintentos pueden reutilizar la conversión, pero nunca reemplazar una diferente.
+                if processed_path.read_bytes() != markdown_bytes:
+                    raise ValueError(f"Existing Markdown differs from conversion: {processed_path}")
+
+            evidence = persist_source_evidence(
+                pdf_path, processed_path, markdown_content, self.evidence_store_dir
+            )
 
             # 3. Extraer metadatos
             metadata = self._extract_metadata(markdown_content, filename)
@@ -147,6 +163,8 @@ class LegalIngestionPipeline:
                 "filename": str(relative_path),
                 "category": str(relative_path.parent),
                 "status": "success",
+                "evidence_id": evidence.evidence_id,
+                "graph_write_state": "unverified",
                 "processed_path": str(processed_path),
                 "metadata": metadata,
                 "validation": validation,
@@ -294,7 +312,7 @@ class LegalIngestionPipeline:
             validation["confidence"] -= 0.1
 
         # Verificar si hay caracteres extraños
-        if "�" in markdown_content:  # Caracteres de reemplazo
+        if "\ufffd" in markdown_content:  # Caracteres de reemplazo
             validation["issues"].append("Caracteres de codificación detectados")
             validation["confidence"] -= 0.2
 

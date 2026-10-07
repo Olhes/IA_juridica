@@ -66,7 +66,7 @@ class RAGCrossChecker:
     Verifica que las afirmaciones del LLM tengan soporte en los documentos
     recuperados por el RAG, sin llamadas adicionales a la API de Cohere.
 
-    Args:
+    Argumentos:
         documents: El dict `rag_engine.documents` con estructura
                    {doc_id: {"content": str, "chunks": List[str], "metadata": dict}}
         grounded_threshold: Overlap global mínimo para `is_grounded = True`
@@ -91,11 +91,11 @@ class RAGCrossChecker:
         """
         Compara el texto del LLM contra el corpus RAG.
 
-        Args:
+        Argumentos:
             llm_answer: Texto plano generado por el agente LLM
             query:      Consulta original (para logging)
 
-        Returns:
+        Retorna:
             CrossCheckResult con breakdown detallado
         """
         if not llm_answer or not llm_answer.strip():

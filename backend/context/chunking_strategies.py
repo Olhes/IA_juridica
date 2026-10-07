@@ -96,7 +96,7 @@ class LegalChunkingStrategy:
         matches = list(articulo_pattern.finditer(content))
         
         if not matches:
-            # Fallback: dividir por párrafos
+            # Alternativa: dividir por párrafos
             return self._chunk_by_paragraphs(content)
         
         for i, match in enumerate(matches):
@@ -288,7 +288,7 @@ class ContextualChunker:
         logger.info("ContextualChunker inicializado")
     
     def _get_cohere_client(self):
-        """Lazy init del cliente Cohere async"""
+        """Inicialización diferida del cliente asíncrono de Cohere."""
         if self._cohere_client is None and COHERE_AVAILABLE and settings.COHERE_API_KEY:
             self._cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
         return self._cohere_client
@@ -297,21 +297,21 @@ class ContextualChunker:
         """
         Procesa un documento completo con chunking contextual
         
-        Args:
+        Argumentos:
             content: Contenido del documento (Markdown de Docling)
             metadata: Metadatos del documento
             
-        Returns:
+        Retorna:
             Lista de chunks con contexto
         """
         try:
-            # Extraer tipo de documento de metadatos
+            # Extraer el tipo de documento de los metadatos.
             doc_type = metadata.get('document_type', metadata.get('title', ''))
             
-            # Aplicar estrategia de chunking
+            # Aplicar la estrategia de división en fragmentos.
             chunks = self.strategy.chunk_by_legal_structure(content, doc_type)
             
-            # Agregar metadatos del documento a cada chunk
+            # Agregar los metadatos del documento a cada fragmento.
             for chunk in chunks:
                 chunk['document_metadata'] = metadata
                 chunk['processing_timestamp'] = str(Path().resolve())
@@ -324,7 +324,7 @@ class ContextualChunker:
             raise
     
     def get_chunking_stats(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Obtiene estadísticas del chunking"""
+        """Obtiene estadísticas de la división en fragmentos."""
         if not chunks:
             return {"total_chunks": 0}
         
@@ -337,12 +337,12 @@ class ContextualChunker:
             "cultural_relevance": {}
         }
         
-        # Contar tipos de chunks
+        # Contar los tipos de fragmentos.
         for chunk in chunks:
             chunk_type = chunk.get('chunk_type', 'unknown')
             stats["chunk_types"][chunk_type] = stats["chunk_types"].get(chunk_type, 0) + 1
             
-            # Contar temas legales
+            # Contar los temas legales.
             legal_context = chunk.get('legal_context', {})
             if 'legal_theme' in legal_context:
                 theme = legal_context['legal_theme']
@@ -358,14 +358,14 @@ class ContextualChunker:
         """
         Divide en chunks Y genera embeddings con Cohere.
         
-        Args:
+        Argumentos:
             content: Contenido del documento
             metadata: Metadatos del documento
             
-        Returns:
+        Retorna:
             Lista de chunks con embeddings adjuntos
         """
-        # Primero chunking contextual
+        # Primero, dividir en fragmentos con contexto.
         chunks = self.process_document(content, metadata)
         
         client = self._get_cohere_client()
@@ -373,7 +373,7 @@ class ContextualChunker:
             logger.warning("Cohere no disponible, retornando chunks sin embeddings")
             return chunks
         
-        # Generar embeddings en batches
+        # Generar embeddings por lotes.
         texts = [chunk['content'] for chunk in chunks]
         batch_size = settings.EMBEDDING_BATCH_SIZE
         all_embeddings = []
@@ -389,7 +389,7 @@ class ContextualChunker:
                 )
                 all_embeddings.extend(response.embeddings.float_)
             
-            # Adjuntar embeddings a chunks
+            # Adjuntar los embeddings a los fragmentos.
             for chunk, embedding in zip(chunks, all_embeddings):
                 chunk['embedding'] = embedding
             
@@ -397,6 +397,6 @@ class ContextualChunker:
             
         except Exception as e:
             logger.error(f"Error generando embeddings: {e}")
-            # Retornar chunks sin embeddings como fallback
+            # Devolver los fragmentos sin embeddings como alternativa.
         
         return chunks

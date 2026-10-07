@@ -1,9 +1,9 @@
+from __future__ import annotations
+
 from typing import List, Dict, Any
-import asyncio
 from loguru import logger
 
 try:
-    from deepeval import evaluate
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import (
         AnswerRelevancyMetric, 
@@ -14,36 +14,39 @@ try:
     )
     DEEPEVAL_AVAILABLE = True
 except ImportError:
-    logger.warning("DeepEval no disponible. Usando implementación simulada.")
+    logger.warning("DeepEval no disponible: las evaluaciones reales requieren instalarlo.")
     DEEPEVAL_AVAILABLE = False
 
 class LegalEvaluationSuite:
     """Suite de evaluación para respuestas legales con DeepEval"""
     
-    def __init__(self):
+    def __init__(self, *, judge_model=None, metrics=None):
         self.test_cases = []
         self.evaluation_results = []
         
-        if DEEPEVAL_AVAILABLE:
+        self.judge_model = judge_model
+        if metrics is not None:
+            self.metrics = metrics
+        elif DEEPEVAL_AVAILABLE:
             self._initialize_metrics()
         else:
-            logger.warning("DeepEval no inicializado - usando evaluaciones simuladas")
+            raise RuntimeError("DeepEval no disponible: no se puede evaluar con un juez real")
     
     def _initialize_metrics(self):
         """Inicializa métricas de evaluación"""
         
         self.metrics = {
-            "relevancy": AnswerRelevancyMetric(threshold=0.7),
-            "bias": BiasMetric(threshold=0.3),
-            "hallucination": HallucinationMetric(threshold=0.3),
-            "faithfulness": FaithfulnessMetric(threshold=0.7),
-            "context_relevancy": ContextualRelevancyMetric(threshold=0.7)
+            "relevancy": AnswerRelevancyMetric(threshold=0.7, model=self.judge_model),
+            "bias": BiasMetric(threshold=0.7, model=self.judge_model),
+            "hallucination": HallucinationMetric(threshold=0.7, model=self.judge_model),
+            "faithfulness": FaithfulnessMetric(threshold=0.7, model=self.judge_model),
+            "context_relevancy": ContextualRelevancyMetric(threshold=0.7, model=self.judge_model)
         }
         
         logger.info("Métricas DeepEval inicializadas")
     
     def create_legal_test_cases(self) -> List[LLMTestCase]:
-        """Crea casos de prueba para evaluación legal"""
+        """Casos históricos con respuestas fijas; no evalúan generación del modelo."""
         
         test_cases = [
             # Caso 1: Violencia Familiar
@@ -104,19 +107,19 @@ class LegalEvaluationSuite:
                 
                 for metric_name, metric in self.metrics.items():
                     try:
-                        metric.measure(test_case)
+                        await metric.a_measure(test_case)
                         results[metric_name] = {
                             "score": metric.score,
-                            "passed": metric.score >= metric.threshold,
+                            "passed": bool(metric.is_successful()),
                             "threshold": metric.threshold,
                             "reason": metric.reason if hasattr(metric, 'reason') else "No reason provided"
                         }
                     except Exception as e:
-                        logger.error(f"Error en métrica {metric_name}: {str(e)}")
+                        logger.error(f"Error en métrica {metric_name}: {type(e).__name__}")
                         results[metric_name] = {
                             "score": 0.0,
                             "passed": False,
-                            "error": str(e)
+                            "error": type(e).__name__
                         }
                 
                 # Calcular puntuación general
@@ -127,19 +130,18 @@ class LegalEvaluationSuite:
                 return {
                     "test_input": test_case.input,
                     "overall_score": overall_score,
-                    "passed": overall_score >= 0.7,
+                    "passed": bool(results) and all(r["passed"] for r in results.values()),
                     "metrics": results,
                     "evaluation_method": "deepeval"
                 }
             else:
-                # Implementación fallback
-                return await self._fallback_evaluation(test_case)
+                raise RuntimeError("DeepEval no disponible; evaluación real requerida")
                 
         except Exception as e:
-            logger.error(f"Error en evaluación: {str(e)}")
+            logger.error(f"Error en evaluación: {type(e).__name__}")
             return {
                 "test_input": test_case.input,
-                "error": str(e),
+                "error": type(e).__name__,
                 "overall_score": 0.0,
                 "passed": False
             }
@@ -233,7 +235,7 @@ class LegalEvaluationSuite:
         return len(intersection) / len(expected_words)
     
     async def run_full_evaluation(self) -> Dict[str, Any]:
-        """Ejecuta evaluación completa del sistema"""
+        """Puntúa respuestas fijas históricas; no ejecuta el modelo ni el RAG."""
         
         logger.info("Iniciando evaluación completa del sistema legal")
         
@@ -268,7 +270,8 @@ class LegalEvaluationSuite:
             "metric_analysis": metric_analysis,
             "individual_results": results,
             "evaluation_timestamp": self._get_current_timestamp(),
-            "system_version": "2.0.0"
+            "system_version": "2.0.0",
+            "evaluation_scope": "fixed_responses_not_model_generation"
         }
         
         logger.info(f"Evaluación completada: {pass_rate:.2%} pass rate, {avg_score:.2f} avg score")
@@ -279,6 +282,7 @@ class LegalEvaluationSuite:
         """Analiza rendimiento por métrica"""
         
         metric_scores = {}
+        metric_passes = {}
         
         for result in results:
             if "metrics" in result:
@@ -288,6 +292,7 @@ class LegalEvaluationSuite:
                     
                     score = metric_data.get("score", 0.0)
                     metric_scores[metric_name].append(score)
+                    metric_passes.setdefault(metric_name, []).append(bool(metric_data.get("passed", False)))
         
         # Calcular estadísticas por métrica
         metric_analysis = {}
@@ -297,9 +302,9 @@ class LegalEvaluationSuite:
                     "average": sum(scores) / len(scores),
                     "min": min(scores),
                     "max": max(scores),
-                    "passed_count": sum(1 for s in scores if s >= 0.7),
+                    "passed_count": sum(metric_passes[metric_name]),
                     "total_count": len(scores),
-                    "pass_rate": sum(1 for s in scores if s >= 0.7) / len(scores)
+                    "pass_rate": sum(metric_passes[metric_name]) / len(scores)
                 }
         
         return metric_analysis
@@ -315,7 +320,8 @@ class LegalEvaluationSuite:
         test_case = LLMTestCase(
             input=query,
             actual_output=response,
-            retrieval_context=context
+            retrieval_context=context,
+            context=context
         )
         
         return await self.run_single_evaluation(test_case)

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 import json
 import logging
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -34,6 +35,7 @@ from security import (
     verify_admin_api_key,
 )
 from ingestion.pipeline import LegalIngestionPipeline
+from ingestion.source_evidence import persist_source_evidence
 from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
@@ -43,8 +45,17 @@ from modules.chat.routes.chat_routes import router as chat_router
 from modules.auth.routes.auth_routes import router as auth_router
 
 # ── Módulos de validación y optimización ──────────────────────────────
-from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
+from modules.validation.services.response_validator import (
+    ResponseValidator,
+    ValidationConfig,
+)
 from optimization.llm_optimizer import LLMOptimizer
+from optimization.query_cache import answer_cache_key
+from services.legal_queries import answer_query
+from context.conversation_prompt import bounded_history, with_conversation
+from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
+from database.postgres_adapter_final import DatabaseUnavailableError
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -56,7 +67,9 @@ KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
 logger = logging.getLogger("ia_juridica.api")
 
 
-def _log_failure(event: str, error: Exception, request: Optional[Request] = None) -> None:
+def _log_failure(
+    event: str, error: Exception, request: Optional[Request] = None
+) -> None:
     request_id = getattr(getattr(request, "state", None), "request_id", "unknown")
     logger.error(
         "%s request_id=%s error_type=%s",
@@ -93,15 +106,47 @@ def _get_evaluation_suite(app: FastAPI):
 
 class LegalQueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    query: str = Field(..., min_length=1, max_length=8000)
-    language: str = Field(default="spanish")
-    context: Optional[Dict[str, Any]] = None
+    query: NonBlankMessage
+    language: SupportedLanguage = "spanish"
+    context: Optional[RequestContext] = None
     conversation_id: Optional[str] = None
+
+
+async def _prepare_query_context(payload, owner_id, mode):
+    history = []
+    if payload.conversation_id:
+        if not await chat_service.get_conversation(payload.conversation_id, owner_id):
+            raise HTTPException(404, "Conversation not found")
+        messages = await chat_service.get_conversation_messages(
+            payload.conversation_id, owner_id, limit=12
+        )
+        history = bounded_history(messages)
+    try:
+        with_conversation("", history, payload.context)
+    except ValueError:
+        raise HTTPException(422, "Conversation context exceeds the prompt budget")
+    engine = getattr(app.state, "rag_engine", None)
+    revision_fn = getattr(engine, "get_cache_revision", None)
+    revision = revision_fn() if callable(revision_fn) else None
+    key = None
+    if isinstance(revision, str) and revision:
+        key = answer_cache_key(
+            payload.query,
+            payload.language,
+            owner_id,
+            payload.context,
+            history,
+            payload.conversation_id,
+            revision,
+            mode,
+        )
+    return key, history
 
 
 class PDFReportRequest(BaseModel):
     query: str = Field(..., min_length=1)
     response: Dict[str, Any]
+
 
 def _ndjson_event(payload: Dict[str, Any]) -> str:
     """Serializa eventos NDJSON manejando datetime/enums/modelos pydantic."""
@@ -153,8 +198,12 @@ async def _persist_assistant_response(
                 metadata=metadata,
             ),
         )
+    except DatabaseUnavailableError:
+        raise
     except Exception as error:
         _log_failure("assistant_persistence_failed", error)
+        raise HTTPException(503, "Chat persistence unavailable")
+
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
@@ -165,7 +214,9 @@ async def lifespan(app: FastAPI):
 
     configuration = settings.validate_configuration()
     if not configuration["valid"]:
-        raise RuntimeError("Invalid configuration: " + "; ".join(configuration["issues"]))
+        raise RuntimeError(
+            "Invalid configuration: " + "; ".join(configuration["issues"])
+        )
 
     # Inicializar Redis adapter
     try:
@@ -174,7 +225,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         print("Error inicializando Redis")
         print("Continuando sin Redis...")
-    
+
     # Inicializar chat service
     try:
         await chat_service.initialize()
@@ -190,7 +241,7 @@ async def lifespan(app: FastAPI):
         KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
         # Crear instancias pero no inicializar componentes pesados
-        app.state.rag_engine = LegalRAGEngine()
+        app.state.rag_engine = LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
         app.state.ingestion_pipeline = LegalIngestionPipeline(
             rag_engine=app.state.rag_engine
         )
@@ -226,47 +277,53 @@ async def lifespan(app: FastAPI):
     else:
         print("Componentes ya inicializados, saltando...")
 
-    yield
-
-    print("Cerrando IA Jurídica...")
-    
-    # Cerrar Redis adapter
+    app.state.corpus_state = "loading"
+    app.state.corpus_task = asyncio.create_task(load_heavy_components(app.state.rag_engine, PROCESSED_DIR))
     try:
-        await redis_adapter.close()
-        print("Redis adapter cerrado correctamente")
-    except Exception:
-        print("Error cerrando Redis")
+        yield
+    finally:
+        task = app.state.corpus_task
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        app.state.corpus_state = "stopped"
+        finalizer = getattr(getattr(app.state.rag_engine, "rag", None), "finalize_storages", None)
+        if callable(finalizer):
+            try:
+                await finalizer()
+            except Exception as error:
+                _log_failure("rag_shutdown_failed", error)
+        for resource in (chat_service.db, redis_adapter):
+            try:
+                await resource.close()
+            except Exception as error:
+                _log_failure("storage_shutdown_failed", error)
 
 
 async def load_heavy_components(rag_engine, processed_dir):
-    """Cargar componentes pesados en segundo plano después del startup"""
-    print("Cargando componentes pesados en segundo plano...")
-    try:
-        await rag_engine.initialize_storages()
-        loaded = await rag_engine.load_processed_documents(str(processed_dir))
-        print(
-            f"Documentos en memoria: {len(rag_engine.documents)} ({loaded} nuevos)"
-        )
-        
-        # Insertar documentos en LightRAG si no están ya en el grafo
-        if len(rag_engine.documents) > 0:
-            print("Insertando documentos en LightRAG...")
-            inserted_count = 0
-            for doc_id, doc_data in rag_engine.documents.items():
-                try:
-                    await rag_engine.add_document(
-                        doc_data["content"],
-                        doc_data["metadata"],
-                        doc_id
-                    )
-                    inserted_count += 1
-                except Exception as e:
-                    print(f"Error insertando documento {doc_id}: {e}")
-            print(f"Documentos insertados en LightRAG: {inserted_count}")
-        
-        print("Componentes pesados cargados correctamente")
-    except Exception as e:
-        print(f"Error cargando componentes pesados: {e}")
+    """Load corpus once; retry bounded storage failures; never re-ingest on startup."""
+    for attempt in range(3):
+        try:
+            await asyncio.wait_for(rag_engine.initialize_storages(), timeout=60)
+            await asyncio.wait_for(rag_engine.load_processed_documents(str(processed_dir)), timeout=120)
+            if not rag_engine.documents:
+                app.state.corpus_state = "degraded"
+            elif settings.NEO4J_ENABLED and not rag_engine._storages_initialized:
+                app.state.corpus_state = "degraded"
+            else:
+                app.state.corpus_state = "ready"
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            _log_failure("corpus_load_failed", error)
+            if attempt < 2:
+                await asyncio.sleep(0.5 * (attempt + 1))
+    app.state.corpus_state = "failed"
+
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -285,19 +342,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
-@app.on_event("startup")
-async def startup_load_heavy_components():
-    """Cargar componentes pesados en segundo plano después del startup"""
-    import asyncio
-    if hasattr(app.state, "rag_engine"):
-        # Crear tarea en segundo plano
-        asyncio.create_task(load_heavy_components(app.state.rag_engine, str(PROCESSED_DIR)))
-
-
 @app.middleware("http")
 async def request_context(request: Request, call_next):
-    supplied_id = request.headers.get("X-Request-ID", "")
-    request_id = supplied_id if supplied_id.isascii() and len(supplied_id) <= 64 else uuid.uuid4().hex
+    # Server-owned identifier: never copy user-supplied data into logs.
+    request_id = uuid.uuid4().hex
     request.state.request_id = request_id
     try:
         response = await call_next(request)
@@ -308,7 +356,11 @@ async def request_context(request: Request, call_next):
             content={"detail": "Internal server error", "request_id": request_id},
         )
     response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "request_completed request_id=%s status=%s", request_id, response.status_code
+    )
     return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -323,6 +375,16 @@ app.include_router(chat_router)
 app.include_router(auth_router)
 
 
+@app.exception_handler(DatabaseUnavailableError)
+async def database_unavailable_handler(
+    request: Request, error: DatabaseUnavailableError
+):
+    _log_failure("chat_persistence_unavailable", error, request)
+    return JSONResponse(
+        status_code=503, content={"detail": "Chat persistence unavailable"}
+    )
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 
@@ -335,7 +397,9 @@ async def bootstrap_session(request: Request, response: Response):
         set_session_cookie(response, token, principal)
         return {
             "principal_id": principal.id,
-            "expires_at": datetime.fromtimestamp(principal.expires_at, timezone.utc).isoformat(),
+            "expires_at": datetime.fromtimestamp(
+                principal.expires_at, timezone.utc
+            ).isoformat(),
         }
     except Exception as e:
         print(f"Error in session bootstrap: {e}")
@@ -349,10 +413,18 @@ async def root():
     }
 
 
+@app.get("/ready")
+async def readiness():
+    phase = getattr(app.state, "corpus_state", "unavailable")
+    if phase != "ready":
+        raise HTTPException(503, "Legal corpus unavailable")
+    return {"status": "ready"}
+
+
 @app.get("/health")
 async def health_check():
     """Health check que incluye estado del pipeline de validación."""
-    components = {}
+    components = {"corpus": getattr(app.state, "corpus_state", "unavailable")}
 
     components["cohere"] = "ready" if settings.COHERE_API_KEY else "not_configured"
 
@@ -388,23 +460,27 @@ async def health_check():
     components["llm_optimizer"] = (
         "ready" if getattr(app.state, "llm_optimizer", None) else "unavailable"
     )
-    # ── Health check de Redis ──────────────────────────────────────────────────
+    # ── Comprobación de estado de Redis ────────────────────────────────────────
     try:
         redis_health = await redis_adapter.health_check()
         components["redis"] = redis_health.get("status", "unknown")
     except Exception:
         components["redis"] = "error"
-    # ── Health check de Chat Service ──────────────────────────────────────────
+    # ── Comprobación de estado del servicio de chat ────────────────────────────
     try:
         db_health = await chat_service.db.health_check()
         components["postgresql"] = db_health.get("status", "unknown")
     except Exception:
         components["chat_service"] = "error"
 
-    critical_ok = all(
-        components.get(c) in ("ready", "fallback")
-        for c in ("cohere", "lightrag", "pydantic_ai")
-    ) and components.get("postgresql") == "healthy"
+    critical_ok = (
+        all(
+            components.get(c) in ("ready", "fallback")
+            for c in ("cohere", "lightrag", "pydantic_ai")
+        )
+        and components.get("postgresql") == "healthy"
+        and components.get("corpus") == "ready"
+    )
 
     return {
         "status": "healthy" if critical_ok else "degraded",
@@ -424,9 +500,14 @@ async def upload_pdf(
     """Sube y procesa un PDF legal con Docling."""
     raw_path: Optional[Path] = None
     processed_path: Optional[Path] = None
+    processed_created = False
     try:
-        original_name = (file.filename or "upload.pdf").replace("\\", "/").rsplit("/", 1)[-1]
-        original_name = "".join(char for char in original_name if char.isprintable())[:255]
+        original_name = (
+            (file.filename or "upload.pdf").replace("\\", "/").rsplit("/", 1)[-1]
+        )
+        original_name = "".join(char for char in original_name if char.isprintable())[
+            :255
+        ]
         if Path(original_name).suffix.lower() != ".pdf":
             raise HTTPException(400, "Only PDF files are allowed")
         if file.content_type != "application/pdf":
@@ -455,13 +536,24 @@ async def upload_pdf(
             raise HTTPException(400, "Empty PDF file")
 
         pdf_processor = _get_pdf_processor(app)
-        processed_content = await pdf_processor.process_pdf(str(raw_path))
+        processed_content = await pdf_processor.process_pdf(
+            str(raw_path), write_output=False
+        )
 
         processed_directory = PROCESSED_DIR.resolve()
         processed_directory.mkdir(parents=True, exist_ok=True)
         processed_path = processed_directory / f"{raw_path.stem}.md"
-        with processed_path.open("x", encoding="utf-8") as f:
+        with processed_path.open("x", encoding="utf-8", newline="") as f:
+            processed_created = True
             f.write(processed_content)
+
+        # Publish before RAG; upload cleanup below does not delete published evidence.
+        evidence = persist_source_evidence(
+            raw_path,
+            processed_path,
+            processed_content,
+            PROCESSED_DIR.parent / "source_evidence",
+        )
 
         await app.state.rag_engine.add_document(
             processed_content,
@@ -485,18 +577,20 @@ async def upload_pdf(
             "success": True,
             "filename": server_name,
             "original_filename": original_name,
+            "evidence_id": evidence.evidence_id,
+            "graph_write_state": "unverified",
             "message": "PDF procesado correctamente con Docling",
         }
     except HTTPException:
         if raw_path:
             raw_path.unlink(missing_ok=True)
-        if processed_path:
+        if processed_created and processed_path:
             processed_path.unlink(missing_ok=True)
         raise
     except Exception as error:
         if raw_path:
             raw_path.unlink(missing_ok=True)
-        if processed_path:
+        if processed_created and processed_path:
             processed_path.unlink(missing_ok=True)
         _log_failure("pdf_upload_failed", error, request)
         raise HTTPException(500, "PDF processing failed")
@@ -525,374 +619,50 @@ async def batch_process_pdfs(
 
 @app.post("/legal-query")
 @limiter.limit(settings.LLM_RATE_LIMIT)
-async def legal_query(
-    request: Request,
-    payload: LegalQueryRequest,
-    principal: Principal = Depends(require_principal),
-):
-    """
-    Procesa una consulta legal con RAG + Rerank + Context Engineering
-    + LLM (Cohere) + Pipeline de Validación Anti-Alucinación.
-
-    Response incluye:
-      - response: respuesta del LLM (posiblemente corregida)
-      - validation: informe de calidad de la respuesta
-      - sources: fuentes RAG usadas
-    """
+async def legal_query(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
     try:
-        query = payload.query.strip()
-        language = payload.language
-        optimizer: LLMOptimizer = app.state.llm_optimizer
-
-        # ── Caché semántico: verificar antes de llamar al LLM ── [NUEVO]
-        cache_key = f"{query}|{language}"
-        cached_result = optimizer.get_cached(cache_key)
-        if cached_result:
-            cached_payload = cached_result if isinstance(cached_result, dict) else {}
-            return {
-                "success": True,
-                "query": query,
-                "language": language,
-                "cached": True,
-                **cached_payload,
-            }
-
-        # 1. Búsqueda RAG con reranking
-        rag_result = await app.state.rag_engine.query_with_rerank(query)
-
-        # 2. Construir prompt enriquecido
-        documents = rag_result.get("documents", [])
-        enriched_prompt, enriched_context = (
-            app.state.context_engineer.build_legal_prompt(
-                query=query,
-                documents=documents,
-                language=language,
-            )
-        )
-
-        # 3. Generar respuesta con Cohere LLM
-        response = await app.state.legal_agent.respond_general(
-            query=query,
-            context=rag_result,
-            language=language,
-            enriched_prompt=enriched_prompt,
-        )
-
-        if hasattr(response, "model_dump"):
-            response_payload = response.model_dump()
-        elif hasattr(response, "dict"):
-            response_payload = response.dict()
-        else:
-            response_payload = response
-
-        # Tracking de tokens ── [NUEVO]
-        optimizer.track(enriched_prompt or query, str(response_payload))
-
-        # 4. Pipeline de validación anti-alucinación ── [NUEVO]
-        validated = await app.state.response_validator.validate(
-            response_data=response_payload,
-            rag_result=rag_result,
-            query=query,
-            language=language,
-            enriched_context=enriched_context,
-        )
-
-        # Preparar payload final
-        final_response = validated.answer_data
-        validation_meta = validated.validation_report.model_dump()
-
-        result_payload = {
-            "response": final_response,
-            "sources": validated.sources,
-            "validation": validation_meta,
-            "metadata": {
-                "rerank_scores": rag_result.get("rerank_scores", []),
-                "retrieval_method": rag_result.get("method", "unknown"),
-                "total_candidates": rag_result.get("total_candidates", 0),
-                "enriched_context": {
-                    "location": enriched_context.get("detected_location"),
-                    "legal_topic": enriched_context.get("legal_topic"),
-                    "urgency": enriched_context.get("urgency_level"),
-                },
-                "optimizer_stats": optimizer.get_session_stats(),
-            },
-        }
-
-        # Cachear respuesta válida ── [NUEVO]
-        if validated.is_reliable:
-            optimizer.cache_response(cache_key, result_payload)
-
-        return {
-            "success": True,
-            "query": query,
-            "language": language,
-            "cached": False,
-            **result_payload,
-        }
-
+        cache_key, history = await _prepare_query_context(payload, principal.id, "query")
+        return await answer_query(app.state, payload.query, payload.language, history=history,
+                                  context=payload.context, cache_key=cache_key)
+    except HTTPException:
+        raise
+    except DatabaseUnavailableError:
+        raise HTTPException(503, "Chat persistence unavailable")
     except Exception as error:
         _log_failure("legal_query_failed", error, request)
         raise HTTPException(500, "Legal query failed")
 
 
+
 @app.post("/legal-query-stream")
 @limiter.limit(settings.LLM_RATE_LIMIT)
-async def legal_query_stream(
-    request: Request,
-    payload: LegalQueryRequest,
-    principal: Optional[Principal] = Depends(lambda: None),
-):
-    """Stream NDJSON con chunks + payload final validado (1 sola llamada).
-    
-    Si se proporciona conversation_id, guarda los mensajes sólo para su propietario.
-    """
+async def legal_query_stream(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
+    """NDJSON transports validated final content, never a provisional model draft."""
     try:
-        print(f"DEBUG legal_query_stream: principal={principal}, payload={payload}")
-        
-        # Temporary fix for debugging: use a default principal ID when auth is disabled
-        principal_id = principal.id if principal else "debug-user"
-        
-        query = payload.query.strip()
-        language = payload.language
-        conversation_id = payload.conversation_id
-        optimizer: LLMOptimizer = app.state.llm_optimizer
-        cache_key = f"{query}|{language}"
-        
-        # Detectar idioma y traducir si es quechua
-        from modules.language.services.language_detector import LanguageDetector
-        from modules.language.services.translation_service import TranslationService
-        
-        detector = LanguageDetector()
-        detected_language = detector.detect_language(query)
-        
-        query_for_processing = query
-        original_language = language
-        
-        if detected_language == "qu" or language == "quechua":
-            translation_service = TranslationService()
-            translation_result = await translation_service.translate(
-                text=query,
-                source_lang="qu",
-                target_lang="es"
-            )
-            
-            if translation_result.get("success"):
-                query_for_processing = translation_result["translated_text"]
-                original_language = "quechua"
-            else:
-                query_for_processing = query
-                original_language = "quechua"
-        
-        # Usar query_for_processing para el cache y procesamiento
-        cache_key = f"{query_for_processing}|{language}"
+        cache_key, history = await _prepare_query_context(payload, principal.id, "query")
+        if payload.conversation_id:
+            from models.chat_models import MessageCreate, MessageRole
+            await chat_service.add_message(payload.conversation_id, principal.id,
+                MessageCreate(content=payload.query, role=MessageRole.USER, language=payload.language))
+        result = await answer_query(app.state, payload.query, payload.language, history=history,
+                                    context=payload.context, cache_key=cache_key)
+        await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
+                                         payload.language, {"sources": result["sources"], "validation": result["validation"]})
+        async def events():
+            yield _ndjson_event({"type": "chunk", "delta": _extract_response_text(result["response"], payload.language)})
+            yield _ndjson_event({"type": "final", "data": result})
+        return StreamingResponse(events(), media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
+    except HTTPException:
+        raise
+    except DatabaseUnavailableError:
+        raise HTTPException(503, "Chat persistence unavailable")
+    except ValueError:
+        raise HTTPException(404, "Conversation not found")
+    except Exception as error:
+        _log_failure("legal_query_stream_failed", error, request)
+        raise HTTPException(500, "Legal query stream failed")
 
-        # Guardar mensaje del usuario si se proporciona conversation_id
-        if conversation_id:
-            print(f"DEBUG legal_query_stream: checking conversation {conversation_id} for user {principal_id}")
-            if not await chat_service.get_conversation(conversation_id, principal_id):
-                print(f"DEBUG legal_query_stream: conversation not found, raising 404")
-                raise HTTPException(status_code=404, detail="Conversation not found")
-            try:
-                from models.chat_models import MessageCreate, MessageRole
-                await chat_service.add_message(
-                    conversation_id=conversation_id,
-                    user_id=principal_id,
-                    message_data=MessageCreate(
-                        content=query,
-                        role=MessageRole.USER,
-                        language=language
-                    )
-                )
-            except ValueError as e:
-                print(f"DEBUG legal_query_stream: ValueError adding message: {e}")
-                raise HTTPException(status_code=404, detail="Conversation not found")
-            except Exception as e:
-                print(f"DEBUG legal_query_stream: Exception adding message: {e}")
-                # Continue without adding message for debugging
-
-        cached_result = optimizer.get_cached(cache_key)
-        if cached_result:
-            cached_payload = cached_result if isinstance(cached_result, dict) else {}
-            response_payload = jsonable_encoder(cached_payload.get("response", {}))
-            cached_text = _extract_response_text(response_payload, language)
-            await _persist_assistant_response(
-                conversation_id,
-                principal_id,
-                response_payload,
-                language,
-                {
-                    "sources": cached_payload.get("sources", []),
-                    "validation": cached_payload.get("validation", {}),
-                },
-            )
-
-            async def cached_stream_generator():
-                if cached_text:
-                    yield _ndjson_event({"type": "chunk", "delta": cached_text})
-                yield _ndjson_event(
-                    {
-                        "type": "final",
-                        "data": {
-                            "success": True,
-                            "query": query,
-                            "language": language,
-                            "cached": True,
-                            **cached_payload,
-                        },
-                    }
-                )
-
-            return StreamingResponse(
-                cached_stream_generator(),
-                media_type="application/x-ndjson",
-                headers={
-                    "Cache-Control": "no-cache, no-transform",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-
-        async def stream_generator():
-            try:
-                streamed_text = ""
-
-                rag_result = await app.state.rag_engine.query_with_rerank(query_for_processing)
-                documents = rag_result.get("documents", [])
-                enriched_prompt, enriched_context = (
-                    app.state.context_engineer.build_legal_prompt(
-                        query=query_for_processing,
-                        documents=documents,
-                        language=language,
-                    )
-                )
-
-                async for chunk in app.state.legal_agent.stream_general_text(
-                    query_for_processing,
-                    rag_result,
-                    language,
-                    enriched_prompt=enriched_prompt,
-                ):
-                    if chunk:
-                        streamed_text += chunk
-                        yield _ndjson_event({"type": "chunk", "delta": chunk})
-
-                response = app.state.legal_agent.build_general_response_from_text(
-                    text=streamed_text,
-                    query=query_for_processing,
-                )
-
-                if hasattr(response, "model_dump"):
-                    response_payload = response.model_dump()
-                elif hasattr(response, "dict"):
-                    response_payload = response.dict()
-                else:
-                    response_payload = response
-
-                optimizer.track(enriched_prompt or query_for_processing, str(response_payload))
-
-                validated = await app.state.response_validator.validate(
-                    response_data=response_payload,
-                    rag_result=rag_result,
-                    query=query_for_processing,
-                    language=language,
-                    enriched_context=enriched_context,
-                )
-
-                final_response = validated.answer_data
-                validation_meta = validated.validation_report.model_dump()
-                
-                # Traducir respuesta de español a quechua si el idioma original era quechua
-                if original_language == "quechua":
-                    translation_service = TranslationService()
-                    
-                    # Extraer el texto de respuesta
-                    if isinstance(final_response, dict):
-                        response_text = _extract_response_text(final_response, "spanish")
-                    else:
-                        response_text = str(final_response)
-                    
-                    # Aumentar límite para traducción completa (Google Translate maneja hasta 5000 caracteres)
-                    MAX_RESPONSE_LENGTH = 5000
-                    if len(response_text) > MAX_RESPONSE_LENGTH:
-                        logger.warning(f"Respuesta muy larga ({len(response_text)} chars), truncando a {MAX_RESPONSE_LENGTH}")
-                        response_text = response_text[:MAX_RESPONSE_LENGTH]
-                    
-                    translation_result = await translation_service.translate(
-                        text=response_text,
-                        source_lang="es",
-                        target_lang="qu"
-                    )
-                    
-                    if translation_result.get("success"):
-                        translated_text = translation_result["translated_text"]
-                        # Actualizar la respuesta con el texto traducido
-                        if isinstance(final_response, dict):
-                            final_response["answer"] = translated_text
-                            final_response["respuesta_quechua"] = translated_text
-                        else:
-                            final_response = translated_text
-
-                result_payload = {
-                    "response": final_response,
-                    "sources": validated.sources,
-                    "validation": validation_meta,
-                    "metadata": {
-                        "rerank_scores": rag_result.get("rerank_scores", []),
-                        "retrieval_method": rag_result.get("method", "unknown"),
-                        "total_candidates": rag_result.get("total_candidates", 0),
-                        "enriched_context": {
-                            "location": enriched_context.get("detected_location"),
-                            "legal_topic": enriched_context.get("legal_topic"),
-                            "urgency": enriched_context.get("urgency_level"),
-                        },
-                        "optimizer_stats": optimizer.get_session_stats(),
-                    },
-                }
-
-                if validated.is_reliable:
-                    optimizer.cache_response(cache_key, result_payload)
-
-                await _persist_assistant_response(
-                    conversation_id,
-                    principal_id,
-                    final_response,
-                    language,
-                    {"sources": validated.sources, "validation": validation_meta},
-                )
-
-                yield _ndjson_event(
-                    {
-                        "type": "final",
-                        "data": {
-                            "success": True,
-                            "query": query,
-                            "language": language,
-                            "cached": False,
-                            **result_payload,
-                        },
-                    }
-                )
-            except Exception as stream_error:
-                _log_failure("legal_query_stream_failed", stream_error, request)
-                yield _ndjson_event(
-                    {
-                        "type": "error",
-                        "error": "Legal query stream failed",
-                    }
-                )
-
-        return StreamingResponse(
-            stream_generator(),
-            media_type="application/x-ndjson",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "X-Accel-Buffering": "no",
-            },
-        )
-    except Exception as e:
-        print(f"DEBUG legal_query_stream: Exception in endpoint: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Legal query stream failed: {str(e)}")
 
 
 @app.post("/generate-pdf-report")

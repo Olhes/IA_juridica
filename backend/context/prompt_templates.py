@@ -18,7 +18,7 @@ class PromptType(Enum):
     CULTURAL_ADAPTER = "cultural_adapter"
 
 class LegalPromptTemplates:
-    """Templates de prompts para asistente legal bilingüe"""
+    """Plantillas de instrucciones para el asistente legal bilingüe."""
     
     def __init__(self):
         self.templates = self._initialize_templates()
@@ -26,7 +26,7 @@ class LegalPromptTemplates:
         logger.info("LegalPromptTemplates inicializado")
     
     def _initialize_templates(self) -> Dict[PromptType, Dict[str, str]]:
-        """Inicializa todos los templates de prompts"""
+        """Inicializa todas las plantillas de instrucciones."""
         return {
             PromptType.VIOLENCE_FAMILY: {
                 "spanish": """
@@ -462,12 +462,12 @@ ADAPTACIÓN FORMATO:
         """
         Obtiene un prompt específico con contexto
         
-        Args:
+        Argumentos:
             prompt_type: Tipo de prompt requerido
             language: Idioma del prompt (spanish/quechua)
             context: Contexto adicional para personalizar
             
-        Returns:
+        Retorna:
             Prompt personalizado
         """
         try:
@@ -527,11 +527,11 @@ ADAPTACIÓN FORMATO:
         """
         Valifica que una respuesta cumpla con los requisitos del prompt
         
-        Args:
+        Argumentos:
             response: Respuesta generada
             prompt_type: Tipo de prompt usado
             
-        Returns:
+        Retorna:
             Resultado de validación
         """
         validation_result = {
@@ -573,12 +573,12 @@ class PromptManager:
         """
         Obtiene el prompt de sistema para un agente específico
         
-        Args:
+        Argumentos:
             agent_type: Tipo de agente (violence, pension, general, etc.)
             language: Idioma del prompt
             context: Contexto adicional
             
-        Returns:
+        Retorna:
             Prompt de sistema completo
         """
         agent_mapping = {
@@ -605,7 +605,7 @@ class PromptManager:
         """
         Construye prompt optimizado para Cohere con documentos rerankeados.
         
-        Args:
+        Argumentos:
             prompt_type: Tipo de prompt legal
             query: Consulta del usuario
             documents: Documentos rerankeados con scores
@@ -613,7 +613,7 @@ class PromptManager:
             user_location: Ubicación del usuario (ej: cusco, puno)
             enriched_context: Contexto cultural enriquecido
         
-        Returns:
+        Retorna:
             Prompt completo listo para enviar a Cohere
         """
         # Obtener template base

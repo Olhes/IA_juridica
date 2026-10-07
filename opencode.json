@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "sonarqube": {
+      "type": "local",
+      "command": [
+        "C:\\Herramientas\\jdk-21\\bin\\java.exe",
+        "-jar",
+        "C:\\Herramientas\\sonarqube-mcp.jar"
+      ],
+      "environment": {
+        "STORAGE_PATH": "C:\\Herramientas\\sonarqube-mcp-data",
+        "SONARQUBE_URL": "http://localhost:9000",
+        "SONARQUBE_TOKEN": "{file:~/.config/opencode/secrets/sonarqube-token.txt}",
+        "SONARQUBE_PROJECT_KEY": "IA-juridica",
+        "SONARQUBE_TOOLSETS": "issues,rules,sources,measures,quality-gates",
+        "SONARQUBE_READ_ONLY": "true"
+      },
+      "enabled": true,
+      "timeout": 60000
+    }
+  }
+}

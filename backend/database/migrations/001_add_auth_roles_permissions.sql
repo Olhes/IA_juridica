@@ -102,7 +102,7 @@ FROM auth_schema.roles r, auth_schema.permissions p
 WHERE r.name = 'admin'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- User: solo permisos de chat
+-- Usuario: solo permisos de chat
 INSERT INTO auth_schema.role_permissions (role_id, permission_id)
 SELECT r.id, p.id 
 FROM auth_schema.roles r, auth_schema.permissions p 

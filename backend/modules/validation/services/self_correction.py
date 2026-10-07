@@ -69,7 +69,7 @@ class SelfCorrectionEngine:
     Reintenta la generación LLM con instrucciones de corrección explícitas
     cuando se detectan alucinaciones o baja calidad en la respuesta original.
 
-    Args:
+    Argumentos:
         cohere_client:  AsyncClient de Cohere (reutilizado del LegalAgent)
         max_retries:    Máximo de reintentos de corrección (default=2)
         min_length:     Longitud mínima para considerar una corrección válida
@@ -97,14 +97,14 @@ class SelfCorrectionEngine:
         """
         Corrige una respuesta problemática.
 
-        Args:
+        Argumentos:
             original_text:        Texto original generado por el LLM
             hallucination_report: Informe del AntiHallucinationLayer
             rag_context:          Chunks RAG concatenados como contexto de verdad
             query:                Consulta original del usuario
             language:             Idioma de la respuesta ("spanish" | "quechua")
 
-        Returns:
+        Retorna:
             (texto_corregido, num_correcciones_aplicadas)
             Si no se requiere corrección → (original_text, 0)
         """

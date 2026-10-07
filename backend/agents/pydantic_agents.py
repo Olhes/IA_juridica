@@ -315,7 +315,7 @@ class LegalAgent:
 
             return await self._fallback_violence_response(query, context)
         except Exception as e:
-            logger.error(f"Error en respuesta de violencia: {str(e)}")
+            logger.error("operation_failed error_type={}", type(e).__name__)
             raise
 
     async def respond_to_pension(
@@ -331,7 +331,7 @@ class LegalAgent:
 
             return await self._fallback_pension_response(query, context)
         except Exception as e:
-            logger.error(f"Error en respuesta de pensión: {str(e)}")
+            logger.error("operation_failed error_type={}", type(e).__name__)
             raise
 
     async def respond_general(
@@ -353,9 +353,9 @@ class LegalAgent:
                 )
                 return self._build_general_response(text_response, query)
 
-            return await self._fallback_general_response(query, context, language)
+            raise RuntimeError("Legal generation provider unavailable")
         except Exception as e:
-            logger.error(f"Error en respuesta general: {str(e)}")
+            logger.error("general_response_failed error_type={}", type(e).__name__)
             raise
 
     async def stream_general_text(
@@ -388,10 +388,8 @@ class LegalAgent:
                 if isinstance(text_chunk, str) and text_chunk:
                     yield text_chunk
         except Exception as e:
-            logger.error(f"Error en streaming general (Cohere): {str(e)}")
-            raise RuntimeError(
-                f"Fallo Cohere streaming ({self.model_name}): {str(e)}"
-            ) from e
+            logger.error("stream_generation_failed error_type={}", type(e).__name__)
+            raise RuntimeError("Legal generation provider unavailable") from None
 
     def build_general_response_from_text(
         self, text: str, query: str
