@@ -1,199 +1,75 @@
-# Guía de despliegue en Render
+# Despliegue en Render — checklist de v8
 
-## Requisitos de memoria
+Actualización: **2026-10-06**. Esta guía describe configuración del repositorio,
+no certifica preparación para producción ni promete RAM, precios o cuotas de un
+proveedor. Antes de contratar, verifica los límites vigentes de tu plan.
 
-**Plan gratuito (512 MB de RAM):**
-- El grafo de conocimiento local (~140 MB) NO se carga en producción
-- Se usa Neo4j Aura para almacenamiento del grafo
-- Configuración: `LOAD_LOCAL_KG=false`
-- Uso estimado: ~200-300 MB (dependencias + entorno de ejecución)
+## Antes de publicar
 
-**Si necesitas cargar el grafo local:**
-- Requiere una actualización al plan Standard (1 GB de RAM) o superior
-- Configurar: `LOAD_LOCAL_KG=true`
-- El grafo local pesa ~140MB en disco
+1. Ejecuta `pnpm test:coverage`, `pnpm deps:check` y build frontend.
+2. Revisa [seguridad](docs/SECURITY.md), [OAuth](OAUTH_SETUP.md) y auditoría vigente.
+   El módulo OAuth heredado contiene limitaciones pendientes; no lo expongas
+   confiando únicamente en esta plantilla.
+3. Provisiona PostgreSQL y Redis privados, con autenticación, backups y persistencia.
+   No uses Compose de desarrollo (`trust`, claves de prueba) en producción.
+4. Define corpus, volumen y estado de readiness: levantar HTTP no carga por sí
+   solo documentos ni convierte el grafo en una fuente jurídica verificada.
 
-1. Cuenta en [Render](https://render.com)
-2. Repositorio en GitHub con el código del proyecto
-3. Servicios externos configurados:
-   - **PostgreSQL**: Render PostgreSQL o servicio externo
-   - **Redis**: Render Redis o servicio externo
-   - **Neo4j Aura**: Ya configurado
-   - **Qdrant**: Render o servicio externo (opcional, puede usar local)
+## Backend Docker
 
-## Pasos de despliegue
+- Repositorio/rama: selecciona **v8** o un commit revisado; no supongas `main`.
+- Contexto de build: raíz del repositorio.
+- Dockerfile: `backend/Dockerfile.production`.
+- Puerto: `PORT` del servicio; la imagen admite `WORKERS` (por defecto 1).
+- En el contenedor Uvicorn escucha en `0.0.0.0`; limita exposición con el proveedor,
+  proxy, red y firewall. El bind del contenedor no es una protección de seguridad.
+- Health de proceso: `/health` puede devolver 200 con `status=degraded`.
+  Para tráfico que requiera corpus listo usa `/ready` (503 hasta ready).
 
-### 1. Preparar Repositorio
+La imagen incluye dependencias ML/Docling; mide tiempo de build, memoria máxima,
+concurrencia y almacenamiento con tu corpus. No se garantiza ejecución en un
+plan pequeño ni OCR sin instalar/configurar sus dependencias y pesos.
 
-```bash
-# Asegurarse de que el código esté en GitHub
-git add .
-git commit -m "Preparar para despliegue en Render"
-git push origin main
-```
+## Entorno de producción
 
-### 2. Configurar Servicios Externos
+Parte de [env.production.example](env.production.example), reemplaza placeholders
+y entrega secretos mediante configuración del servicio, nunca en Git.
 
-#### PostgreSQL (Render)
-1. En Render, crear un servicio nuevo: **PostgreSQL**
-2. Plan: Free (suficiente para desarrollo)
-3. Guardar las credenciales:
-   - URL interna de la base de datos
-   - Nombre de la base de datos
-   - Usuario
-   - Contraseña
+| Variable | Condición |
+|---|---|
+| `ENVIRONMENT=production`, `DEBUG=false` | Activan validación de producción |
+| `COHERE_API_KEY` | Proveedor de generación/embeddings/reranking configurado |
+| `SECRET_KEY`, `ANONYMOUS_SESSION_SECRET` | Aleatorios, independientes; anónimo ≥32 bytes |
+| `DATABASE_URL` / credenciales `DATABASE_*` | PostgreSQL real accesible desde el backend |
+| `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT` | Configura coherentemente según consumidores |
+| `RATE_LIMIT_STORAGE_URI` | Redis compartido entre workers, no `memory://` |
+| `CORS_ORIGINS` | JSON con orígenes HTTPS explícitos, no wildcard |
+| `ANONYMOUS_SESSION_COOKIE_SAMESITE` | `lax` mismo sitio; `none` requiere Secure/HTTPS y comprobar políticas del navegador |
+| `ADMIN_ENDPOINTS_ENABLED` | `false` por defecto; si se activa, clave independiente obligatoria |
+| `API_DOCS_ENABLED=false` | Desactiva Swagger/OpenAPI públicos |
+| `LOAD_LOCAL_KG`, `NEO4J_ENABLED` | Opt-in; no aseguran que el corpus exista ni esté listo |
 
-#### Redis (Render)
-1. En Render, crear nuevo servicio: **Redis**
-2. Plan: Free
-3. Guardar la URL interna de Redis
+La API usa rutas documentales ancladas a `backend/docs` en `main.py`; no basta
+cambiar `DOCS_ROOT_DIR` para redirigir todas las operaciones. Prepara almacenamiento
+persistente/evidencias y permisos, y prueba restauración. No borres corpus para
+arreglar un boot. Consulta [grafo](KNOWLEDGE_GRAPH_SETUP.md).
 
-#### Qdrant (Opcional)
-- Usar Qdrant Cloud o servicio externo
-- O desplegar como servicio en Render (requiere Dockerfile adicional)
+## Frontend
 
-### 3. Crear Web Service en Render
+Configura `NEXT_PUBLIC_API_URL=https://<tu-backend>` **antes del build**.
+Desde raíz: `pnpm --dir frontend install --frozen-lockfile` y `pnpm frontend:build`.
+Para servicio Node: `pnpm frontend:start` (ajusta puerto mediante el entorno del proveedor).
+La URL del backend debe permitir cookies/CORS del origen frontend. Valida login,
+bootstrap anónimo, persistencia, cancelación y PDF desde el dominio real.
+La pantalla heredada `LoginPage` tiene URL local fija y exige corrección antes de
+usarla en producción; no confundas configuración del chat con todos los flujos OAuth.
 
-1. En Render, crear un servicio nuevo: **Web Service**
-2. Conectar al repositorio de GitHub
-3. Configurar:
-   - **Name**: ia-juridica-backend
-   - **Region**: Oregon (o la más cercana)
-   - **Branch**: main
-   - **Runtime**: Docker
-   - **Dockerfile Path**: `./backend/Dockerfile.production`
-   - **Context**: `.`
-   - **Plan**: Free
+## Comprobación y rollback
 
-### 4. Configurar Variables de Entorno
-
-En el servicio web de Render, agregar las siguientes variables:
-
-#### Variables Obligatorias
-```env
-PORT=8000
-WORKERS=1
-ENVIRONMENT=production
-DEBUG=false
-NEO4J_ENABLED=true
-```
-
-#### Credenciales de APIs
-```env
-COHERE_API_KEY=tu_api_key_cohere
-SECRET_KEY=generar_aleatorio_32_caracteres
-ANONYMOUS_SESSION_SECRET=generar_aleatorio_32_caracteres
-```
-
-#### Base de Datos
-```env
-DATABASE_URL=postgresql://usuario:password@host:puerto/nombre_db
-```
-(Usar la URL interna de la base de datos de Render PostgreSQL)
-
-#### Redis
-```env
-REDIS_URL=redis://usuario:password@host:puerto
-```
-(Usar la URL interna de Render Redis)
-
-#### Neo4j Aura
-```env
-NEO4J_URI=neo4j+s://c3f1fd14.databases.neo4j.io
-NEO4J_USER=c3f1fd14
-NEO4J_PASSWORD=tu_password_aura
-NEO4J_DATABASE=c3f1fd14
-```
-
-#### Qdrant (Opcional)
-```env
-QDRANT_URL=http://tu-qdrant-host:6333
-```
-
-### 5. Ajustar Dockerfile para Render
-
-El `Dockerfile.production` ya está configurado para Render con:
-- Comprobación de estado en el puerto 8000
-- Variables PORT y WORKERS inyectadas
-- Usuario no-root para seguridad
-- Optimización de capas para builds rápidos
-
-### 6. Desplegar
-
-1. Hacer clic en **"Create Web Service"**
-2. Render iniciará la compilación automática
-3. Supervisar la compilación en la pestaña "Events"
-4. Esperar a que el servicio esté "Live"
-
-### 7. Verificar Despliegue
-
-```bash
-# Obtener la URL del servicio (por ejemplo: https://ia-juridica-backend.onrender.com)
-curl https://tu-url.onrender.com/health
-```
-
-Debería retornar:
-```json
-{
-  "status": "ready",
-  "timestamp": "...",
-  "services": {
-    "cohere": "connected",
-    "lightrag": "initialized",
-    ...
-  }
-}
-```
-
-### 8. Configurar Dominio Personalizado (Opcional)
-
-1. En el servicio web, ir a "Settings" → "Custom Domains"
-2. Agregar dominio propio
-3. Configurar DNS según instrucciones de Render
-
-## Solución de Problemas
-
-### Compilación fallida
-- Verificar logs en la pestaña "Events"
-- Asegurar que `Dockerfile.production` existe en la ruta correcta
-- Verificar que `pyproject.toml` y `uv.lock` están en la raíz
-
-### Error de conexión con la base de datos
-- Verificar que `DATABASE_URL` es correcta
-- Asegurar que PostgreSQL está corriendo
-- Verificar reglas de firewall de Render
-
-### Error de memoria (plan gratuito)
-- Reducir `WORKERS` a 1
-- Limitar el tamaño del grafo de conocimiento
-- Considerar actualizar a un plan de pago si es necesario
-
-### Variables de Entorno No Cargadas
-- Verificar que no hay espacios en blanco en los valores
-- Usar comillas para valores con caracteres especiales
-- Reiniciar el servicio después de cambiar variables
-
-## Monitoreo
-
-Render proporciona:
-- **Logs**: Ver logs en tiempo real
-- **Métricas**: CPU, memoria y respuesta
-- **Alertas**: Configurar alertas de disponibilidad
-- **Despliegues**: Historial de despliegues
-
-## Costos estimados (plan gratuito)
-
-- **Web Service**: Gratis (512 MB RAM, 0.1 CPU)
-- **PostgreSQL**: Gratis (90 días, luego $7/mes)
-- **Redis**: Gratis (25 MB, luego $5/mes)
-- **Neo4j Aura**: Gratis (hasta cierto límite)
-
-Total estimado: $0 - $12/mes después del período gratuito
-
-## Escalabilidad
-
-Para producción:
-- Actualizar el plan de Web Service (Standard/Pro)
-- Aumentar `WORKERS` en variables de entorno
-- Configurar balanceador de carga
-- Usar CDN para assets estáticos
+- `/ready` 200, `/health` con componentes esperados y versión configurada.
+- Una conversación de A no puede leerse/modificarse desde B.
+- Clave admin ausente/incorrecta devuelve 403; endpoints deshabilitados por defecto.
+- Respuesta NDJSON validada, abstención sin evidencia y errores sanitizados.
+- Rutas PDF/Markdown/evidencia sobreviven reinicio y restauración.
+- Mantén el commit previo y backup de datos; rollback de imagen no revierte schemas
+  ni recupera un volumen borrado. Las consultas de aceptación reales pueden facturar.

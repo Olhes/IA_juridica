@@ -1,5 +1,11 @@
 # Modelo de seguridad
 
+Alcance revisado: **rama v8 · 2026-10-06**. Este documento describe controles
+del principal anónimo; no acredita que todos los módulos estén endurecidos.
+El módulo de cuentas OAuth heredado conserva riesgos pendientes de cookies,
+estado OAuth y endpoint temporal de reset: [alcance y limitaciones](../OAUTH_SETUP.md).
+Esas rutas no comparten automáticamente identidad ni historial con el chat anónimo.
+
 ## Identidad anónima
 
 El backend emite una sesión HMAC-SHA256 versionada y con vencimiento en la

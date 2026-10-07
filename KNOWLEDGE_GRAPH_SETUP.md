@@ -1,207 +1,63 @@
-# Configuración del Grafo de Conocimiento
+# Corpus y Knowledge Graph — rama v8
 
-## Visión General
+Actualización: **2026-10-06**. LightRAG recupera documentos y relaciones; su
+presencia no garantiza respuestas correctas, fuentes oficiales ni vigencia normativa.
+El número de documentos/chunks depende de tus artefactos, no de una cifra fija del README.
 
-IA Jurídica utiliza LightRAG para gestionar un grafo de conocimiento que permite respuestas más precisas y contextualizadas basadas en documentos legales procesados.
+## Preparar un corpus local
 
-## Modos de Almacenamiento
+En `backend/.env`: `LOAD_LOCAL_KG=true`, `NEO4J_ENABLED=false`.
+El opt-in habilita carga de artefactos locales existentes; no genera por sí solo
+un corpus nuevo ni asegura su compatibilidad con embeddings/modelos actuales.
+Guarda backup antes de reprocesar o regenerar índices.
 
-### 1. Grafo Local (NetworkX) - Recomendado para Desarrollo
+Rutas usadas por `main.py`, ancladas al directorio backend:
 
-**Configuración en `backend/.env`:**
-```env
-LOAD_LOCAL_KG=true
-NEO4J_ENABLED=false
-```
+| Ruta | Contenido |
+|---|---|
+| `backend/docs/raw_pdfs/` | PDF de entrada |
+| `backend/docs/processed/` | Markdown procesado |
+| `backend/docs/source_evidence/` | Evidencia inmutable publicada por upload |
+| `backend/docs/knowledge_graph/` | Artefactos LightRAG/document store |
 
-**Ventajas:**
-- ✅ No requiere dependencias externas
-- ✅ Más rápido para desarrollo
-- ✅ Incluye 18 documentos legales pre-procesados
-- ✅ Almacenamiento en archivos JSON locales
+Los nombres internos pueden incluir `documents_store.json`,
+`kv_store_text_chunks.json`, `kv_store_full_docs.json`, archivos vectoriales
+`vdb_*.json` y grafo `graph_chunk_entity_relation.graphml`.
+No edites manualmente un solo artefacto suponiendo consistencia del resto.
+Las variables de rutas de Settings no redirigen automáticamente todas las rutas
+ancladas de la API; comprueba consumidores antes de mover datos.
 
-**Estructura de archivos:**
-```
-backend/docs/knowledge_graph/
-├── documents_store.json          # Metadatos de documentos
-├── graph_chunk_entity_relation.graphml  # Grafo en formato GraphML
-├── kv_store_doc_status.json      # Estado de procesamiento
-├── kv_store_entity_chunks.json   # Entidades por chunk
-├── kv_store_full_docs.json       # Documentos completos
-├── kv_store_full_entities.json  # Entidades completas
-├── kv_store_full_relations.json # Relaciones completas
-├── kv_store_relation_chunks.json # Relaciones por chunk
-├── kv_store_text_chunks.json     # Chunks de texto
-├── vdb_chunks.json              # Embeddings de chunks
-├── vdb_entities.json            # Embeddings de entidades
-└── vdb_relationships.json       # Embeddings de relaciones
-```
+## Ingesta y estados
 
-**Documentos incluidos:**
-- Ley 30364 (violencia familiar)
-- Pensión de alimentos (guías, normativa, jurisprudencia)
-- Régimen de visitas y tenencia
-- Manuales en quechua
-- Constitución Política del Perú
+`POST /upload-pdf` requiere admin habilitado y `X-API-Key` independiente.
+Valida tipo, tamaño y firma, conserva Markdown/PDF con evidencia SHA-256 e intenta
+ingesta RAG. El resultado `graph_write_state=unverified` significa que la escritura
+del grafo no queda certificada por el recibo de fuente. `POST /batch-process`
+procesa entradas locales; no implementa el pipeline cloud propuesto.
 
-### 2. Neo4j Aura - Opcional para Producción
+Comprueba `/health` para componentes y `/ready` para disponibilidad del corpus.
+Durante carga/fallo no anuncies listo solo porque responde HTTP.
+Cuando el retrieval falla la consulta devuelve 503; si no recupera documentos,
+el pipeline produce abstención explícita y no inventa fuentes.
 
-**Configuración en `backend/.env`:**
-```env
-LOAD_LOCAL_KG=false
-NEO4J_ENABLED=true
-NEO4J_URI=neo4j+s://tu-instancia-aura.databases.neo4j.io
-NEO4J_USER=tu_usuario
-NEO4J_PASSWORD=tu_password
-NEO4J_DATABASE=tu_database
-```
+## Neo4j opcional
 
-**Ventajas:**
-- ✅ Escalable para grandes volúmenes de documentos
-- ✅ Almacenamiento en la nube
-- ✅ Consultas más eficientes en grafos grandes
-- ✅ Visualización con Neo4j Browser
+Settings expone `NEO4J_ENABLED`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` y
+`NEO4J_DATABASE`. Configurar estas variables no es una migración automática de
+los artefactos locales: verifica almacenamiento seleccionado, conectividad,
+compatibilidad y corpus cargado. Guarda secretos fuera de Git.
+No se promete mejor precisión o rendimiento solo por elegir Neo4j.
 
-**Configuración de Neo4j Aura:**
-1. Crear cuenta en [Neo4j Aura](https://neo4j.com/cloud/aura/)
-2. Crear instancia gratuita (Free tier)
-3. Obtener URI, usuario y contraseña
-4. Configurar variables de entorno
+## Evaluar sin confundir objetivos
 
-## Inicialización del Grafo
+- Unitarios del chunker: estructura, orden, metadatos y errores, offline.
+- Contratos RAG/HTTP: autoridad de evidencias, abstención, validación y errores.
+- Evaluación de calidad: preguntas con referencias y fuentes identificables;
+  comparar estrategias manteniendo constante retrieval/generador y presupuesto.
+  [RAGAS Context Precision/Recall](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/) puede complementar las pruebas; no se obtiene
+  esa evidencia de porcentajes de cobertura ni de mocks de embeddings.
 
-### Al iniciar el servidor:
-
-El sistema carga automáticamente los documentos del grafo local si `LOAD_LOCAL_KG=true`:
-
-```
-2026-08-09 08:03:40 | INFO | Cargados 18 documentos desde docs\knowledge_graph\documents_store.json
-2026-08-09 08:03:40 | INFO | LegalRAG Engine inicializado en ./docs/knowledge_graph (18 documentos cargados del disco)
-```
-
-### Proceso de carga de documentos:
-
-1. **Carga de metadatos**: Lee `documents_store.json`
-2. **Inicialización de LightRAG**: Configura el motor RAG
-3. **Carga de embeddings**: Vectores pre-calculados
-4. **Inicialización de storages**: Prepara para consultas
-
-## Verificación del Funcionamiento
-
-### Verificar logs de inicio:
-
-```bash
-# Deberías ver estos mensajes:
-"LegalRAG Engine inicializado en ./docs/knowledge_graph (18 documentos cargados del disco)"
-"LightRAG inicializado con Cohere (graph_storage=NetworkX (local))"
-```
-
-### Verificar conexión al grafo:
-
-Al hacer una consulta legal, deberías ver en los logs:
-
-```
-INFO: Query nodes: [entidades relevantes]
-INFO: Query edges: [relaciones relevantes]
-INFO: Local query: X entites, Y relations
-```
-
-### Si no funciona correctamente:
-
-**Problema: "No query context could be built"**
-- El grafo no está inicializado correctamente
-- Verifica que `LOAD_LOCAL_KG=true`
-- Reinicia el servidor
-
-**Problema: Respuestas genéricas sin usar documentos**
-- LightRAG no está encontrando información relevante
-- Verifica que los documentos estén en `backend/docs/knowledge_graph/`
-- Revisa los logs de consultas
-
-## Procesamiento de Nuevos Documentos
-
-### Agregar documentos al grafo:
-
-1. Coloca PDFs en `backend/docs/raw_pdfs/`
-2. Usa el endpoint de ingestión:
-```bash
-curl -X POST http://localhost:8000/upload-pdf -F "file=@documento.pdf"
-```
-
-3. Los documentos se procesan automáticamente y se agregan al grafo
-
-### Documentos procesados disponibles:
-
-Los documentos procesados se encuentran en:
-- `backend/docs/processed/` - Markdown procesados
-- `backend/docs/knowledge_graph/` - Grafo de conocimiento
-
-## Estilo de Respuestas
-
-El sistema utiliza prompt templates configurados para respuestas conversacionales:
-
-- **Estilo natural**: Similar a ChatGPT/Gemini
-- **Sin formatos rígidos**: Evita listas estructuradas innecesarias
-- **Contextual**: Adapta respuestas según cada situación
-- **Empático**: Tono comprensivo y culturalmente sensible
-
-Los templates se encuentran en `backend/context/prompt_templates.py` y pueden personalizarse según necesidades específicas.
-
-## Solución de Problemas
-
-### Cambiar entre modos:
-
-**De local a Neo4j:**
-```env
-LOAD_LOCAL_KG=false
-NEO4J_ENABLED=true
-# Configurar credenciales Neo4j
-```
-
-**De Neo4j a local:**
-```env
-LOAD_LOCAL_KG=true
-NEO4J_ENABLED=false
-```
-
-### Regenerar el grafo:
-
-Si el grafo está corrupto o deseas reconstruirlo:
-
-```bash
-# Eliminar archivos del grafo
-rm -rf backend/docs/knowledge_graph/*
-
-# Reiniciar servidor
-cd backend
-uv run main.py
-```
-
-### Verificar integridad del grafo:
-
-```bash
-# Ver documentos cargados
-cat backend/docs/knowledge_graph/documents_store.json
-
-# Ver estadísticas
-wc -l backend/docs/knowledge_graph/*.json
-```
-
-## Rendimiento
-
-### Grafo Local:
-- **Tiempo de carga**: ~1-2 segundos
-- **Consulta**: ~2-5 segundos
-- **Memoria**: ~100-200 MB
-
-### Neo4j Aura:
-- **Tiempo de carga**: ~2-3 segundos
-- **Consulta**: ~1-3 segundos
-- **Memoria**: Variable según tamaño del grafo
-
-## Recursos Adicionales
-
-- [Documentación de LightRAG](https://github.com/HKUDS/LightRAG)
-- [Neo4j Aura](https://neo4j.com/cloud/aura/)
-- [Cohere API](https://docs.cohere.com/)
-- Documentos legales procesados en `backend/docs/processed_backup/`
+Consulta [tests](tests/README.md), [validación](backend/VALIDATION_GUIDE.md),
+[evaluación SAT/Graph](docs/SAT-GRAPH-EVALUATION-PLAN.md) y [API](API_DOC.md).
+Los planes SAT/Graph siguen siendo propuestas salvo implementación demostrada;
+ingesta exitosa no equivale a corpus jurídico auditado.

@@ -18,7 +18,10 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      onComplete?.();
+      return;
+    }
 
     let w = 0;
     let h = 0;
@@ -66,6 +69,8 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     let phase = "codepen"; // Empezar con letras formadas (flujo original)
     let phaseTime = 0;
     let lastTime = performance.now();
+    let running = true;
+    let animationFrame = 0;
 
     function resize() {
       // Solo actualizar el tamaño del canvas, NO reiniciar la animación
@@ -191,8 +196,9 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       cycleCount++;
 
       // Si completamos el ciclo máximo, llamar a onComplete y detener animación
-      if (cycleCount >= maxCycles && onComplete) {
-        onComplete();
+      if (cycleCount >= maxCycles) {
+        running = false;
+        onComplete?.();
         return;
       }
 
@@ -663,6 +669,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     }
 
     function tick(now: number) {
+      if (!running) return;
       const dt = Math.min((now - lastTime) / 1000, 0.033);
       lastTime = now;
 
@@ -679,16 +686,18 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
 
       draw();
 
-      requestAnimationFrame(tick);
+      if (running) animationFrame = requestAnimationFrame(tick);
     }
 
     resize();
-    requestAnimationFrame(tick);
+    animationFrame = requestAnimationFrame(tick);
 
     const handleResize = () => resize();
     window.addEventListener("resize", handleResize);
 
     return () => {
+      running = false;
+      cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", handleResize);
     };
   }, []);

@@ -1,0 +1,39 @@
+import { test, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { createRef } from 'react';
+import { FloatingRadialHub } from '../../../frontend/src/presentation/components/FloatingRadialHub';
+
+test('dial controla acciones y no expone adjuntos cerrados al teclado', () => {
+  const terminal = vi.fn(), history = vi.fn(), mic = vi.fn(), upload = vi.fn(), camera = vi.fn();
+  const ref = createRef<HTMLButtonElement>();
+  render(<FloatingRadialHub terminalButtonRef={ref} onTerminalOpen={terminal} onHistoryOpen={history} onMicToggle={mic} onFileUpload={upload} onCameraOpen={camera} />);
+  expect(ref.current).toBe(screen.getByRole('button', { name: 'Abrir terminal' }));
+  expect(screen.queryByRole('button', { name: 'Adjuntar archivo' })).toBeNull();
+  const toggle = screen.getByRole('button', { name: 'Mostrar adjuntos' });
+  fireEvent.click(toggle); expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const file = screen.getByRole('button', { name: 'Adjuntar archivo' });
+  expect(file.tabIndex).toBe(0); fireEvent.click(file); expect(upload).toHaveBeenCalledTimes(1);
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle); fireEvent.click(screen.getByRole('button', { name: 'Abrir cámara' }));
+  expect(camera).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abrir historial' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Activar micrófono' }));
+  expect(terminal).toHaveBeenCalledTimes(1); expect(history).toHaveBeenCalledTimes(1); expect(mic).toHaveBeenCalledTimes(1);
+});
+test('rotación por ratón y tacto se detiene al soltar y al desmontar', () => {
+  const { container, unmount } = render(<FloatingRadialHub />);
+  const hub = container.querySelector('.animate-vibrate')!;
+  vi.spyOn(hub, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 192, height: 192 } as DOMRect);
+  fireEvent.mouseDown(hub, { clientX: 192, clientY: 96 });
+  fireEvent.mouseMove(window, { clientX: 96, clientY: 192 });
+  const wheel = hub.firstElementChild as HTMLElement;
+  expect(wheel.style.transform).toBe(`rotate(${Math.PI / 2}rad)`);
+  fireEvent.mouseUp(window); const last = wheel.style.transform;
+  fireEvent.mouseMove(window, { clientX: 0, clientY: 96 }); expect(wheel.style.transform).toBe(last);
+  fireEvent.touchStart(hub, { touches: [{ clientX: 192, clientY: 96 }] });
+  fireEvent.touchMove(window, { touches: [{ clientX: 96, clientY: 192 }] });
+  expect(wheel.style.transform).toBe(`rotate(${Math.PI}rad)`);
+  fireEvent.touchEnd(window); expect(hub).toHaveStyle({ cursor: 'grab' });
+  unmount(); fireEvent.mouseMove(window, { clientX: 0, clientY: 0 });
+});

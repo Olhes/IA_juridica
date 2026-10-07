@@ -210,7 +210,7 @@ async def _persist_assistant_response(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Inicializando IA Jurídica v2.1...")
+    print(f"Inicializando IA Jurídica {settings.APP_VERSION}...")
 
     configuration = settings.validate_configuration()
     if not configuration["valid"]:
@@ -409,7 +409,7 @@ async def bootstrap_session(request: Request, response: Response):
 @app.get("/")
 async def root():
     return {
-        "message": "IA Jurídica API v2.1 - Sistema Legal con Docling, RAG y Validación Anti-Alucinación"
+        "message": f"IA Jurídica API {settings.APP_VERSION} - Sistema Legal con Docling, RAG y Validación Anti-Alucinación"
     }
 
 

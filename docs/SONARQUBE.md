@@ -1,6 +1,12 @@
 # SonarQube local
 
-La configuración analiza el código Python de `backend` en el proyecto local **`IA-juridica`**. El escáner se mantiene como herramienta opcional de desarrollo: no forma parte de las dependencias de la aplicación ni se instala con el grupo `dev`.
+Alcance del repositorio revisado en **v8, 2026-10-06**: la configuración analiza
+`backend`, `frontend/src` y `frontend/app` en el proyecto local **`IA-juridica`**.
+Importa XML Python y LCOV frontend; los tests se centralizan en `tests/`.
+El escáner se mantiene como herramienta opcional de desarrollo: no forma parte
+de las dependencias de la aplicación ni se instala con el grupo `dev`.
+Los resultados actuales y límites de cobertura están en la [guía única de tests](../tests/README.md);
+no se garantiza un Quality Gate aprobado por superar un porcentaje local.
 
 ## Ruta rápida
 

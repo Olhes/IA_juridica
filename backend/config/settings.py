@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Configuración del Servidor
     APP_NAME: str = "IA Jurídica"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = "v8"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000

@@ -1232,7 +1232,7 @@ Exigir componente y tipo dentro del árbol único, impedir suites dispersas y ma
 
 </details>
 
-## Ampliación frontend — 06/10/2026
+## Evidencia histórica de la primera ampliación frontend — 06/10/2026
 
 Vitest 5.0.3 / cobertura V8 5.0.3, jsdom 29.1.1 (Node local 24.13.1),
 Testing Library React 16.3.3 y MSW 2.15.0. MSW 3 no satisface el peer del mocker
@@ -1275,3 +1275,230 @@ En `scripts/unit/run-tests.test.mjs`:
 |---|---|
 | `modelos reales requieren flag explícito y frontend offline nunca lo hereda` | quality/real rechazan ausencia de flag antes del spawn; all por defecto offline; E2E simulado/React fuerzan RUN_MODEL_EVALS=0. |
 | `coverage frontend usa LCOV separado y conserva opciones Vitest` | Modo cobertura frontend añade --coverage, modo normal no; ambos usan config explícita y preservan opciones del usuario. |
+
+## Ampliación transversal — v8, 2026-10-06
+
+Cobertura de código no equivale a calidad RAG. Los unitarios de chunking verifican
+estructura, orden, metadatos y errores con documentos sintéticos y embeddings simulados.
+Para comparar calidad semántica se requiere un dataset con referencias y un benchmark
+del retrieval (p. ej. [RAGAS Context Precision/Recall](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/)).
+Los casos actuales de calidad real evalúan el generador con DeepEval;
+**no son una evaluación RAGAS comparativa del chunker**. No se ejecutaron proveedores
+en esta ampliación.
+
+Las nuevas pruebas conservan fuentes y exclusiones de cobertura. PDF usa
+ReportLab/pypdf reales, canvas simula frames/2D, hooks usan API simulada y SQL
+prueba el adaptador real con cursor simulado. No acreditan rendering físico,
+PostgreSQL remoto ni calidad jurídica. Las tablas siguientes explican las
+comprobaciones concretas; los casos parametrizados ejecutan varias variantes
+bajo un mismo nombre (`%s` identifica la variante en los tests frontend).
+
+
+### `backend/unit/test_pdf_generator.py`
+
+**Objetivo:** generar PDFs reales con contenido sintético y volver a leerlos con
+pypdf para detectar pérdida de contenido y errores de formato. No se invoca al
+modelo ni se evalúa la calidad de la traducción; los textos de ambos idiomas
+ya vienen suministrados en el fixture.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_real_pdf_preserves_bilingual_content_and_report_sections` | Genera el PDF tanto desde respuesta directa como desde payload anidado; al extraer el texto conserva consulta, español/quechua, pasos, documentos, recursos, advertencias, fuentes y aviso. Comprueba el tema del payload anidado y que no se modifique la respuesta original. |
+| `test_pdf_markdown_renders_structural_blocks_and_escapes_markup` | Comprueba flowables de títulos, tablas, código y separadores, y su contenido en un PDF real con citas/listas/enlaces/imágenes. Verifica que `x < y` no termine doblemente escapado y que etiquetas HTML de entrada se escapen. |
+| `test_pdf_accepts_empty_or_legacy_payload_without_crashing` | Prueba respuesta vacía, metadatos nulos, formato anidado vacío y `None`; el PDF sigue siendo legible, incluye encabezado de consulta y tema general, y omite la sección de respuesta inexistente. |
+| `test_pdf_file_output_is_unique_and_confined_to_requested_directory` | Genera dos informes en un directorio temporal nuevo; comprueba nombres distintos, ubicación en el directorio solicitado y contenido correspondiente a cada consulta. |
+| `test_invalid_markdown_table_is_not_rendered_as_table` | Comprueba que filas ausentes, una sola fila o separadores inválidos devuelvan `None` en el parser de tabla, en lugar de construir una tabla inválida. |
+
+
+### `backend/unit/test_chunking_strategies.py`
+
+**Objetivo:** verificar invariantes del chunker sobre documentos sintéticos:
+estructura, contenido, orden y metadatos. Las respuestas de embeddings se
+simulan; estos tests **no miden calidad semántica ni sustituyen un benchmark RAGAS**.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_legal_chunking_detects_structure_and_preserves_order` | Detecta código, demanda, manual y texto general; valida posiciones, IDs secuenciales, contenido tomado del documento y recuento de palabras. En los formatos estructurados comprueba números de artículo, niveles de título y campos de formulario. |
+| `test_chunking_falls_back_to_paragraphs_and_skips_empty_content` | Con tipos en mayúsculas verifica que texto vacío produzca cero chunks y que un documento sin la estructura esperada use párrafos como fallback, conservando dos párrafos de 700 caracteres en orden. |
+| `test_chunk_metadata_records_theme_urgency_and_cultural_indicators` | Con frases controladas comprueba las etiquetas de urgencia alta/media/baja; verifica tema y entidad de violencia, detección de término quechua y puntuaciones culturales nulas cuando no hay indicadores. No acredita precisión del clasificador con textos reales. |
+| `test_contextual_chunker_attaches_document_metadata_and_computes_stats` | Comprueba que los chunks conserven metadatos del documento y que estadísticas de cantidad, palabras, promedio, tipos y temas correspondan a sus contenidos; incluye el resultado del conjunto vacío. |
+| `test_embeddings_are_batched_and_provider_failure_preserves_chunks` | Simula proveedor ausente, exitoso y fallido. En éxito comprueba lotes de 2+1, `input_type=search_document` y asignación de vectores a cada chunk; sin proveedor o con fallo preserva los chunks sin embeddings inventados. |
+| `test_document_processing_propagates_failure_without_partial_result` | Provoca un error en la estrategia de fragmentación y comprueba que `process_document` propague la excepción, sin devolver un resultado parcial como si hubiera funcionado. |
+
+
+### `backend/unit/test_settings_contract.py`
+
+**Objetivo:** comprobar las reglas de Settings con valores sintéticos, sin leer
+el archivo `.env` ni crear directorios. Validar configuración no demuestra que
+un despliegue real aplique correctamente todos sus controles.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_default_app_identity_is_branch_not_invented_release` | Comprueba que el valor predeterminado declarado de `APP_VERSION` sea `v8`, sin identificarlo con las versiones semánticas de los paquetes. |
+| `test_production_rejects_insecure_or_incomplete_settings` | En siete variantes comprueba rechazo y diagnóstico correspondiente: secreto anónimo corto, orígenes CORS wildcard, métodos CORS wildcard, límites en memoria, administración sin clave, SameSite inválido y Cohere sin clave. |
+| `test_production_config_preserves_secure_cookies_and_hides_docs_by_default` | Con configuración válida comprueba validación exitosa, cookie anónima Secure y documentación deshabilitada en producción; también verifica el opt-in explícito de documentación. |
+| `test_development_samesite_none_requires_explicit_secure_cookie` | Comprueba que desarrollo habilite docs pero rechace `SameSite=None` sin Secure, y que la misma configuración sea válida al activar Secure explícitamente. |
+| `test_provider_config_exports_and_embedding_warning_match_settings` | Comprueba que los diccionarios exportados de Cohere, OpenAI heredado y RAG reflejen Settings. Una dimensión de embedding 512 produce advertencia, no un error que invalide toda la configuración. |
+
+
+### `backend/unit/test_postgres_adapter.py`
+
+**Objetivo:** ejecutar métodos del adaptador real con conexión/cursor simulados
+para inspeccionar SQL, parámetros, serialización y transacciones. No hay servidor
+PostgreSQL: estas pruebas no verifican schemas, migraciones o permisos reales.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_conversation_read_scopes_owner_and_normalizes_nullable_fields` | Comprueba que el SELECT filtre por conversación y propietario con parámetros separados; normaliza metadatos nulos y fecha de actualización ausente, y devuelve `None` cuando el cursor no encuentra una fila. |
+| `test_message_insert_scopes_owner_serializes_dates_and_rolls_back` | En éxito, fila ausente y excepción comprueba INSERT condicionado por propietario, serialización JSON de fechas anidadas y resultado normalizado. Solo el éxito confirma la transacción; los otros casos hacen rollback y no commit. |
+| `test_message_and_conversation_listing_use_owner_and_pagination` | Comprueba filtro del historial por propietario y parámetros de límite/offset del listado; normaliza metadatos, contador de mensajes y fecha de actualización ausentes en las filas simuladas. |
+| `test_conversation_update_and_delete_preserve_owner_and_return_result` | Comprueba que una actualización vacía no ejecute SQL; con un modelo Pydantic valida título, metadatos con fecha y `is_active=False`. UPDATE/DELETE incluyen propietario y devuelven verdadero o falso según la fila retornada, con commit. |
+| `test_conversation_update_rolls_back_database_error` | Simula fallo al ejecutar UPDATE y comprueba propagación del error, rollback y ausencia de commit para no presentar una actualización fallida como confirmada. |
+| `test_disconnected_adapter_never_returns_fabricated_conversations` | Sin conexión comprueba lecturas vacías, actualización/eliminación falsas y `DatabaseUnavailableError` al crear conversación; no se devuelve persistencia ficticia. |
+
+
+### `frontend/component/SandAnimation.test.tsx`
+
+**Objetivo:** comprobar el lifecycle de la animación con un contexto 2D y una
+cola de `requestAnimationFrame` (RAF) controlados. Se avanzan frames manualmente;
+no se evalúa apariencia, rendimiento gráfico ni física en un navegador real.
+
+| Caso | Qué comprueba |
+|---|---|
+| `movimiento reducido termina una vez sin canvas ni RAF` | Simula preferencia de movimiento reducido y comprueba finalización única sin programar frames de animación. |
+| `canvas no disponible permite continuar sin bloquear la interfaz` | Hace que `getContext('2d')` devuelva `null`; comprueba finalización única y ausencia de RAF para no bloquear el acceso a la interfaz. |
+| `ciclo simulado dibuja cae reforma y termina una sola vez` | Avanza hasta 700 frames sobre una máscara sintética; comprueba dibujo de partículas y texto de bienvenida, una sola llamada de finalización y cola de frames vacía al terminar. |
+| `desmontar cancela el frame pendiente y libera resize` | Tras un frame desmonta el componente; comprueba cancelación del siguiente RAF y cola vacía. Emitir resize después no vuelve a transformar el canvas ni llama a finalización. |
+| `resize cambia dimensiones sin reconstruir la máscara inicial` | Cambia el ancho de la ventana y emite resize; comprueba dimensiones físicas del canvas según DPR y que la máscara inicial se lea una sola vez. |
+| `animación sin callback también se detiene tras un ciclo` | Ejecuta el ciclo sin `onComplete` y comprueba que la cola quede vacía: la parada no depende de que el consumidor proporcione callback. |
+
+
+### `frontend/component/FloatingRadialHub.test.tsx`
+
+**Objetivo:** comprobar interacción y estado accesible del dial en jsdom.
+Las coordenadas se simulan; no se prueba captura real de micrófono/cámara ni
+subida de archivos, únicamente la invocación de los callbacks correspondientes.
+
+| Caso | Qué comprueba |
+|---|---|
+| `dial controla acciones y no expone adjuntos cerrados al teclado` | Verifica la ref del botón terminal, ausencia de adjuntos en la consulta de roles accesibles cuando están cerrados, `aria-expanded` y tabIndex al abrirlos. Archivo/cámara cierran el menú; terminal, historial y micrófono invocan sus callbacks. |
+| `rotación por ratón y tacto se detiene al soltar y al desmontar` | Con un rectángulo simulado comprueba rotaciones por mouse y touch, ausencia de cambios al mover el mouse después de soltar y cursor normal al terminar touch; ejercita desmontaje seguido de un movimiento adicional. No compara posición visual real. |
+
+
+### `frontend/component/navigationPages.test.tsx`
+
+**Objetivo:** comprobar las decisiones de navegación y la composición de rutas
+con router/estado de autenticación simulados. La página de chat se sustituye por
+un marcador, pues tiene su propia suite. No se valida autenticación de servidor,
+intercambio OAuth con Google ni exactitud jurídica de las consultas sugeridas.
+
+| Caso | Qué comprueba |
+|---|---|
+| `ruta protegida espera hidratación redirige invitados y permite autenticados` | Antes de montar no muestra contenido ni navega; montado como invitado redirige a `/login` y sigue ocultándolo; con autenticación simulada permite mostrar los hijos. |
+| `callback OAuth guarda indicador UI no token y vuelve a inicio` | Comprueba que el callback guarde `auth_just_logged_in=true`, no escriba un valor en la clave `token` y use `router.replace('/')`. No prueba validación de estado OAuth ni cookies del backend. |
+| `registro redirige al flujo login existente` | Comprueba mensaje de redirección y `router.push('/login')`, documentando que esta pantalla no implementa un formulario de registro. |
+| `login inicia OAuth y deshabilita reenvío durante navegación` | Con `window.location` simulado comprueba la URL local actual `/auth/google`, cambio del botón a estado de conexión y deshabilitación tras el clic; no abre Google ni verifica URL de producción. |
+| `bienvenida %s ofrece seis consultas seleccionables` | En español y quechua comprueba seis botones, invocación del callback al seleccionar cada uno y consultas de texto no triviales. No juzga la traducción ni el contenido legal de esos textos. |
+| `entrypoints y layout conservan idioma proveedores y metadatos` | Inspecciona el árbol del layout (`html lang=es`, envoltorios y contenido), metadatos de layout/inicio y wrappers de login/registro; comprueba que Home renderice el marcador de ChatPage. No ejecuta los providers reales en este caso. |
+
+### `frontend/component/ThemeProvider.test.tsx`
+
+**Objetivo:** ejercitar el provider real de next-themes con preferencias y
+media queries simuladas; comprueba clases del documento, no estilos/píxeles.
+
+| Caso | Qué comprueba |
+|---|---|
+| `tema guardado aplica clase oscura sin esconder hijos` | Con preferencia `dark` en localStorage comprueba clase oscura del documento, conservación de la preferencia y visibilidad del contenido hijo. |
+| `tema del sistema sigue cambios y libera listener al desmontar` | Con tema `system` simula cambio de media query de claro a oscuro y comprueba las clases correspondientes; al desmontar verifica eliminación del listener registrado. |
+
+
+### `frontend/integration/legacyChatHooks.test.tsx`
+
+**Objetivo:** ejercitar `useBackendChat` y `usePersistentChat` reales, simulando
+solo su dependencia `apiService`. Comprueba estado y argumentos entre operaciones;
+no acredita persistencia remota, aislamiento entre usuarios ni el flujo principal
+actual, que utiliza `useChat`/`useChatSessions` y tiene suites independientes.
+
+| Caso | Qué comprueba |
+|---|---|
+| `backend chat conserva historial fecha e identidad de conversación entre envíos` | Comprueba estado online inicial, trim e idioma al enviar, conservación del ID en el siguiente envío y mapeo de contenido/fecha. Prueba fallback a mensaje único sin historial, carga, creación con título, limpieza de mensajes y reset del ID. |
+| `backend chat %s maneja fallo API y excepciones sin dejar loading` | Para enviar, cargar y crear simula respuesta API fallida, excepción Error y valor rechazado no Error; comprueba error visible, `isLoading=false` y limpieza posterior con `clearError`. |
+| `backend chat rechaza entradas vacías y solapadas y limpia sondeo al desmontar` | Comprueba que texto vacío no llame a API y que, con un envío pendiente, el segundo no se envíe; resuelve el primero con fallo y verifica cancelación de un intervalo al desmontar. |
+| `backend chat listado y salud reportan fallo sin inventar datos` | Comprueba listado exitoso y retorno `null` ante fallo API/excepción; estados de salud no saludable o excepción dejan `isOnline=false` sin fabricar un listado. |
+| `chat persistente carga envía continúa y crea con notificación y metadatos` | Comprueba carga automática y notificación de conversación, fecha del mensaje, argumentos de envío y resultado; continuar recarga historial, crear conserva conversación y vacía mensajes, y reset elimina la conversación del estado. |
+| `chat persistente %s propaga errores controlados y recupera estado` | Para enviar, cargar, crear y continuar comprueba manejo de respuesta fallida, Error y rechazo no Error, liberación de loading y limpieza explícita del error. |
+| `chat persistente sin id omite continuación y tolera historial metadatos y fechas ausentes` | Sin ID no continúa y con texto vacío no envía; con mensaje sin fecha/metadatos aplica Date y objeto vacío. Si falta historial usa lista vacía, y un fallo de health deja offline. |
+
+
+### Caso adicional en `backend/http/test_api.py`
+
+**Objetivo:** comprobar coherencia de metadata HTTP con el fixture offline de
+la API; el fixture no ejecuta el lifespan ni necesita servicios externos.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_api_version_metadata_uses_single_configured_identity` | Consulta raíz y health mediante el cliente HTTP y genera el esquema OpenAPI; verifica que los tres usen el mismo `settings.APP_VERSION`, evitando textos de versión discordantes. No inspecciona un despliegue remoto. |
+
+### `scripts/unit/test_documentation_contract.py`
+
+**Objetivo:** contrastar guías activas con manifiestos y fuentes locales para
+evitar contratos documentados inexistentes. No navega enlaces externos, valida
+anclas internas ni comprueba por completo toda la documentación del proyecto.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_current_guides_identify_branch_date_and_existing_local_links` | En las ocho guías seleccionadas comprueba identidad `v8`, fecha documentada `2026-10-06` y existencia de los destinos de enlaces relativos. Ignora URLs externas y anclas; no mide automáticamente frescura frente a la fecha actual. |
+| `test_documented_frontend_versions_and_root_commands_match_manifests` | Comprueba presencia de versiones Next/React/pnpm de los manifiestos en la guía frontend y que los comandos pnpm raíz detectados existan en scripts o sean install. Omite comandos cuyo primer argumento es una opción, como `--dir`; no ejecuta esos comandos. |
+| `test_api_documented_explicit_routes_exist_in_current_source` | Extrae decoradores GET/POST/PUT/DELETE de main y chat mediante AST y comprueba las rutas explícitas con ese formato en API_DOC. No importa la app, verifica llamadas HTTP ni audita todas las rutas OAuth. |
+
+### Verificación de las explicaciones del catálogo
+
+Revisión documental del **2026-10-06**: los 49 nombres de pruebas nuevos tienen
+una explicación en tabla (10 archivos nuevos y un caso HTTP adicional), con
+objetivo y límites por grupo. Pasaron los 7 tests de catálogo y contratos de
+documentación, y `git diff --check` no encontró errores de whitespace.
+No se volvió a ejecutar la suite completa para esta corrección de texto:
+harness de producto **N/A**, porque no cambia comportamiento ni código de tests.
+Rollback de esta corrección: solo los bloques explicativos de este README;
+preserva el catálogo, los tests y la ampliación previa.
+
+## Resultado actual de la ampliación transversal
+
+Verificado el **2026-10-06** con `pnpm test:coverage` (exit 0):
+
+| Medida | Baseline al iniciar esta tarea | Resultado actual |
+|---|---|---|
+| Python aprobados | 252 | **302** |
+| Node aprobados | 23 | **23** |
+| React aprobados | 65 | **94** |
+| Backend: líneas | 46,62 % (2716/5826) | **57,24 % (3335/5826)** |
+| Backend: ramas | 29,91 % (466/1558) | **45,25 % (705/1558)** |
+| Frontend: líneas | 41,68 % (579/1389) | **80,52 % (1125/1397)** |
+| Frontend: ramas | 43,70 % (368/842) | **72,51 % (612/844)** |
+
+Se mantienen las mismas fuentes/exclusiones: 70 módulos Python y 32 archivos
+frontend. El denominador frontend crece por el control de lifecycle añadido,
+no por retirar archivos. El 55 % combinado que imprime pytest mezcla statements
+y ramas: no es el 57,24 % de líneas del XML. Los 3 casos reales siguen omitidos,
+y los 2 xfail estrictos son los ya existentes. Hay 20 warnings de dependencias.
+
+También pasaron **5/5 E2E** con API simulada en Edge headless, `tsc --noEmit`,
+build de Next, `pnpm deps:check` y catálogo/enlaces/comandos documentados.
+No se ejecutó scanner/Quality Gate ni llamadas facturables a modelos.
+Se corrigieron dos errores descubiertos por los tests: doble escape de código
+inline en PDF real, y finalización/cleanup RAF de la animación.
+
+Pendientes de cobertura: pantallas heredadas y ramas de servicios/auth/contexto,
+scripts operativos y más comprobaciones con PostgreSQL real. La cobertura no
+demuestra precisión jurídica ni calidad de retrieval/traducción.
+
+Unidades de trabajo revisables/rollback, aún **sin commits nuevos**:
+1. Documentación/identidad v8/plantillas: guías, Settings, metadata API y contratos de docs/HTTP.
+2. PDF: escape inline y pruebas ReportLab/pypdf reales juntos.
+3. Backend: chunker/Settings/SQL con pruebas offline; no modifica estrategias ni proveedor.
+4. Frontend: lifecycle animación y sus pruebas, radial hub, hooks heredados, rutas/providers.
+
+Evidencia local ignorada: `coverage.xml`, `temp/coverage-baseline.xml`,
+`temp/frontend-coverage-baseline.json`, `temp/sonar-reports/` y trazas Playwright.
+El harness de ejecución es pnpm/pytest/Vitest/Playwright; no se requiere un
+servicio de modelos real para estas unidades ni se revierten datos del corpus.

@@ -86,7 +86,8 @@ def _format_inline_markdown(text: str) -> str:
 
     for index, snippet in enumerate(code_spans):
         token = f"@@CODETOKEN{index}@@"
-        code_html = html.escape(snippet, quote=False)
+        # Capturado después de html.escape: no escapar de nuevo los operadores.
+        code_html = snippet
         escaped = escaped.replace(token, f"<font face='Courier'>{code_html}</font>")
 
     return escaped

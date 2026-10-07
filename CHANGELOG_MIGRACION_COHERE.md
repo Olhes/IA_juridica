@@ -1,5 +1,7 @@
 # Changelog — Migración a Cohere (Backend v2.0)
 
+> Documento histórico de migración. Revisado en v8 (2026-10-06); sus versiones/resultados no identifican una release actual. Estado vigente: [README](README.md) y [tests](tests/README.md).
+
 > **Fecha:** 14 de Febrero 2026  
 > **Última actualización:** 15 de Febrero 2026  
 > **Alcance:** Backend completo  

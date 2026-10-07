@@ -1,5 +1,7 @@
 # Procesamiento de PDF en la nube (sin versionar los PDF)
 
+> Estado revisado en v8 (2026-10-06): **propuesta, no implementada**. La API actual usa upload/batch locales; no existen los endpoints cloud sugeridos ni un worker cloud desplegado.
+
 ## Objetivo
 Procesar documentos PDF fuera del repositorio Git, con almacenamiento y procesamiento escalables en la nube.
 

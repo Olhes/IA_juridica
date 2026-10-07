@@ -6,6 +6,14 @@ import sys
 import pytest
 
 
+def test_api_version_metadata_uses_single_configured_identity(api):
+    client, main, _ = api
+    version = main.settings.APP_VERSION
+    assert f"API {version} -" in client.get("/").json()["message"]
+    assert client.get("/health").json()["version"] == version
+    assert main.app.openapi()["info"]["version"] == version
+
+
 def test_bootstrap_and_protected_query_gate(api):
     client, main, _ = api
     assert client.post("/legal-query", json={"query": "licencia"}).status_code == 401

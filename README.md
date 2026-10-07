@@ -1,361 +1,150 @@
-# IA Jurídica v2.1
+# IA Jurídica
 
-Asistente virtual bilingüe (quechua-español) especializado en derecho familiar y procesamiento inteligente de documentos legales para comunidades andinas y rurales de América Latina.
+Asistente experimental de orientación legal bilingüe español/quechua, con
+recuperación documental, validación de respuestas y conversaciones persistentes.
+No sustituye la revisión de un profesional ni certifica la vigencia de una norma.
 
-## 🚀 Inicio Rápido
+**Estado documentado: rama `v8` · Actualización: 2026-10-06.**
+`v8` identifica la rama de trabajo, no una release semántica. No hay tags de
+release en el historial consultado. Los manifiestos conservan `1.0.0` (Node)
+y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por entorno.
 
-### Requisitos
-- Python 3.12
-- UV (gestor de dependencias)
-- Docker Desktop
-- API Key de Cohere (obligatoria)
+## Empezar en local
 
-### Instalación
-
-```bash
-# Instalar UV según https://docs.astral.sh/uv/getting-started/installation/
-
-# Clonar repositorio
-cd IA_juridica
-
-# Instalar dependencias
-uv sync
-
-# Configurar variables de entorno
-# Editar backend/.env con tu COHERE_API_KEY
-```
-
-### Variables de Entorno
-
-Crear `backend/.env`:
-
-```env
-COHERE_API_KEY=tu_api_key_aqui
-ANONYMOUS_SESSION_SECRET=secreto_aleatorio_de_al_menos_32_bytes
-DEBUG=true
-DATABASE_HOST=localhost
-DATABASE_PORT=5433
-DATABASE_NAME=juridica_db
-DATABASE_USER=juridica_user
-DATABASE_PASSWORD=juridica_password
-
-# Configuración de Grafo de Conocimiento
-LOAD_LOCAL_KG=true  # Usar grafo local (recomendado para desarrollo)
-NEO4J_ENABLED=false  # Neo4j Aura (opcional, requiere configuración adicional)
-# NEO4J_URI=neo4j+s://tu-instancia-aura.databases.neo4j.io
-# NEO4J_USER=tu_usuario
-# NEO4J_PASSWORD=tu_password
-# NEO4J_DATABASE=tu_database
-
-# Google OAuth 2.0 (opcional)
-GOOGLE_CLIENT_ID=tu_client_id_aqui
-GOOGLE_CLIENT_SECRET=tu_client_secret_aqui
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
-GOOGLE_FRONTEND_CALLBACK_URI=http://localhost:3000/auth/callback
-```
-
-Para configurar Google OAuth, consulta la guía completa en `OAUTH_SETUP.md`.
-
-### Iniciar el desarrollo
-
-```bash
-# Inicia PostgreSQL y Redis, espera las comprobaciones de estado y luego inicia el backend y el frontend.
-pnpm run dev:full
-```
-
-Usa este único comando después de completar la instalación de dependencias y la configuración del entorno indicadas arriba. Ctrl+C detiene únicamente el backend y el frontend; PostgreSQL y Redis permanecen disponibles en Docker.
-
-## Tests y calidad del modelo
-
-Ejecuta desde la raíz, después de instalar las dependencias:
+Necesitas Python **3.12–3.13** (`.python-version`: 3.12.10), UV, Node **24**,
+pnpm **10.30.2** y Docker Compose o el equivalente de Podman para los servicios.
+Los locks, no este documento, son la fuente de versiones reproducibles.
 
 ```powershell
-pnpm test                       # Python + Node + unitarios frontend; sin llamadas a modelos
-pnpm run test:all               # Lo anterior + evaluación real (requiere claves y genera costes)
-pnpm run test:quality           # Solo calidad real del modelo
-pnpm run test:quality:offline   # Solo controles offline del evaluador
+# Desde la raíz; instalar backend y ambos paquetes Node
+uv sync --frozen --extra dev --inexact
+pnpm install --frozen-lockfile
+pnpm --dir frontend install --frozen-lockfile
+
+# Crear solo si aún no existen: no sobrescribir secretos/configuración
+if (-not (Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
+if (-not (Test-Path frontend/.env.local)) {
+  Set-Content frontend/.env.local 'NEXT_PUBLIC_API_URL=http://localhost:8000'
+}
 ```
 
-La evaluación real genera respuestas nuevas con Cohere y las puntúa con DeepEval; no es el análisis de código de SonarQube ni el endpoint histórico de respuestas fijas. Consulta [la guía única de tests](tests/README.md#calidad-real-del-modelo) para configurar el juez, revisar el alcance y encontrar informes JSON/Markdown. `test:all` no incluye E2E de navegador ni la compilación del frontend.
+Completa `backend/.env`: `COHERE_API_KEY`, secretos propios y conexión PostgreSQL.
+El ejemplo es para desarrollo. Para cargar un corpus local existente activa
+`LOAD_LOCAL_KG=true`; el checkout no garantiza un número fijo de documentos.
+Si el corpus no está listo, `/ready` responde 503 y el launcher no anuncia éxito.
 
-## 📡 Endpoints de la API
-
-### Chat persistente
-- `POST /session/bootstrap` - Crear o renovar sesión anónima HttpOnly
-- `POST /chat/message` - Enviar mensaje con persistencia
-- `GET /chat/conversations` - Listar conversaciones del usuario
-- `GET /chat/conversations/{id}` - Obtener historial completo
-- `POST /chat/conversations` - Crear nueva conversación
-- `PUT /chat/conversations/{id}` - Actualizar conversación
-- `DELETE /chat/conversations/{id}` - Eliminar conversación
-- `GET /chat/search?q=termino` - Buscar conversaciones
-- `GET /chat/health` - Comprobación de estado del chat (Redis + PostgreSQL)
-
-### Consultas legales
-- `POST /legal-query` - Consulta legal con RAG y validación
-- `POST /legal-query-stream` - Streaming NDJSON para chat en tiempo real
-- `GET /health` - Comprobación de estado del sistema
-
-### Documentos
-- `POST /upload-pdf` - Subir y procesar PDF (admin habilitado + `ADMIN_API_KEY`)
-- `POST /batch-process` - Procesar todos los PDFs pendientes (requiere API Key)
-- `GET /documents` - Listar documentos indexados
-- `GET /knowledge-graph` - Obtener grafo de conocimiento
-
-### Administración
-- `POST /evaluate-system` - Ejecutar evaluación completa (requiere API Key)
-- `POST /generate-pdf-report` - Generar informe PDF
-
-## 🏗️ Arquitectura
-
-### Backend (FastAPI)
-- **RAG**: LightRAG con grafos de conocimiento (local o Neo4j Aura)
-- **LLM**: Cohere (embeddings, reranking, generación)
-- **Modelo**: command-r7b-12-2024
-- **Traducción**: Google Translate API (español ↔ quechua)
-- **Validación**: Pipeline anti-alucinación con Pydantic
-- **Procesamiento PDF**: Docling para extracción estructurada
-- **Prompt Templates**: Respuestas conversacionales estilo ChatGPT/Gemini
-
-### Frontend (Next.js)
-- Clean Architecture (domain/application/infrastructure/presentation)
-- TypeScript + Tailwind CSS
-- Streaming NDJSON para chat en tiempo real
-
-### Base de datos
-- **PostgreSQL**: Chat persistente (Docker container en puerto 5433)
-- **Redis**: Caché de sesiones (Docker container)
-- **SQLite**: Consultas y estadísticas (desarrollo)
-- **Grafo de Conocimiento**: LightRAG local (NetworkX) o Neo4j Aura (opcional)
-
-### Inspección de la base de datos
-
-Para inspeccionar la base de datos PostgreSQL:
-
-```bash
-# Conectarse a la base de datos
-docker exec -it juridica_postgres psql -U juridica_user -d juridica_db
-
-# Ver todos los schemas
-\dn
-
-# Ver tablas del schema de conversaciones
-\dt conversations_schema.*
-
-# Ver estructura de una tabla específica
-\d conversations_schema.conversations
-\d conversations_schema.messages
-
-# Ver datos de conversaciones
-SELECT * FROM conversations_schema.conversations LIMIT 10;
-
-# Ver mensajes de una conversación
-SELECT * FROM conversations_schema.messages WHERE conversation_id = 'tu_conversation_id' ORDER BY created_at;
-
-# Ver estadísticas
-SELECT 
-    c.id,
-    c.title,
-    COUNT(m.id) as message_count,
-    MAX(m.created_at) as last_message
-FROM conversations_schema.conversations c
-LEFT JOIN conversations_schema.messages m ON c.id = m.conversation_id
-GROUP BY c.id, c.title
-ORDER BY last_message DESC NULLS LAST;
+```powershell
+pnpm dev:full
 ```
 
-Para Redis:
+El launcher usa **Docker**, levanta PostgreSQL/Redis, espera su salud, inicia el
+backend y comprueba `/ready` antes del frontend. Qdrant no es obligatorio para ese
+arranque. Si usas Podman, arranca los servicios mediante tu proveedor Compose y
+ejecuta backend/frontend por separado; no hay detección automática de Podman:
 
-```bash
-# Conectarse a Redis
-docker exec -it juridica_redis redis-cli
-
-# Ver todas las claves (con prefijo)
-KEYS conversation:*
-KEYS session:*
-
-# Ver contenido de una conversación cacheada
-GET conversation:tu_conversation_id
-
-# Ver información de sesión
-GET session:tu_session_id
-
-# Ver estadísticas de Redis
-INFO memory
-INFO clients
+```powershell
+docker compose up -d postgres redis
+pnpm backend:dev:safe
+# En otra terminal
+pnpm frontend:dev
 ```
 
-### Configuración del Grafo de Conocimiento
+Interfaz: `http://localhost:3000`. API: `http://localhost:8000`.
+Swagger/OpenAPI se habilitan por defecto en desarrollo, no en producción.
+No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin backup.
 
-El sistema soporta dos modos de almacenamiento del grafo de conocimiento:
+## Arquitectura que está activa
 
-**1. Grafo Local (Recomendado para Desarrollo)**
-```env
-LOAD_LOCAL_KG=true
-NEO4J_ENABLED=false
-```
-- Usa NetworkX para almacenamiento local
-- Archivos en `backend/docs/knowledge_graph/`
-- 18 documentos legales pre-procesados incluidos
-- Más rápido y sin dependencias externas
-
-**2. Neo4j Aura (Opcional para Producción)**
-```env
-LOAD_LOCAL_KG=false
-NEO4J_ENABLED=true
-NEO4J_URI=neo4j+s://tu-instancia-aura.databases.neo4j.io
-NEO4J_USER=tu_usuario
-NEO4J_PASSWORD=tu_password
-NEO4J_DATABASE=tu_database
-```
-- Grafo de conocimiento en la nube
-- Escalable para grandes volúmenes
-- Requiere instancia de Neo4j Aura
-
-### Estilo de Respuestas Conversacionales
-
-El sistema utiliza prompt templates optimizados para respuestas naturales, similares a ChatGPT/Gemini:
-
-- ✅ **Respuestas naturales** sin formatos rígidos
-- ✅ **Tono empático y conversacional**
-- ✅ **Adaptación a cada situación específica**
-- ✅ **Integración fluida de información** en párrafos naturales
-- ✅ **Sensibilidad cultural** para comunidades rurales
-
-Los templates se encuentran en `backend/context/prompt_templates.py` y cubren:
-- Violencia familiar (Ley 30364)
-- Pensión de alimentos
-- Derechos de identidad
-- Consultas legales generales
-
-## 📁 Estructura del proyecto
-
-```
-ia-juridica/
-├── backend/
-│   ├── main.py                    # API principal
-│   ├── agents/                    # Agentes legales (Cohere + Pydantic)
-│   ├── rag/                       # LightRAG y grafo de conocimiento
-│   ├── database/                  # Adaptadores de PostgreSQL y Redis
-│   ├── config/                    # Settings y configuración
-│   ├── docs/                      # Artefactos locales (dev)
-│   │   ├── raw_pdfs/
-│   │   ├── processed/
-│   │   └── knowledge_graph/
-│   └── Dockerfile
-├── frontend/                      # Next.js + TypeScript
-│   ├── app/                       # Rutas y API routes
-│   └── src/                       # Clean Architecture
-├── docker-compose.yml             # PostgreSQL + Redis
-└── pyproject.toml                 # Dependencias Python
+```text
+Next App Router → ChatPage → useChat / useChatSessions / apiService
+                 → FastAPI (cookies, propietario, límites)
+                 → recuperación LightRAG + reranking
+                 → generación Cohere → validación/corrección → traducción
+                 → contenido final validado (JSON o NDJSON) → PostgreSQL
 ```
 
-## 🔧 Solución de problemas
+| Capa | Ubicación / contrato |
+|---|---|
+| Interfaz | `frontend/app/`, `frontend/src/presentation/`; Next 16.3.8, React 19.3.0 |
+| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies |
+| API | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/` |
+| Pipeline común | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada |
+| RAG e ingesta | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/` |
+| Validación | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática |
+| Persistencia | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos |
+| Tests | Solo `tests/<backend|frontend|scripts>/<tipo>/` |
 
-### Grafo de Conocimiento
+El NDJSON transporta contenido **después** de la validación; no publica borradores
+provisionales del modelo. Sin documentos recuperados se devuelve abstención explícita.
+La caché de respuestas es exacta, con SHA-256 sobre consulta, idioma, propietario,
+historial/contexto, conversación y revisión del corpus; no es una caché semántica.
+`LegalAssistantPage`, `useBackendChat` y `usePersistentChat` son alternativas
+heredadas, no el flujo de inicio actual.
 
-**Problema: Las respuestas son genéricas y no usan los documentos procesados**
-- **Causa**: LightRAG no está inicializado correctamente o no está usando el grafo local
-- **Solución**: Verificar que `LOAD_LOCAL_KG=true` en `backend/.env`
-- **Verificación**: En los logs debería aparecer `"LegalRAG Engine inicializado en ./docs/knowledge_graph (18 documentos cargados del disco)"`
+## Pruebas y cobertura
 
-**Problema: El sistema intenta usar Neo4j pero falla**
-- **Causa**: Configuración de Neo4j incorrecta o credenciales inválidas
-- **Solución**: Cambiar a `LOAD_LOCAL_KG=true` y `NEO4J_ENABLED=false` para modo local
-
-**Problema: Respuestas muy estructuradas con secciones fijas**
-- **Causa**: Prompt templates configurados para formato estructurado
-- **Solución**: Los templates ya están actualizados para estilo conversacional en `backend/context/prompt_templates.py`
-
-### Problemas de persistencia del chat
-
-**Problema: Las conversaciones desaparecen al reiniciar el frontend**
-- **Causa**: El frontend no estaba cargando el conversation_id persistente
-- **Solución**: El backend ahora guarda y recupera conversaciones automáticamente
-
-**Problema: El bot responde pero no muestra contenido**
-- **Causa**: Placeholder en `chat_service.py` línea 309
-- **Solución**: Integración real con pipeline de IA implementada
-
-**Problema: Mensajes no se guardan en la base de datos**
-```bash
-# Verificar conexión PostgreSQL
-docker exec -it juridica_postgres psql -U juridica_user -d juridica_db
-
-# Verificar schemas
-\dn
-
-# Verificar tablas
-\dt conversations_schema.*
-
-# Ver últimos mensajes
-SELECT * FROM conversations_schema.messages ORDER BY created_at DESC LIMIT 5;
+```powershell
+pnpm test                 # Python + Node + React, offline
+pnpm test:coverage        # Mismo alcance + XML Python y LCOV frontend
+pnpm deps:check           # Locks y requirements exportados
 ```
 
-### Problemas de conexión con PostgreSQL
+La [guía única de tests](tests/README.md) contiene comandos por componente,
+catálogo por caso, E2E y limitaciones. Las pruebas de navegador son separadas:
+`pnpm test:e2e` usa API simulada, no acredita integración real con modelos.
 
-Si tienes problemas para conectarte a PostgreSQL, revisa `POSTGRES_CONNECTION_ISSUES.md` para consultar un análisis detallado de los errores encontrados y sus soluciones.
+**Evaluaciones facturables requieren opt-in:**
+`pnpm test:quality --run-model-evals` o `pnpm test:all --run-model-evals`.
+No confundas pruebas unitarias de chunking con calidad RAG: RAGAS complementa
+esas pruebas con evaluación del retrieval sobre un dataset de referencia.
+Los casos reales actuales del generador utilizan DeepEval; no son un benchmark
+comparativo RAGAS de estrategias de chunking.
 
-**Resumen rápido:**
-- El container Docker PostgreSQL usa puerto **5433** (no 5432)
-- Esto evita conflicto con PostgreSQL local en Windows
-- Usuario: `juridica_user`, Contraseña: `juridica_password`
-- Trust authentication habilitado para desarrollo
+Medición **2026-10-06**, mismo alcance/exclusiones antes y después:
 
-### Errores comunes
+| Componente | Líneas antes → después | Ramas antes → después |
+|---|---|---|
+| Backend Python | 46,62 % → **57,24 %** | 29,91 % → **45,25 %** |
+| Frontend | 41,68 % → **80,52 %** | 43,70 % → **72,51 %** |
 
-**"COHERE_API_KEY no configurada"**
-```bash
-# Editar backend/.env
-COHERE_API_KEY=tu_key_aqui
-```
+Validación: **302 Python**, **23 Node**, **94 React** y **5 E2E con API simulada**
+aprobados; 3 evaluaciones reales omitidas y 2 xfail estrictos existentes.
+TypeScript, build Next y locks verificados. No se ejecutó scanner SonarQube ni
+evaluación facturable. Quedan áreas con poca cobertura, especialmente pantallas
+heredadas y scripts operativos; los porcentajes no son garantía del Quality Gate.
 
-**"PostgreSQL connection failed"**
-```bash
-# Verificar containers Docker
-docker ps
+## Seguridad y despliegue
 
-# Verificar puerto 5433
-netstat -ano | findstr :5433
+- `/session/bootstrap` emite una identidad anónima firmada en cookie HttpOnly;
+  consultas y conversaciones requieren esa identidad y validan propietario.
+  Google OAuth es un flujo separado; no convierte automáticamente la identidad
+  anónima de chat en una cuenta ni migra su historial.
+- Administración: `ADMIN_ENDPOINTS_ENABLED=true` y una `ADMIN_API_KEY` independiente.
+  No hay bypass por estar en desarrollo. No pongas esa clave en el navegador.
+- Producción: orígenes CORS explícitos, secretos aleatorios, HTTPS, cookies y
+  límites compartidos entre workers. Consulta [seguridad](docs/SECURITY.md).
+- Docker/Podman **no eliminan exposición de red**: `0.0.0.0` dentro del contenedor
+  permite llegar al servicio; revisa puertos publicados, proxy y firewall del host.
+  Compose de desarrollo limita sus servicios a loopback, pero usa PostgreSQL
+  `trust` y credenciales de prueba: **no es configuración de producción**.
+- No se promete preparación para producción: el módulo OAuth heredado requiere
+  endurecimiento (estado OAuth, cookies y endpoint temporal de reset), como
+  advierte [la guía OAuth](OAUTH_SETUP.md).
+- Ingesta conserva PDF/Markdown y evidencia SHA-256. Un `evidence_id` o
+  `graph_write_state=unverified` no acredita fuente oficial ni vigencia legal.
 
-# Reiniciar containers
-docker-compose down
-docker-compose up -d
-```
+## Documentación por objetivo
 
-**"Redis connection failed"**
-```bash
-# Verificar Redis container
-docker exec -it juridica_redis redis-cli ping
-
-# Debería responder: PONG
-```
-
-## 📚 Documentación adicional
-
-- `OAUTH_SETUP.md` - Configuración completa de Google OAuth 2.0
-- `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
-- `API_DOC.md` - Documentación completa de la API
-- `POSTGRES_CONNECTION_ISSUES.md` - Depuración de la conexión con PostgreSQL
-- `DOCUMENTATION.md` - Documentación técnica detallada
-- `CHANGELOG_MIGRACION_COHERE.md` - Historial de migración a Cohere
-
-## 🎯 Temas legales admitidos
-
-- Violencia Familiar (Ley 30364)
-- Pensión de Alimentos
-- Medidas de Protección
-- Régimen de Visitas y Tenencia
-- Denuncias y Procesos Judiciales
-- Filiación y Derecho a la Identidad
-
-## 📞 Soporte
-
-- **Documentación de la API**: `http://localhost:8000/docs`
-- **Comprobación de estado**: `http://localhost:8000/health`
-- **Frontend**: `http://localhost:3000`
-
----
-
-**Versión**: 2.1  
-**Última actualización**: 2026-04-24
+| Quiero… | Documento |
+|---|---|
+| Usar la API y entender errores/permisos | [API](API_DOC.md) |
+| Ejecutar y ampliar tests | [Guía única](tests/README.md) |
+| Entender el frontend activo | [Arquitectura frontend](frontend/README_ARCHITECTURE.md) |
+| Preparar despliegue | [Render / checklist](DEPLOY_RENDER.md), [plantilla de entorno](env.production.example) |
+| Cargar/revisar corpus y grafo | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md) |
+| Entender validación y abstención | [Pipeline](backend/VALIDATION_GUIDE.md) |
+| Configurar OAuth local | [OAuth](OAUTH_SETUP.md) |
+| Diagnosticar PostgreSQL sin perder datos | [Conexión PostgreSQL](POSTGRES_CONNECTION_ISSUES.md) |
+| Importar cobertura a SonarQube | [SonarQube](docs/SONARQUBE.md) |
+| Consultar antecedentes, no capacidades actuales | [Migración Cohere](CHANGELOG_MIGRACION_COHERE.md), [auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
+| Revisar propuestas aún no implementadas | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md) |
