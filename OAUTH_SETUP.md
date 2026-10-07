@@ -158,10 +158,10 @@ window.location.href = 'https://api.tu-dominio.com/auth/google';
 
 ### Error: "access_denied"
 
-- Verifica que tu email esté en la lista de usuarios de prueba (si el consent screen está en modo Testing)
+- Verifica que tu correo electrónico esté en la lista de usuarios de prueba (si la pantalla de consentimiento está en modo Testing)
 - O publica la aplicación para producción
 
-### Error: Cookies no funcionan en desarrollo
+### Error: Las cookies no funcionan en desarrollo
 
 - Verifica que `secure=False` en las cookies para desarrollo (HTTP)
 - En producción, cambia a `secure=True` para HTTPS

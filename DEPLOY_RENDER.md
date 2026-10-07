@@ -1,15 +1,15 @@
-# Guía de部署 en Render
+# Guía de despliegue en Render
 
-## Requisitos de Memoria
+## Requisitos de memoria
 
-**Free Tier (512MB RAM):**
-- El knowledge graph local (~140MB) NO se carga en producción
+**Plan gratuito (512 MB de RAM):**
+- El grafo de conocimiento local (~140 MB) NO se carga en producción
 - Se usa Neo4j Aura para almacenamiento del grafo
 - Configuración: `LOAD_LOCAL_KG=false`
-- Uso estimado: ~200-300MB (dependencias + runtime)
+- Uso estimado: ~200-300 MB (dependencias + entorno de ejecución)
 
 **Si necesitas cargar el grafo local:**
-- Requiere upgrade a plan Standard (1GB RAM) o superior
+- Requiere una actualización al plan Standard (1 GB de RAM) o superior
 - Configurar: `LOAD_LOCAL_KG=true`
 - El grafo local pesa ~140MB en disco
 
@@ -21,12 +21,12 @@
    - **Neo4j Aura**: Ya configurado
    - **Qdrant**: Render o servicio externo (opcional, puede usar local)
 
-## Pasos de Despliegue
+## Pasos de despliegue
 
 ### 1. Preparar Repositorio
 
 ```bash
-# Asegurarse de que el código está en GitHub
+# Asegurarse de que el código esté en GitHub
 git add .
 git commit -m "Preparar para despliegue en Render"
 git push origin main
@@ -35,18 +35,18 @@ git push origin main
 ### 2. Configurar Servicios Externos
 
 #### PostgreSQL (Render)
-1. En Render, crear nuevo servicio: **PostgreSQL**
+1. En Render, crear un servicio nuevo: **PostgreSQL**
 2. Plan: Free (suficiente para desarrollo)
 3. Guardar las credenciales:
-   - Internal Database URL
-   - Database Name
-   - User
-   - Password
+   - URL interna de la base de datos
+   - Nombre de la base de datos
+   - Usuario
+   - Contraseña
 
 #### Redis (Render)
 1. En Render, crear nuevo servicio: **Redis**
 2. Plan: Free
-3. Guardar la Internal Redis URL
+3. Guardar la URL interna de Redis
 
 #### Qdrant (Opcional)
 - Usar Qdrant Cloud o servicio externo
@@ -54,7 +54,7 @@ git push origin main
 
 ### 3. Crear Web Service en Render
 
-1. En Render, crear nuevo servicio: **Web Service**
+1. En Render, crear un servicio nuevo: **Web Service**
 2. Conectar al repositorio de GitHub
 3. Configurar:
    - **Name**: ia-juridica-backend
@@ -67,7 +67,7 @@ git push origin main
 
 ### 4. Configurar Variables de Entorno
 
-En el web service de Render, agregar las siguientes variables:
+En el servicio web de Render, agregar las siguientes variables:
 
 #### Variables Obligatorias
 ```env
@@ -89,13 +89,13 @@ ANONYMOUS_SESSION_SECRET=generar_aleatorio_32_caracteres
 ```env
 DATABASE_URL=postgresql://usuario:password@host:puerto/nombre_db
 ```
-(Usar la Internal Database URL de Render PostgreSQL)
+(Usar la URL interna de la base de datos de Render PostgreSQL)
 
 #### Redis
 ```env
 REDIS_URL=redis://usuario:password@host:puerto
 ```
-(Usar la Internal Redis URL de Render Redis)
+(Usar la URL interna de Render Redis)
 
 #### Neo4j Aura
 ```env
@@ -113,22 +113,22 @@ QDRANT_URL=http://tu-qdrant-host:6333
 ### 5. Ajustar Dockerfile para Render
 
 El `Dockerfile.production` ya está configurado para Render con:
-- Health check en puerto 8000
+- Comprobación de estado en el puerto 8000
 - Variables PORT y WORKERS inyectadas
 - Usuario no-root para seguridad
 - Optimización de capas para builds rápidos
 
 ### 6. Desplegar
 
-1. Click en **"Create Web Service"**
-2. Render iniciará el build automático
-3. Monitorear el build en la pestaña "Events"
+1. Hacer clic en **"Create Web Service"**
+2. Render iniciará la compilación automática
+3. Supervisar la compilación en la pestaña "Events"
 4. Esperar a que el servicio esté "Live"
 
 ### 7. Verificar Despliegue
 
 ```bash
-# Obtener la URL del servicio (ej: https://ia-juridica-backend.onrender.com)
+# Obtener la URL del servicio (por ejemplo: https://ia-juridica-backend.onrender.com)
 curl https://tu-url.onrender.com/health
 ```
 
@@ -147,26 +147,26 @@ Debería retornar:
 
 ### 8. Configurar Dominio Personalizado (Opcional)
 
-1. En el web service, ir a "Settings" → "Custom Domains"
+1. En el servicio web, ir a "Settings" → "Custom Domains"
 2. Agregar dominio propio
 3. Configurar DNS según instrucciones de Render
 
 ## Solución de Problemas
 
-### Build Fallido
+### Compilación fallida
 - Verificar logs en la pestaña "Events"
 - Asegurar que `Dockerfile.production` existe en la ruta correcta
-- Verificar que `pyproject.toml` y `uv.lock` están en el root
+- Verificar que `pyproject.toml` y `uv.lock` están en la raíz
 
-### Error de Conexión a Base de Datos
+### Error de conexión con la base de datos
 - Verificar que `DATABASE_URL` es correcta
 - Asegurar que PostgreSQL está corriendo
 - Verificar reglas de firewall de Render
 
-### Error de Memoria (Free Tier)
+### Error de memoria (plan gratuito)
 - Reducir `WORKERS` a 1
-- Limitar tamaño de knowledge graph
-- Considerar upgrade a plan pago si es necesario
+- Limitar el tamaño del grafo de conocimiento
+- Considerar actualizar a un plan de pago si es necesario
 
 ### Variables de Entorno No Cargadas
 - Verificar que no hay espacios en blanco en los valores
@@ -177,11 +177,11 @@ Debería retornar:
 
 Render proporciona:
 - **Logs**: Ver logs en tiempo real
-- **Metrics**: CPU, memoria, respuesta
-- **Alerts**: Configurar alertas de uptime
-- **Deployments**: Historial de despliegues
+- **Métricas**: CPU, memoria y respuesta
+- **Alertas**: Configurar alertas de disponibilidad
+- **Despliegues**: Historial de despliegues
 
-## Costos Estimados (Free Tier)
+## Costos estimados (plan gratuito)
 
 - **Web Service**: Gratis (512 MB RAM, 0.1 CPU)
 - **PostgreSQL**: Gratis (90 días, luego $7/mes)
@@ -190,10 +190,10 @@ Render proporciona:
 
 Total estimado: $0 - $12/mes después del período gratuito
 
-## Escalado
+## Escalabilidad
 
 Para producción:
-- Upgrade plan de Web Service (Standard/Pro)
+- Actualizar el plan de Web Service (Standard/Pro)
 - Aumentar `WORKERS` en variables de entorno
 - Configurar balanceador de carga
 - Usar CDN para assets estáticos

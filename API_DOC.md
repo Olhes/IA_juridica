@@ -1,14 +1,14 @@
-# API Documentation — IA Jurídica v2.1
+# Documentación de la API — IA Jurídica v2.1
 
 > **Base URL (desarrollo):** `http://localhost:8000`  
 > **Base URL (producción):** ajustar según entorno de despliegue  
-> **Content-Type:** `application/json` (salvo `/upload-pdf` = `multipart/form-data`, `/legal-query-stream` = `application/x-ndjson`)
+> **Tipo de contenido:** `application/json` (salvo `/upload-pdf` = `multipart/form-data`, `/legal-query-stream` = `application/x-ndjson`)
 
 ---
 
 ## Tabla de contenidos
 
-| Endpoint | Método | Descripción | Auth |
+| Endpoint | Método | Descripción | Autenticación |
 |---|---|---|---|
 | [`/`](#-get-) | `GET` | Raíz — info de la API | No |
 | [`/health`](#-get-health) | `GET` | Estado de los componentes del sistema | No |
@@ -36,9 +36,9 @@ X-API-Key: <SECRET_KEY>
 
 ---
 
-## Rate Limiting
+## Limitación de solicitudes
 
-Cuando `RATE_LIMIT_ENABLED=true`, el servidor limita las solicitudes a **100 requests por 15 minutos** por IP.  
+Cuando `RATE_LIMIT_ENABLED=true`, el servidor limita las solicitudes a **100 solicitudes cada 15 minutos** por IP.
 Si se supera el límite, la API responde con `HTTP 429 Too Many Requests`.
 
 ---
@@ -60,7 +60,7 @@ Configurable vía variable de entorno `CORS_ORIGINS`.
 
 Retorna información básica de la API. Útil para verificar que el servidor esté levantado.
 
-**Response:**
+**Respuesta:**
 ```json
 {
   "message": "IA Jurídica API v2.1 - Sistema Legal con Docling, RAG y Validación Anti-Alucinación"
@@ -71,9 +71,9 @@ Retorna información básica de la API. Útil para verificar que el servidor est
 
 ### 🟢 `GET /health`
 
-Health check completo que reporta el estado de todos los componentes internos del sistema.
+Comprobación completa del estado de todos los componentes internos del sistema.
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "status": "healthy",
@@ -100,21 +100,21 @@ Health check completo que reporta el estado de todos los componentes internos de
 **Componentes críticos** (determinan `status`): `cohere`, `lightrag`, `pydantic_ai`.
 
 **Uso recomendado en el frontend:**
-- Llamar al iniciar la app para mostrar un banner de estado.
-- Polling opcional cada 30–60 segundos para detectar degradación del servicio.
+- Consultar al iniciar la aplicación para mostrar un aviso de estado.
+- Realizar consultas periódicas opcionales cada 30–60 segundos para detectar degradación del servicio.
 
 ---
 
 ### 🔵 `POST /legal-query`
 
-**Endpoint no-stream (respuesta única).** Procesa una consulta legal con el pipeline completo:
+**Endpoint sin streaming (respuesta única).** Procesa una consulta legal con el pipeline completo:
 1. Búsqueda RAG con reranking (Cohere)
 2. Context Engineering (enriquecimiento del prompt con contexto jurídico y cultural)
 3. Generación de respuesta con el LLM (Cohere `command-r7b-12-2024`)
-4. Pipeline de validación anti-alucinación (hallucination detection + cross-check + self-correction)
+4. Pipeline de validación anti-alucinación (detección de alucinaciones, verificación cruzada y autocorrección)
 5. Caché semántico (respuestas confiables se cachean por 1 hora)
 
-**Request body:**
+**Cuerpo de la solicitud:**
 ```json
 {
   "query": "¿Cómo puedo denunciar violencia familiar?",
@@ -129,7 +129,7 @@ Health check completo que reporta el estado de todos los componentes internos de
 | `language` | `string` | ❌ | `"spanish"` | Idioma de la respuesta: `"spanish"` o `"quechua"` |
 | `context` | `object \| null` | ❌ | `null` | Contexto adicional (no utilizado en versión actual) |
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -303,9 +303,9 @@ validation.is_grounded === false  → Indicar que puede no estar respaldado por 
 
 ### 🔵 `POST /legal-query-stream`
 
-Endpoint **streaming principal** del chat. Ejecuta el pipeline completo (RAG + Context Engineering + LLM + validación) y responde en **NDJSON** con eventos incrementales.
+Endpoint principal de **streaming** del chat. Ejecuta el pipeline completo (RAG, enriquecimiento contextual, LLM y validación) y responde en **NDJSON** con eventos incrementales.
 
-**Request body:** Idéntico a `/legal-query`
+**Cuerpo de la solicitud:** Idéntico al de `/legal-query`
 
 ```json
 {
@@ -314,7 +314,7 @@ Endpoint **streaming principal** del chat. Ejecuta el pipeline completo (RAG + C
 }
 ```
 
-**Response:**
+**Respuesta:**
 - **Content-Type:** `application/x-ndjson`
 - **Transfer-Encoding:** `chunked`
 - **Headers:** `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`
@@ -343,7 +343,7 @@ Cada línea del stream es un JSON independiente (`\n` delimitado):
 }
 ```
 
-3. Evento de error (si falla durante el stream):
+3. Evento de error (si falla durante el flujo):
 ```json
 {"type":"error","error":"Legal query stream failed: ..."}
 ```
@@ -399,7 +399,7 @@ while (true) {
 
 Lista todos los documentos actualmente indexados en el motor RAG.
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -422,7 +422,7 @@ Lista todos los documentos actualmente indexados en el motor RAG.
 
 Retorna los datos del grafo de conocimiento construido por LightRAG a partir del corpus legal.
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -441,7 +441,7 @@ Retorna los datos del grafo de conocimiento construido por LightRAG a partir del
 
 Retorna estadísticas del pipeline de validación y del optimizador de tokens. Útil para un panel de monitoreo en el frontend.
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -475,7 +475,7 @@ Retorna estadísticas del pipeline de validación y del optimizador de tokens. �
 
 Genera un reporte PDF de una respuesta legal y lo devuelve como descarga directa.
 
-**Request body:**
+**Cuerpo de la solicitud:**
 ```json
 {
   "query": "¿Cómo denuncio violencia familiar?",
@@ -498,10 +498,10 @@ Genera un reporte PDF de una respuesta legal y lo devuelve como descarga directa
 | `query` | `string` (min 1 char) | ✅ | Consulta original del usuario |
 | `response` | `object` | ✅ | Objeto `response` obtenido de `/legal-query` |
 
-**Response `200 OK`:**
-- **Content-Type:** `application/pdf`
+**Respuesta `200 OK`:**
+- **Tipo de contenido:** `application/pdf`
 - **Content-Disposition:** `attachment; filename="reporte_legal.pdf"`
-- Body: bytes del archivo PDF
+- Cuerpo: bytes del archivo PDF
 
 **Errores:**
 
@@ -536,19 +536,19 @@ if (res.ok && res.headers.get('content-type') === 'application/pdf') {
 
 Sube un archivo PDF, lo procesa con Docling y lo indexa en el motor RAG.
 
-**Request:** `multipart/form-data`
+**Solicitud:** `multipart/form-data`
 
 | Campo del formulario | Tipo | Requerido | Descripción |
 |---|---|---|---|
 | `file` | `File` (.pdf) | ✅ | Archivo PDF a procesar |
 
-**Headers adicionales:**
+**Encabezados adicionales:**
 ```
 X-API-Key: <SECRET_KEY>
 Content-Type: multipart/form-data
 ```
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -572,9 +572,9 @@ Content-Type: multipart/form-data
 
 Procesa todos los archivos PDF que estén en el directorio `docs/raw_pdfs/` del servidor que aún no hayan sido procesados.
 
-**Headers requeridos:** `X-API-Key: <SECRET_KEY>`
+**Encabezados requeridos:** `X-API-Key: <SECRET_KEY>`
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,
@@ -593,9 +593,9 @@ Procesa todos los archivos PDF que estén en el directorio `docs/raw_pdfs/` del 
 
 Ejecuta la suite de evaluación completa con DeepEval sobre el sistema RAG + LLM.
 
-**Headers requeridos:** `X-API-Key: <SECRET_KEY>`
+**Encabezados requeridos:** `X-API-Key: <SECRET_KEY>`
 
-**Response `200 OK`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "success": true,

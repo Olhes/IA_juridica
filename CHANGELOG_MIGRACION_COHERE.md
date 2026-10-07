@@ -38,7 +38,7 @@ Esta migración reemplaza la infraestructura de embeddings falsos (hashes MD5 de
 | Reranking | No existía | `rerank-multilingual-v3.0` con fallback keyword |
 | Context Engineering | Solo chunking básico | Clasificación de consulta + detección de ubicación + prompt enriquecido |
 | Seguridad | CORS `["*"]`, sin auth, sin rate limiting | CORS por settings, API key en admin, slowapi |
-| Health check | Siempre retornaba `"status": "ready"` | Verifica Cohere, LightRAG, Pydantic AI, ContextEngineer |
+| Comprobación de estado | Siempre retornaba `"status": "ready"` | Verifica Cohere, LightRAG, Pydantic AI y ContextEngineer |
 | PDF | Solo template placeholder | Generación real con ReportLab bilingüe |
 | Dependencias | 10+ paquetes sin usar en requirements.txt | Removidos (langchain, chromadb, neo4j, etc.) |
 
@@ -354,13 +354,13 @@ _QUERY_TYPE_TO_PROMPT = {
 
 ---
 
-## 6. Fase 5 — Endpoints, seguridad y health check
+## 6. Fase 5 — Endpoints, seguridad y comprobación de estado
 
 ### Archivo: `backend/main.py`
 
 #### 6.1 Pipeline completo en `/legal-query`
 
-**Antes:** El endpoint hacía `rag_engine.query()` → `legal_agent.respond_general()`. Sin reranking, sin context engineering, sin metadata.
+**Antes:** El endpoint hacía `rag_engine.query()` → `legal_agent.respond_general()`. Sin reranking, enriquecimiento contextual ni metadatos.
 
 **Después:** Pipeline de 3 pasos:
 
@@ -382,7 +382,7 @@ response = await app.state.legal_agent.respond_general(
 
 **Justificación:** Este pipeline garantiza que el LLM reciba documentos semánticamente relevantes (no keyword-matched) con contexto cultural, produciendo respuestas más precisas y culturalmente apropiadas.
 
-**Metadata expuesta en la respuesta:**
+**Metadatos expuestos en la respuesta:**
 ```json
 {
   "metadata": {
@@ -415,7 +415,7 @@ app.add_middleware(
 
 **Justificación:** Los orígenes permitidos deben ser controlables por entorno. En producción, solo se permiten dominios específicos.
 
-#### 6.3 Health check real
+#### 6.3 Comprobación de estado real
 
 **Antes:** Siempre retornaba `{"status": "ready"}` sin verificar nada.
 
@@ -430,11 +430,11 @@ app.add_middleware(
 
 Estado general: `"healthy"` si todos los críticos están en `"ready"` o `"fallback"`, `"degraded"` si alguno falla.
 
-**Justificación:** Un health check que siempre retorna OK no sirve para monitoreo, alertas ni Docker healthchecks. El nuevo endpoint permite a docker-compose y balanceadores de carga tomar decisiones reales.
+**Justificación:** Una comprobación de estado que siempre retorna OK no sirve para supervisión, alertas ni comprobaciones de salud de Docker. El nuevo endpoint permite que Docker Compose y los balanceadores de carga tomen decisiones basadas en el estado real.
 
-#### 6.4 Rate limiting con slowapi
+#### 6.4 Limitación de solicitudes con slowapi
 
-**Justificación:** Sin rate limiting, un solo usuario o bot puede saturar la API y las cuotas de Cohere (especialmente embed/rerank). `slowapi` se integra directamente con FastAPI y es ligero.
+**Justificación:** Sin limitación de solicitudes, un solo usuario o bot puede saturar la API y las cuotas de Cohere (especialmente las de embeddings y reranking). `slowapi` se integra directamente con FastAPI y es ligero.
 
 ```python
 if SLOWAPI_AVAILABLE and settings.RATE_LIMIT_ENABLED:
@@ -443,7 +443,7 @@ if SLOWAPI_AVAILABLE and settings.RATE_LIMIT_ENABLED:
 
 #### 6.5 API key para endpoints administrativos
 
-**Justificación:** Los endpoints `/upload-pdf`, `/batch-process` y `/evaluate-system` pueden modificar el knowledge graph o consumir recursos significativos. No deben ser accesibles públicamente.
+**Justificación:** Los endpoints `/upload-pdf`, `/batch-process` y `/evaluate-system` pueden modificar el grafo de conocimiento o consumir recursos significativos. No deben ser accesibles públicamente.
 
 ```python
 async def verify_admin_api_key(api_key: Optional[str] = Security(api_key_header)):

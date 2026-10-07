@@ -201,7 +201,7 @@ wc -l backend/docs/knowledge_graph/*.json
 
 ## Recursos Adicionales
 
-- [LightRAG Documentation](https://github.com/HKUDS/LightRAG)
+- [Documentación de LightRAG](https://github.com/HKUDS/LightRAG)
 - [Neo4j Aura](https://neo4j.com/cloud/aura/)
 - [Cohere API](https://docs.cohere.com/)
 - Documentos legales procesados en `backend/docs/processed_backup/`

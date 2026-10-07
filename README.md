@@ -56,18 +56,31 @@ GOOGLE_FRONTEND_CALLBACK_URI=http://localhost:3000/auth/callback
 
 Para configurar Google OAuth, consulta la guía completa en `OAUTH_SETUP.md`.
 
-### Start Development
+### Iniciar el desarrollo
 
 ```bash
-# Starts PostgreSQL and Redis, waits for both health checks, then starts backend and frontend.
+# Inicia PostgreSQL y Redis, espera las comprobaciones de estado y luego inicia el backend y el frontend.
 pnpm run dev:full
 ```
 
-Use this single command after completing the dependency and environment setup above. Ctrl+C stops the backend and frontend only; PostgreSQL and Redis remain available in Docker.
+Usa este único comando después de completar la instalación de dependencias y la configuración del entorno indicadas arriba. Ctrl+C detiene únicamente el backend y el frontend; PostgreSQL y Redis permanecen disponibles en Docker.
 
-## 📡 Endpoints API
+## Tests y calidad del modelo
 
-### Chat Persistente
+Ejecuta desde la raíz, después de instalar las dependencias:
+
+```powershell
+pnpm test                       # Python + Node + unitarios frontend; sin llamadas a modelos
+pnpm run test:all               # Lo anterior + evaluación real (requiere claves y genera costes)
+pnpm run test:quality           # Solo calidad real del modelo
+pnpm run test:quality:offline   # Solo controles offline del evaluador
+```
+
+La evaluación real genera respuestas nuevas con Cohere y las puntúa con DeepEval; no es el análisis de código de SonarQube ni el endpoint histórico de respuestas fijas. Consulta [la guía única de tests](tests/README.md#calidad-real-del-modelo) para configurar el juez, revisar el alcance y encontrar informes JSON/Markdown. `test:all` no incluye E2E de navegador ni la compilación del frontend.
+
+## 📡 Endpoints de la API
+
+### Chat persistente
 - `POST /session/bootstrap` - Crear o renovar sesión anónima HttpOnly
 - `POST /chat/message` - Enviar mensaje con persistencia
 - `GET /chat/conversations` - Listar conversaciones del usuario
@@ -76,12 +89,12 @@ Use this single command after completing the dependency and environment setup ab
 - `PUT /chat/conversations/{id}` - Actualizar conversación
 - `DELETE /chat/conversations/{id}` - Eliminar conversación
 - `GET /chat/search?q=termino` - Buscar conversaciones
-- `GET /chat/health` - Health check de chat (Redis + PostgreSQL)
+- `GET /chat/health` - Comprobación de estado del chat (Redis + PostgreSQL)
 
-### Consultas Legales
+### Consultas legales
 - `POST /legal-query` - Consulta legal con RAG y validación
 - `POST /legal-query-stream` - Streaming NDJSON para chat en tiempo real
-- `GET /health` - Health check del sistema
+- `GET /health` - Comprobación de estado del sistema
 
 ### Documentos
 - `POST /upload-pdf` - Subir y procesar PDF (admin habilitado + `ADMIN_API_KEY`)
@@ -109,13 +122,13 @@ Use this single command after completing the dependency and environment setup ab
 - TypeScript + Tailwind CSS
 - Streaming NDJSON para chat en tiempo real
 
-### Base de Datos
+### Base de datos
 - **PostgreSQL**: Chat persistente (Docker container en puerto 5433)
 - **Redis**: Caché de sesiones (Docker container)
 - **SQLite**: Consultas y estadísticas (desarrollo)
 - **Grafo de Conocimiento**: LightRAG local (NetworkX) o Neo4j Aura (opcional)
 
-### Visualización de Base de Datos
+### Inspección de la base de datos
 
 Para inspeccionar la base de datos PostgreSQL:
 
@@ -215,7 +228,7 @@ Los templates se encuentran en `backend/context/prompt_templates.py` y cubren:
 - Derechos de identidad
 - Consultas legales generales
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del proyecto
 
 ```
 ia-juridica/
@@ -223,7 +236,7 @@ ia-juridica/
 │   ├── main.py                    # API principal
 │   ├── agents/                    # Agentes legales (Cohere + Pydantic)
 │   ├── rag/                       # LightRAG y grafo de conocimiento
-│   ├── database/                  # PostgreSQL y Redis adapters
+│   ├── database/                  # Adaptadores de PostgreSQL y Redis
 │   ├── config/                    # Settings y configuración
 │   ├── docs/                      # Artefactos locales (dev)
 │   │   ├── raw_pdfs/
@@ -237,7 +250,7 @@ ia-juridica/
 └── pyproject.toml                 # Dependencias Python
 ```
 
-## 🔧 Solución de Problemas
+## 🔧 Solución de problemas
 
 ### Grafo de Conocimiento
 
@@ -254,7 +267,7 @@ ia-juridica/
 - **Causa**: Prompt templates configurados para formato estructurado
 - **Solución**: Los templates ya están actualizados para estilo conversacional en `backend/context/prompt_templates.py`
 
-### Chat Persistence Issues
+### Problemas de persistencia del chat
 
 **Problema: Las conversaciones desaparecen al reiniciar el frontend**
 - **Causa**: El frontend no estaba cargando el conversation_id persistente
@@ -279,9 +292,9 @@ docker exec -it juridica_postgres psql -U juridica_user -d juridica_db
 SELECT * FROM conversations_schema.messages ORDER BY created_at DESC LIMIT 5;
 ```
 
-### PostgreSQL Connection Issues
+### Problemas de conexión con PostgreSQL
 
-Si tienes problemas conectando a PostgreSQL, revisa `POSTGRES_CONNECTION_ISSUES.md` para un análisis detallado de todos los errores encontrados y sus soluciones.
+Si tienes problemas para conectarte a PostgreSQL, revisa `POSTGRES_CONNECTION_ISSUES.md` para consultar un análisis detallado de los errores encontrados y sus soluciones.
 
 **Resumen rápido:**
 - El container Docker PostgreSQL usa puerto **5433** (no 5432)
@@ -289,7 +302,7 @@ Si tienes problemas conectando a PostgreSQL, revisa `POSTGRES_CONNECTION_ISSUES.
 - Usuario: `juridica_user`, Contraseña: `juridica_password`
 - Trust authentication habilitado para desarrollo
 
-### Errores Comunes
+### Errores comunes
 
 **"COHERE_API_KEY no configurada"**
 ```bash
@@ -318,16 +331,16 @@ docker exec -it juridica_redis redis-cli ping
 # Debería responder: PONG
 ```
 
-## 📚 Documentación Adicional
+## 📚 Documentación adicional
 
 - `OAUTH_SETUP.md` - Configuración completa de Google OAuth 2.0
 - `docs/SECURITY.md` - Sesiones anónimas, despliegue, uploads y migración manual segura
 - `API_DOC.md` - Documentación completa de la API
-- `POSTGRES_CONNECTION_ISSUES.md` - Debugging de conexión PostgreSQL
+- `POSTGRES_CONNECTION_ISSUES.md` - Depuración de la conexión con PostgreSQL
 - `DOCUMENTATION.md` - Documentación técnica detallada
 - `CHANGELOG_MIGRACION_COHERE.md` - Historial de migración a Cohere
 
-## 🎯 Temas Legales Soportados
+## 🎯 Temas legales admitidos
 
 - Violencia Familiar (Ley 30364)
 - Pensión de Alimentos
@@ -338,8 +351,8 @@ docker exec -it juridica_redis redis-cli ping
 
 ## 📞 Soporte
 
-- **API Docs**: `http://localhost:8000/docs`
-- **Health Check**: `http://localhost:8000/health`
+- **Documentación de la API**: `http://localhost:8000/docs`
+- **Comprobación de estado**: `http://localhost:8000/health`
 - **Frontend**: `http://localhost:3000`
 
 ---
