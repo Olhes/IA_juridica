@@ -26,7 +26,14 @@ mcp.json
 requerimientos.md
 
 # testing
+.pytest_cache/
 /coverage
+/.coverage
+/.coverage.*
+/coverage.xml
+/.scannerwork/
+/.sonar/
+/.codegraph/
 
 # next.js
 /.next/
@@ -43,8 +50,8 @@ kv_store_llm_response_cache.json
 !/backend/docs/processed/.gitkeep
 !/backend/docs/knowledge_graph/.gitkeep
 !/backend/docs/failed/.gitkeep
-/temp/pdfs
-/backend/temp/pdfs/**
+/temp
+/backend/temp/**
 # production
 /build
 
@@ -68,3 +75,6 @@ next-env.d.ts
 # model caches
 .cache/
 models/
+# Pydantic request contracts are source code, not downloaded model weights.
+!/backend/models/
+!/backend/models/request_types.py

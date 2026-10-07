@@ -7,58 +7,77 @@ name = "ia-juridica"
 version = "0.1.0"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "fastapi==0.129.0",
-  "uvicorn[standard]==0.41.0",
-  "pydantic==2.12.5",
-  "pydantic-settings==2.13.0",
-  "pydantic-ai-slim[google,cohere]>=1.62.0,<2",
-  "cohere==5.20.5",
-  "docling>=2.74",
-  "pypdf==6.7.0",
-  "python-multipart==0.0.22",
-  "lightrag-hku==1.4.9.11",
-  "deepeval==3.8.4",
-  "SQLAlchemy==2.0.46",
-  "asyncpg==0.29.0",
-  "psycopg[binary]==3.3.3",
-  "redis==5.2.1",
-  "reportlab==4.4.10",
-  "numpy>=2.4.2,<3.0",
-  "slowapi==0.1.9",
-  "python-dotenv==1.2.1",
+  "fastapi==0.142.2",
+  "starlette==1.7.0",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "pydantic-ai-slim[cohere,google]==2.54.0",
+  "cohere==7.2.0",
+  "docling==2.133.0",
+  "pypdf==6.19.0",
+  "python-multipart==0.0.32",
+  "lightrag-hku==1.5.7",
+  "deepeval==4.2.8",
+  "SQLAlchemy==2.1.3",
+  "asyncpg==0.31.0",
+  "psycopg[binary]==3.3.6",
+  "redis==8.1.0",
+  "reportlab==5.0.1",
+  "numpy==2.5.3",
+  "slowapi==0.1.10",
+  "python-dotenv==1.2.4",
   "loguru==0.7.3",
-  "tqdm==4.67.3",
-  "rich==14.3.2",
-  "click==8.2.2",
-  "googletrans>=4.0.2",
-  "neo4j==5.26.0",
-  "email-validator>=2.3.0",
-  "pyjwt>=2.13.0",
-  "passlib[bcrypt]>=1.7.4",
+  "tqdm==4.70.1",
+  "rich>=14.3.2,<16",
+  "click>=8.3.3,<9",
+  "googletrans==4.0.2",
+  "neo4j==6.4.0",
+  "email-validator==2.3.0",
+  "pyjwt==2.15.1",
+  "passlib[bcrypt]==1.7.4",
+  "torch==2.14.1", "torchvision==0.29.1",
+  "transformers>=5.10.0,<6", "accelerate==1.15.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest==9.0.2",
-  "pytest-asyncio==1.3.0",
-  "black==26.1.0",
-  "flake8==7.3.0",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "black==26.10.0",
+  "flake8==7.4.1",
 ]
 
 ml = [
-  "httpx>=0.27,<1",
-  "tenacity>=9.0,<10",
+  "httpx==0.28.1",
+  "tenacity==9.1.4",
 ]
 
 tools = [
-  "pymupdf>=1.27.0",
+  "pymupdf==1.28.2",
 ]
 
 # OCR opcional: solo si realmente lo necesitas (scans)
 # Nota: Docling expone extras de OCR (easyocr/tesserocr/rapidocr/etc.)
 ocr = [
-  "docling[easyocr]>=2.74",
+  "docling[easyocr]==2.133.0",
 ]
+
+[dependency-groups]
+sonar = ["pysonar==1.9.0.5762"]
+
+[tool.uv]
+# Security floors for transitive packages; uv.lock records exact resolutions.
+constraint-dependencies = [
+  "aiohttp>=3.14.3,<4", "anyio>=4.14.2,<5", "cryptography>=50.0.0",
+  "docling-core>=2.74.1,<3", "fsspec>=2026.6.0", "h2>=4.4.1,<5",
+  "hpack>=4.2.0,<5", "idna>=3.15,<4", "json-repair>=0.60.1,<1",
+  "lxml>=6.1.0,<7", "multidict>=6.9.1,<7", "pillow>=12.3.0,<13",
+  "pyasn1>=0.6.4,<1", "pygments>=2.20.0,<3", "requests>=2.33.0,<3",
+  "setuptools>=83.0.0", "soupsieve>=2.9.0,<3", "urllib3>=2.8.0,<3",
+]
+
 [project.urls]
 Homepage = "https://github.com/ia-juridica/ia-juridica"
 Repository = "https://github.com/ia-juridica/ia-juridica"
@@ -87,3 +106,28 @@ backend = ["**/*.yaml", "**/*.yml", "**/*.json", "**/*.md", "**/*.txt"]
 
 [tool.vercel]
 entrypoint = "backend.main:app"
+
+[tool.coverage.run]
+source = ["backend"]
+relative_files = true
+branch = true
+# Match the scanner scope: neither test bodies nor operational diagnostics
+# count as product coverage. Do not exclude uncovered application modules.
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.sonar]
+projectKey = "IA-juridica"
+host.url = "http://localhost:9000"
+sources = "backend,frontend/src,frontend/app"
+tests = "tests"
+test.inclusions = "**/test_*.py,**/conftest.py,**/*.test.mjs,**/*.test.mts,**/*.test.ts,**/*.test.tsx,**/*.spec.js,**/*.spec.ts"
+test.exclusions = "tests/backend/manual/**,tests/backend/fixtures/**,tests/frontend/fixtures/**"
+sourceEncoding = "UTF-8"
+qualitygate.wait = true
+exclusions = "backend/docs/**,**/docs_backup*/**,**/node_modules/**,**/.venv/**,**/__pycache__/**,**/.env,**/.env.*,**/*.pem,**/*.key,**/*.pdf,**/*.jsonl"
+python.coverage.reportPaths = "coverage.xml"
+python.xunit.reportPath = "temp/sonar-reports/pytest.xml"
+javascript.lcov.reportPaths = "temp/sonar-reports/frontend-coverage/lcov.info"

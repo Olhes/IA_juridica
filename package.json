@@ -13,9 +13,17 @@
     "backend:dev": "uv run python backend/main.py",
     "backend:dev:safe": "uv run python backend/scripts/run_dev_server.py",
     "backend:sync": "uv sync",
-    "install-frontend": "pnpm --dir frontend install"
+    "install-frontend": "pnpm --dir frontend install",
+    "deps:export": "node scripts/export-requirements.mjs",
+    "deps:check": "uv lock --check && node scripts/export-requirements.mjs --check"
   },
-  "keywords": ["ia", "juridico", "quechua", "espanol", "derecho-digital"],
+  "keywords": [
+    "ia",
+    "juridico",
+    "quechua",
+    "espanol",
+    "derecho-digital"
+  ],
   "author": "IA Jurídica Team",
   "license": "MIT",
   "engines": {
@@ -23,7 +31,18 @@
   },
   "packageManager": "pnpm@10.30.2",
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "concurrently": "^9.2.1"
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "^1.63.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@vitest/coverage-v8": "5.0.3",
+    "concurrently": "^10.0.5",
+    "jsdom": "29.1.1",
+    "msw": "2.15.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "vitest": "5.0.3"
   }
 }
