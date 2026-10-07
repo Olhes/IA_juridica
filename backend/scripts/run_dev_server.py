@@ -16,4 +16,6 @@ from main import app
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, log_level="info")
+    # Desarrollo local: no exponer la API a otras interfaces de red.
+    # El contenedor conserva su propio bind en backend/Dockerfile.
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False, log_level="info")

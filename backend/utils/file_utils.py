@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from loguru import logger
 
 class FileUtils:
@@ -17,10 +17,10 @@ class FileUtils:
         """
         Valida un archivo para procesamiento
         
-        Args:
+        Argumentos:
             file_path: Ruta al archivo
             
-        Returns:
+        Retorna:
             Dict con resultado de validación
         """
         
@@ -63,29 +63,29 @@ class FileUtils:
             "size": file_size,
             "size_mb": file_size / (1024*1024),
             "format": path.suffix.lower(),
-            "modified": datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+            "modified": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
         }
         
         return validation_result
     
     def get_file_hash(self, file_path: str) -> str:
         """
-        Calcula hash MD5 de un archivo
+        Calcula hash SHA-256 de un archivo
         
-        Args:
+        Argumentos:
             file_path: Ruta al archivo
             
-        Returns:
-            Hash MD5 del archivo
+        Retorna:
+            Hash SHA-256 hexadecimal de 64 caracteres del archivo
         """
         
-        hash_md5 = hashlib.md5()
+        hash_sha256 = hashlib.sha256()
         
         try:
             with open(file_path, "rb") as f:
                 for chunk in iter(lambda: f.read(4096), b""):
-                    hash_md5.update(chunk)
-            return hash_md5.hexdigest()
+                    hash_sha256.update(chunk)
+            return hash_sha256.hexdigest()
         except Exception as e:
             logger.error(f"Error calculando hash de {file_path}: {str(e)}")
             return ""
@@ -94,11 +94,11 @@ class FileUtils:
         """
         Organiza archivos por tipo en subdirectorios
         
-        Args:
+        Argumentos:
             source_dir: Directorio origen
             target_dir: Directorio destino
             
-        Returns:
+        Retorna:
             Dict con resultados de la organización
         """
         
@@ -152,10 +152,10 @@ class FileUtils:
         """
         Encuentra archivos duplicados por hash
         
-        Args:
+        Argumentos:
             directory: Directorio a analizar
             
-        Returns:
+        Retorna:
             Dict con grupos de archivos duplicados
         """
         
@@ -187,10 +187,10 @@ class FileUtils:
         """
         Elimina directorios vacíos
         
-        Args:
+        Argumentos:
             directory: Directorio a limpiar
             
-        Returns:
+        Retorna:
             Dict con resultados de la limpieza
         """
         
@@ -220,10 +220,10 @@ class FileUtils:
         """
         Obtiene estadísticas de un directorio
         
-        Args:
+        Argumentos:
             directory: Directorio a analizar
             
-        Returns:
+        Retorna:
             Dict con estadísticas
         """
         
@@ -291,11 +291,11 @@ class FileUtils:
         """
         Crea copia de seguridad de un directorio
         
-        Args:
+        Argumentos:
             source_dir: Directorio origen
             backup_dir: Directorio destino
             
-        Returns:
+        Retorna:
             Dict con resultados del backup
         """
         
@@ -332,11 +332,11 @@ class FileUtils:
         """
         Restaura desde backup
         
-        Args:
+        Argumentos:
             backup_path: Directorio de backup
             target_dir: Directorio destino
             
-        Returns:
+        Retorna:
             Dict con resultados de la restauración
         """
         
@@ -369,11 +369,11 @@ class FileUtils:
         """
         Comprime un directorio en ZIP
         
-        Args:
+        Argumentos:
             directory: Directorio a comprimir
             output_file: Archivo ZIP de salida
             
-        Returns:
+        Retorna:
             Dict con resultados de la compresión
         """
         

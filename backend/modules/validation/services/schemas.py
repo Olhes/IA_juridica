@@ -5,7 +5,7 @@ Todos los módulos de validación comparten estos contratos de datos.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -83,7 +83,7 @@ class ValidationReport(BaseModel):
     cultural_issues     : List[str] = []
     warnings            : List[str] = []
     processing_time_ms  : Optional[float] = None
-    validated_at        : datetime = Field(default_factory=datetime.utcnow)
+    validated_at        : datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ValidatedResponse(BaseModel):

@@ -665,7 +665,13 @@ async def legal_query_stream(request: Request, payload: LegalQueryRequest, princ
 
 
 
-@app.post("/generate-pdf-report")
+@app.post(
+    "/generate-pdf-report",
+    responses={
+        500: {"description": "PDF generation failed"},
+        503: {"description": "PDF generation unavailable"},
+    },
+)
 async def generate_pdf_report(
     payload: PDFReportRequest,
     principal: Principal = Depends(require_principal),

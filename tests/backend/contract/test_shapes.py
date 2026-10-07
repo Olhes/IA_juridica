@@ -45,3 +45,20 @@ async def test_rag_result_contract_is_local_not_temporal(rag):
         for doc in result["documents"]
     )
     assert all(0 <= score <= 1 for score in result["rerank_scores"])
+
+
+@pytest.mark.parametrize(
+    "status_code, description",
+    [
+        ("500", "PDF generation failed"),
+        ("503", "PDF generation unavailable"),
+    ],
+)
+def test_pdf_report_errors_are_documented_in_openapi(api, status_code, description):
+    client, _, _ = api
+    responses = client.get("/openapi.json").json()["paths"]["/generate-pdf-report"][
+        "post"
+    ]["responses"]
+    assert responses[status_code]["description"] == description
+    assert "200" in responses
+    assert "422" in responses

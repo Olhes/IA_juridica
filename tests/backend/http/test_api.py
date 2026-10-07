@@ -30,8 +30,52 @@ def test_cached_query_does_not_call_external_dependencies(api):
     main.app.state.rag_engine.query_with_rerank.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "unavailable, status_code, detail",
+    [
+        (False, 500, "PDF generation failed"),
+        (True, 503, "PDF generation unavailable"),
+    ],
+)
+def test_pdf_report_preserves_documented_errors(
+    api, monkeypatch, unavailable, status_code, detail
+):
+    client, _, _ = api
+    generator = Mock(side_effect=RuntimeError("internal generator error"))
+    monkeypatch.setitem(
+        sys.modules,
+        "utils.pdf_generator",
+        None if unavailable else SimpleNamespace(generate_legal_pdf_bytes=generator),
+    )
+    client.post("/session/bootstrap")
+    response = client.post(
+        "/generate-pdf-report", json={"query": "licencia", "response": {}}
+    )
+    assert response.status_code == status_code
+    assert response.json() == {"detail": detail}
 
 
+def test_pdf_report_preserves_successful_download(api, monkeypatch):
+    client, _, _ = api
+    pdf_bytes = b"%PDF-1.4\nsynthetic-report"
+    generator = Mock(return_value=pdf_bytes)
+    monkeypatch.setitem(
+        sys.modules,
+        "utils.pdf_generator",
+        SimpleNamespace(generate_legal_pdf_bytes=generator),
+    )
+    client.post("/session/bootstrap")
+    response = client.post(
+        "/generate-pdf-report", json={"query": "licencia", "response": {}}
+    )
+    assert response.status_code == 200
+    assert response.content == pdf_bytes
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="reporte_legal.pdf"'
+    )
+    assert response.headers["cache-control"] == "no-store"
+    generator.assert_called_once_with(query="licencia", response_data={})
 
 
 def test_admin_gate_precedes_document_access(api):

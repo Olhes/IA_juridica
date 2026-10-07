@@ -7,7 +7,7 @@ import redis.asyncio as redis
 import json
 import pickle
 from typing import Any, Optional, List, Dict, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from config.settings import settings
 
 
@@ -178,7 +178,7 @@ class RedisAdapter:
                               window_seconds: int = 900) -> Dict[str, Any]:
         """Verificar rate limiting"""
         key = f"rate_limit:{identifier}"
-        current_time = datetime.utcnow().timestamp()
+        current_time = datetime.now(timezone.utc).timestamp()
         
         try:
             # Obtener conteo actual
@@ -264,12 +264,12 @@ class RedisAdapter:
             print(f"❌ Error en set_counter: {e}")
             return False
     
-    # === Health Check ===
+    # === Comprobación de estado ===
     
     async def health_check(self) -> Dict[str, Any]:
         """Verificar salud de Redis"""
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             await self.client.ping()
             info = await self.client.info()
             
@@ -279,14 +279,14 @@ class RedisAdapter:
                 'version': info.get('redis_version', 'unknown'),
                 'connected_clients': info.get('connected_clients', 0),
                 'used_memory': info.get('used_memory_human', 'unknown'),
-                'response_time_ms': (datetime.utcnow() - start_time).total_seconds() * 1000,
-                'timestamp': datetime.utcnow().isoformat()
+                'response_time_ms': (datetime.now(timezone.utc) - start_time).total_seconds() * 1000,
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         except Exception:
             return {
                 'status': 'unhealthy',
                 'database': 'redis',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
     
     # === Utilidades ===
