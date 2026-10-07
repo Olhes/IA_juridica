@@ -10,6 +10,10 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      onComplete?.();
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
 

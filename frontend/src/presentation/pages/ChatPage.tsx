@@ -64,6 +64,7 @@ export function ChatPage() {
   const [terminalMessages, setTerminalMessages] = useState<Array<{ id: string; content: string; isUser: boolean }>>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const terminalButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(LANGUAGE_KEY);
@@ -216,7 +217,7 @@ export function ChatPage() {
     [activeSessionId, updateSessionMeta]
   );
 
-  // ── Chat Hook ─────────────────────────────────────────────────────────────
+  // ── Hook del chat ─────────────────────────────────────────────────────────
   const {
     messages,
     isLoading,
@@ -228,14 +229,12 @@ export function ChatPage() {
   useEffect(() => { checkHealth(); }, [checkHealth]);
 
   useEffect(() => {
-    if (messages.length > 0) {
       const formatted = messages.map((m) => ({
         id: m.id,
-        content: m.content,
+        content: m.content || m.streamingContent || '',
         isUser: m.role === 'user',
       }));
       setTerminalMessages(formatted);
-    }
   }, [messages]);
 
   const t = landingI18n[language];
@@ -255,10 +254,7 @@ export function ChatPage() {
     setTerminalOpen(true);
   };
 
-  const handleStartChat = () => {
-    setShowLanding(false);
-    setTerminalOpen(true);
-  };
+  const handleStartChat = () => { void handleNewSession(); };
 
   const handleSendTerminalMessage = (message: string) => {
     setShowLanding(false);
@@ -360,6 +356,7 @@ export function ChatPage() {
       {/* Floating Hub */}
       {animationComplete && (
         <FloatingRadialHub
+          terminalButtonRef={terminalButtonRef}
           onTerminalOpen={() => setTerminalOpen(true)}
           onHistoryOpen={() => setHistoryOpen(true)}
           onFileUpload={() => {}}
@@ -370,6 +367,7 @@ export function ChatPage() {
 
       {/* Modal / Ventana Terminal */}
       <TerminalModal
+        returnFocusRef={terminalButtonRef}
         isOpen={terminalOpen}
         onClose={() => setTerminalOpen(false)}
         onSend={handleSendTerminalMessage}

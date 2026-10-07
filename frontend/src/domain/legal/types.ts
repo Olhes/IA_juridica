@@ -11,7 +11,7 @@ export type ValidationStatus = 'passed' | 'warned' | 'corrected' | 'failed';
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 export type UrgencyLevel = 'bajo' | 'medio' | 'alto' | 'critico';
 
-// ---- API Response Shapes ----
+// ---- Estructuras de respuesta de la API ----
 
 export interface LegalStep {
   paso: number;
@@ -93,7 +93,7 @@ export interface LegalQueryApiResponse {
   };
 }
 
-// ---- Chat UI Types ----
+// ---- Tipos de la interfaz de chat ----
 
 export type MessageRole = 'user' | 'assistant';
 
@@ -101,9 +101,9 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
-  /** Streaming text (progressively updated) */
+  /** Texto en streaming (actualizado progresivamente). */
   streamingContent?: string;
-  /** Final structured API response (available at stream end event) */
+  /** Respuesta estructurada final de la API (disponible al terminar el flujo). */
   apiResponse?: LegalQueryApiResponse;
   isStreaming?: boolean;
   isLoadingFull?: boolean;
@@ -114,7 +114,7 @@ export interface ChatMessage {
   metadata?: Record<string, any>;
 }
 
-// ---- Chat Session (multi-thread) ----
+// ---- Sesión de chat (varios hilos) ----
 
 export interface ChatSessionMeta {
   id: string;

@@ -1,6 +1,6 @@
-# Frontend Architecture (TypeScript)
+# Arquitectura del frontend (TypeScript)
 
-El frontend usa Next.js App Router con una separacion por capas:
+El frontend usa Next.js App Router con una separación por capas:
 
 - `src/domain`: tipos del negocio y puertos (interfaces).
 - `src/application`: casos de uso (orquestacion de reglas).
@@ -10,8 +10,8 @@ El frontend usa Next.js App Router con una separacion por capas:
 
 ## Flujo principal
 
-1. UI ejecuta un caso de uso (`application`).
-2. El caso de uso llama un puerto (`domain`).
-3. Un gateway HTTP (`infrastructure`) implementa ese puerto.
+1. La interfaz ejecuta un caso de uso (`application`).
+2. El caso de uso llama a un puerto (`domain`).
+3. Una puerta de enlace HTTP (`infrastructure`) implementa ese puerto.
 4. El gateway consume `app/api/legal/*`.
-5. `app/api/legal/*` reenvia la solicitud a FastAPI.
+5. `app/api/legal/*` reenvía la solicitud a FastAPI.

@@ -20,7 +20,7 @@ interface UseChatOptions {
 }
 
 /**
- * Core chat hook con persistencia en backend (PostgreSQL + Redis).
+ * Hook central del chat con persistencia en el backend (PostgreSQL + Redis).
  *
  * Flujo por mensaje:
  *  1. POST /legal-query-stream → stream de chunks NDJSON
@@ -34,9 +34,18 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const epochRef = useRef(0);
+  const loadVersionRef = useRef(0);
 
   // ── Cargar mensajes desde el backend cuando cambia la sesión activa ────────
   useEffect(() => {
+    epochRef.current++;
+    const version = ++loadVersionRef.current;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsLoading(false);
+    setMessages([]);
+    let active = true;
     const loadMessages = async () => {
       if (!sessionId) {
         setMessages([]);
@@ -46,6 +55,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
       try {
         const response = await apiService.getConversation(sessionId);
+        if (!active || version !== loadVersionRef.current) return;
         if (response.success && response.data) {
           const backendMessages = response.data.messages;
           const chatMessages = backendMessages.map((msg: BackendMessage) => ({
@@ -58,14 +68,20 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           setMessages(chatMessages);
         }
       } catch (error) {
+        if (!active || version !== loadVersionRef.current) return;
         console.error('Error loading messages:', error);
         setMessages([]);
       } finally {
-        setHydrated(true);
+        if (active && version === loadVersionRef.current) setHydrated(true);
       }
     };
 
     loadMessages();
+    return () => {
+      active = false;
+      epochRef.current++;
+      abortRef.current?.abort();
+    };
   }, [sessionId]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -92,7 +108,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     [language]
   );
 
-  // ─── Health check ──────────────────────────────────────────────────────────
+  // ─── Comprobación de estado ────────────────────────────────────────────────
 
   const checkHealth = useCallback(async () => {
     try {
@@ -111,11 +127,12 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
   const sendQuery = useCallback(
     async (query: string) => {
-      if (isLoading || !query.trim() || !sessionId) return;
+      if (isLoading || abortRef.current || !query.trim() || !sessionId) return;
 
-      abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const epoch = epochRef.current;
+      const isCurrent = () => epoch === epochRef.current && abortRef.current === controller;
       setIsLoading(true);
 
       // No validar sesión aquí para evitar error 404
@@ -143,13 +160,9 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       });
 
       // Notificar al sidebar (título = primer mensaje del usuario)
-      setMessages((prev) => {
-        const userCount = prev.filter((m) => m.role === 'user').length;
-        if (userCount === 0) {
-          onSessionUpdated?.({ title: query.trim().slice(0, 60) });
-        }
-        return prev;
-      });
+      if (!messages.some(m => m.role === 'user')) {
+        onSessionUpdated?.({ title: query.trim().slice(0, 60) });
+      }
 
       // ── Stream + payload final (NDJSON) ───────────────────────────────
       let streamedText = '';
@@ -168,7 +181,9 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           signal: controller.signal,
         });
 
-        if (!streamRes.ok || !streamRes.body) throw new Error('Error de conexión');
+        if (!isCurrent()) return;
+        if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
+        if (!streamRes.body) throw new Error('Error de conexión');
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
@@ -183,6 +198,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         };
 
         const processLine = (line: string) => {
+          if (!isCurrent()) return;
           if (!line.trim()) return;
           const event = JSON.parse(line) as {
             type?: 'chunk' | 'final' | 'error';
@@ -222,6 +238,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
         while (true) {
           const { value, done } = await reader.read();
+          if (!isCurrent()) { await reader.cancel(); return; }
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
@@ -252,6 +269,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           });
         }
       } catch (err) {
+        if (!isCurrent()) return;
         if ((err as Error).name === 'AbortError') {
           const partial = streamedText || '(Respuesta interrumpida)';
           updateMessage(assistantId, {
@@ -261,12 +279,13 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
             streamingContent: undefined,
           });
           setIsLoading(false);
+          abortRef.current = null;
           return;
         }
 
         // Manejar error de conversación no encontrada (Redis reiniciado)
         const errorStr = (err as Error).toString().toLowerCase();
-        if (errorStr.includes('404') || errorStr.includes('not found') || errorStr.includes('conversation')) {
+        if (errorStr.includes('http 404')) {
           console.warn('Conversation not found, clearing state');
           updateMessage(assistantId, {
             isStreaming: false,
@@ -288,17 +307,16 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       }
 
       // Actualizar conteo de mensajes en el sidebar
-      setMessages((prev) => {
-        onSessionUpdated?.({ messageCount: prev.length });
-        return prev;
-      });
+      if (!isCurrent()) return;
+      onSessionUpdated?.({ messageCount: messages.length + 2 });
 
       // Nota: Los mensajes se persisten automáticamente en el backend
       // via el endpoint /legal-query-stream cuando se envía conversation_id
 
       setIsLoading(false);
+      abortRef.current = null;
     },
-    [isLoading, language, sessionId, pushMessage, updateMessage, onSessionUpdated, resolveFinalText]
+    [isLoading, language, sessionId, messages, pushMessage, updateMessage, onSessionUpdated, resolveFinalText]
   );
 
   // ─── Abort ─────────────────────────────────────────────────────────────────
@@ -329,8 +347,8 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         const a = document.createElement('a');
         a.href = url;
         a.download = `informe-legal-${Date.now()}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
+        try { a.click(); }
+        finally { URL.revokeObjectURL(url); }
       }
     } catch { /* noop */ }
     finally { setDownloadingPdfId(null); }
@@ -339,7 +357,10 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
   // ─── Clear current session ─────────────────────────────────────────────────
 
   const clearChat = useCallback(() => {
+    epochRef.current++;
+    loadVersionRef.current++;
     abortRef.current?.abort();
+    abortRef.current = null;
     setMessages([]);
     setIsLoading(false);
     // Los mensajes se limpian en el backend via useChatSessions.clearActiveSession

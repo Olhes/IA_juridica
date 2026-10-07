@@ -70,7 +70,7 @@ function formatDate(iso: string, lang: SupportedLanguage): string {
   return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }
 
-// ── Session row ──────────────────────────────────────────────────────────────
+// ── Fila de sesión ───────────────────────────────────────────────────────────
 
 function SessionRow({
   session,
@@ -148,6 +148,7 @@ function SessionRow({
         <button
           type="button"
           id={`session-menu-${session.id}`}
+          aria-label={`Opciones de ${session.title}`}
           onClick={() => setMenuOpen((v) => !v)}
           className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
             isActive
@@ -235,6 +236,7 @@ export function ChatSidebar({
         <button
           type="button"
           onClick={onClose}
+          aria-label="Cerrar consultas"
           className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X className="w-4 h-4" />

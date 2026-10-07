@@ -179,7 +179,7 @@ export function useBackendChat({ language = 'spanish' }: BackendChatOptions) {
     }
   }, []);
 
-  // ── Health check ─────────────────────────────────────────────
+  // ── Comprobación de estado ────────────────────────────────────
   const checkHealth = useCallback(async () => {
     try {
       const response = await apiService.chatHealthCheck();
@@ -207,9 +207,9 @@ export function useBackendChat({ language = 'spanish' }: BackendChatOptions) {
     });
   }, []);
 
-  // ── Effects ───────────────────────────────────────────────────
+  // ── Efectos ────────────────────────────────────────────────────
   useEffect(() => {
-    // Health check periódico
+    // Comprobación periódica del estado
     checkHealth();
     const interval = setInterval(checkHealth, 30000); // 30 segundos
     return () => clearInterval(interval);

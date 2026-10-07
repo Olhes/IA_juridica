@@ -44,7 +44,7 @@ const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'auth_user';
 
-class AuthService {
+export class AuthService {
   private token: string | null = null;
   private refreshToken: string | null = null;
   private user: User | null = null;
@@ -55,7 +55,7 @@ class AuthService {
     // Verificamos autenticación con el backend
   }
 
-  // ── Storage ───────────────────────────────────────────────────────────────
+  // ── Almacenamiento ────────────────────────────────────────────────────────
 
   private loadFromStorage() {
     // Deshabilitado por seguridad - usamos httpOnly cookies
@@ -70,7 +70,7 @@ class AuthService {
     // Deshabilitado por seguridad - usamos httpOnly cookies
   }
 
-  // ── State Management ───────────────────────────────────────────────────────
+  // ── Gestión del estado ────────────────────────────────────────────────────
 
   private notifyListeners() {
     const state: AuthState = {
@@ -132,6 +132,7 @@ class AuthService {
     // Las cookies se establecen automáticamente por el backend
     // Verificar autenticación obteniendo el usuario actual
     await this.fetchCurrentUser();
+    this.token = 'from_cookie';
     this.notifyListeners();
   }
 
@@ -221,23 +222,24 @@ class AuthService {
   async getCurrentUser(): Promise<User | null> {
     if (this.user) return this.user;
     
-    if (this.token) {
-      try {
-        await this.fetchCurrentUser();
-        this.saveToStorage();
-      } catch {
-        return null;
-      }
+    try {
+      await this.fetchCurrentUser();
+      this.token = 'from_cookie';
+    } catch {
+      this.token = null;
+      this.user = null;
+      return null;
     }
     
     return this.user;
   }
 
-  // ── Request Wrapper ─────────────────────────────────────────────────────────
+  // ── Envoltorio de solicitudes ───────────────────────────────────────────────
 
   async authenticatedRequest<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retry = true
   ): Promise<T> {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -249,6 +251,10 @@ class AuthService {
     });
 
     if (response.status === 401) {
+      if (!retry) {
+        await this.logout();
+        throw new Error('Sesión expirada');
+      }
       // Intentar refrescar token usando cookies
       try {
         const refreshResponse = await fetch(`${API_BASE}/auth/refresh`, {
@@ -262,12 +268,14 @@ class AuthService {
         
         if (refreshResponse.ok) {
           // Reintentar la solicitud
-          return this.authenticatedRequest<T>(endpoint, options);
+          return this.authenticatedRequest<T>(endpoint, options, false);
         }
       } catch {
-        this.logout();
+        await this.logout();
         throw new Error('Sesión expirada');
       }
+      await this.logout();
+      throw new Error('Sesión expirada');
     }
 
     if (!response.ok) {
@@ -278,7 +286,7 @@ class AuthService {
     return response.json();
   }
 
-  // ── Getters ───────────────────────────────────────────────────────────────
+  // ── Accesores ─────────────────────────────────────────────────────────────
 
   get isAuthenticated(): boolean {
     return !!this.token;

@@ -204,7 +204,7 @@ export function usePersistentChat({
     }
   }, [language, onConversationUpdated]);
 
-  // ── Health check ───────────────────────────────────────────────────
+  // ── Comprobación de estado ──────────────────────────────────────────
   const checkHealth = useCallback(async () => {
     try {
       const response = await apiService.chatHealthCheck();
@@ -232,13 +232,13 @@ export function usePersistentChat({
     });
   }, []);
 
-  // ── Effects ───────────────────────────────────────────────────────
+  // ── Efectos ───────────────────────────────────────────────────────
   useEffect(() => {
     loadConversation();
   }, [loadConversation]);
 
   useEffect(() => {
-    // Health check periódico
+    // Comprobación periódica del estado
     checkHealth();
     const interval = setInterval(checkHealth, 30000); // 30 segundos
     return () => clearInterval(interval);

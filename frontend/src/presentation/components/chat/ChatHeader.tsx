@@ -145,7 +145,7 @@ export function ChatHeader({
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
                     currentLanguage === lang
                       ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >
                   {lang === 'spanish' ? t.langES : t.langQU}
@@ -161,6 +161,7 @@ export function ChatHeader({
           <button
             type="button"
             onClick={handleAuth}
+            aria-label={isAuthenticated ? t.logout : t.login}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
               bg-slate-100 hover:bg-slate-200
               dark:bg-gray-800 dark:hover:bg-gray-700

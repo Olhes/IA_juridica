@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type RefObject } from 'react';
 import { Pen, Mic, Paperclip, History, FileText, Camera } from 'lucide-react';
 
 interface FloatingRadialHubProps {
+  terminalButtonRef?: RefObject<HTMLButtonElement | null>;
   onTerminalOpen?: () => void;
   onHistoryOpen?: () => void;
   onFileUpload?: () => void;
@@ -12,6 +13,7 @@ interface FloatingRadialHubProps {
 }
 
 export function FloatingRadialHub({
+  terminalButtonRef,
   onTerminalOpen,
   onHistoryOpen,
   onFileUpload,
@@ -116,6 +118,8 @@ export function FloatingRadialHub({
 
             {/* --- CUADRANTE 1: ARRIBA IZQUIERDA (LÁPIZ) --- */}
             <button
+              aria-label="Abrir terminal"
+              ref={terminalButtonRef}
               onClick={() => {
                 setShowSatellites(false);
                 onTerminalOpen?.();
@@ -129,6 +133,7 @@ export function FloatingRadialHub({
 
             {/* --- CUADRANTE 2: ARRIBA DERECHA (MICRÓFONO) --- */}
             <button
+              aria-label="Activar micrófono"
               onClick={() => {
                 setShowSatellites(false);
                 onMicToggle?.();
@@ -142,6 +147,8 @@ export function FloatingRadialHub({
 
             {/* --- CUADRANTE 3: ABAJO IZQUIERDA (CLIP DE ADJUNTOS) --- */}
             <button
+              aria-label="Mostrar adjuntos"
+              aria-expanded={showSatellites}
               onClick={() => setShowSatellites(!showSatellites)}
               className="absolute bottom-0 left-0 w-1/2 h-1/2 rounded-bl-full bg-slate-900 flex items-center justify-center transition-all duration-300 ease-out group hover:z-30 hover:scale-110 hover:-translate-x-1 hover:translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.8)] hover:bg-slate-800 active:scale-95"
             >
@@ -152,6 +159,7 @@ export function FloatingRadialHub({
 
             {/* --- CUADRANTE 4: ABAJO DERECHA (HISTORIAL) --- */}
             <button
+              aria-label="Abrir historial"
               onClick={() => {
                 setShowSatellites(false);
                 onHistoryOpen?.();
@@ -168,6 +176,9 @@ export function FloatingRadialHub({
           
           {/* Satélite 1: Documento/Archivo */}
           <button
+            aria-label="Adjuntar archivo"
+            tabIndex={showSatellites ? 0 : -1}
+            aria-hidden={!showSatellites}
             onClick={() => {
               onFileUpload?.();
               setShowSatellites(false);
@@ -189,6 +200,9 @@ export function FloatingRadialHub({
 
           {/* Satélite 2: Cámara/Foto */}
           <button
+            aria-label="Abrir cámara"
+            tabIndex={showSatellites ? 0 : -1}
+            aria-hidden={!showSatellites}
             onClick={() => {
               onCameraOpen?.();
               setShowSatellites(false);

@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatSessionMeta, SupportedLanguage } from '../../../domain/legal/types';
 import { apiService } from '../services/apiService';
 import { loadChatSessions, sessionsAfterLoad } from './chatSessionLoad';
 import { backendToSessionMeta } from './chatSessionMeta';
 
-// ─── Hook ──────────────────────────────────────────────────────────────────────
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useChatSessions() {
   const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
@@ -14,6 +14,7 @@ export function useChatSessions() {
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState<string | null>(null);
+  const reloadVersion = useRef(0);
 
   // ── Crear nueva sesión en el backend ────────────────────────────────────────
   const createSession = useCallback(async (language: SupportedLanguage = 'spanish'): Promise<string> => {
@@ -45,10 +46,13 @@ export function useChatSessions() {
   }, [sessions]);
 
   const reloadSessions = useCallback(async () => {
+    const version = ++reloadVersion.current;
     setLoading(true);
     try {
       await apiService.initializeSession();
+      if (version !== reloadVersion.current) return;
     } catch {
+      if (version !== reloadVersion.current) return;
       setSessionsLoadError('No se pudo iniciar la sesión anónima.');
       setLoading(false);
       setHydrated(true);
@@ -58,6 +62,7 @@ export function useChatSessions() {
       apiService.listConversations.bind(apiService),
       backendToSessionMeta
     );
+    if (version !== reloadVersion.current) return;
 
     if (result.success) {
       setSessions((current) => sessionsAfterLoad(current, result));
@@ -74,6 +79,7 @@ export function useChatSessions() {
   // ── Cargar sesiones desde el backend al montar ─────────────────────────────
   useEffect(() => {
     void reloadSessions();
+    return () => { reloadVersion.current++; };
   }, [reloadSessions]);
 
   // ── Actualizar metadata de una sesión ──────────────────────────────────────
@@ -113,6 +119,7 @@ export function useChatSessions() {
       try {
         console.log('Attempting to delete session:', id);
         const result = await apiService.deleteConversation(id);
+        if (!result.success) throw new Error(result.error || 'No se pudo eliminar la consulta');
         console.log('Delete API result:', result);
         
         setSessions((prev) => {

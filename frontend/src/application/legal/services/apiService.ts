@@ -39,7 +39,7 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
-class ApiService {
+export class ApiService {
   private baseUrl: string;
   private sessionBootstrap: Promise<void> | null = null;
 
@@ -161,7 +161,7 @@ class ApiService {
     return this.request(`/chat/conversations/${conversationId}/stats`);
   }
 
-  // ── Chat Message (nuevo endpoint) ─────────────────────────────────────
+  // ── Mensaje de chat (endpoint nuevo) ──────────────────────────────────
   async sendChatMessage(
     message: string,
     conversationId?: string,
@@ -195,7 +195,7 @@ class ApiService {
     });
   }
 
-  // ── Mensajes (legacy) ─────────────────────────────────────────────────
+  // ── Mensajes (heredado) ───────────────────────────────────────────────
   async createMessage(
     conversationId: string,
     content: string,
@@ -231,7 +231,7 @@ class ApiService {
     });
   }
 
-  // ── Health Check ───────────────────────────────────────────────────────────
+  // ── Comprobación de estado ──────────────────────────────────────────────────
   async healthCheck(): Promise<ApiResponse<any>> {
     return this.request('/health');
   }
@@ -257,7 +257,7 @@ class ApiService {
     });
   }
 
-  // ── Legal Query (existente) ───────────────────────────────────────────────
+  // ── Consulta legal (existente) ─────────────────────────────────────────────
   async legalQuery(query: string, language: string): Promise<ApiResponse<any>> {
     return this.request('/legal-query', {
       method: 'POST',

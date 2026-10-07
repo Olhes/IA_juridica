@@ -15,6 +15,7 @@ interface TerminalModalProps {
   onSend: (message: string) => void;
   messages: TerminalMessage[];
   isLoading?: boolean;
+  returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 export function TerminalModal({
@@ -23,17 +24,42 @@ export function TerminalModal({
   onSend,
   messages,
   isLoading = false,
+  returnFocusRef,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeRef.current();
+      if (event.key === 'Tab') {
+        const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
+        if (!controls?.length) return;
+        const first = controls[0]; const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      if (previous?.isConnected && previous !== document.body && previous !== document.documentElement) previous.focus();
+      else returnFocusRef?.current?.focus();
+    };
+  }, [isOpen, returnFocusRef]);
 
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      inputRef.current?.focus();
     }
   }, [messages, isOpen, isLoading]);
+  useEffect(() => { if (isOpen) inputRef.current?.focus(); }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -55,7 +81,7 @@ export function TerminalModal({
       />
 
       {/* Ventana flotante con sombras acentuadas para dar elevación sin oscurecer la pantalla */}
-      <div className="relative z-10 w-[94vw] max-w-7xl h-[92vh] bg-zinc-950/95 border border-zinc-800/90 rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif] pointer-events-auto">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="terminal-title" className="relative z-10 w-[94vw] max-w-7xl h-[92vh] bg-zinc-950/95 border border-zinc-800/90 rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif] pointer-events-auto">
         
         {/* Encabezado Superior */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md">
@@ -64,7 +90,7 @@ export function TerminalModal({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <h2 id="terminal-title" className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 Asistente IA Jurídico
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
                   Online
@@ -129,7 +155,7 @@ export function TerminalModal({
           {isLoading && (
             <div className="flex items-center gap-3 max-w-5xl mx-auto text-zinc-400 text-sm pl-12">
               <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-              <span>Procesando respuesta jurídica...</span>
+              <span role="status">Procesando respuesta jurídica...</span>
             </div>
           )}
 
@@ -144,6 +170,7 @@ export function TerminalModal({
           >
             <input
               ref={inputRef}
+              aria-label="Consulta legal"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -153,6 +180,7 @@ export function TerminalModal({
             />
             <button
               type="submit"
+              aria-label="Enviar consulta"
               disabled={!input.trim() || isLoading}
               className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
             >

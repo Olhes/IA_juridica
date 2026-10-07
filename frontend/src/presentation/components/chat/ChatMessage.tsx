@@ -28,7 +28,7 @@ import type {
 } from '../../../domain/legal/types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
-// ─── Icons ───────────────────────────────────────────────────────────────────
+// ─── Iconos ──────────────────────────────────────────────────────────────────
 
 function BotIcon() {
   return (
@@ -46,7 +46,7 @@ function UserIcon() {
   );
 }
 
-// ─── Validation badge ─────────────────────────────────────────────────────────
+// ─── Insignia de validación ───────────────────────────────────────────────────
 
 function ValidationBadge({ validation }: { validation: ValidationReport }) {
   const map = {
@@ -177,7 +177,7 @@ function SourcesPanel({ apiResponse }: { apiResponse: LegalQueryApiResponse }) {
   );
 }
 
-// ─── Full details collapsible ─────────────────────────────────────────────────
+// ─── Detalles completos desplegables ──────────────────────────────────────────
 
 function FullDetails({
   apiResponse,
@@ -224,7 +224,7 @@ function FullDetails({
   );
 }
 
-// ─── Thinking skeleton ────────────────────────────────────────────────────────
+// ─── Esqueleto de carga ───────────────────────────────────────────────────────
 
 function ThinkingBubble() {
   return (
@@ -241,7 +241,7 @@ function ThinkingBubble() {
   );
 }
 
-// ─── Main ChatMessage ─────────────────────────────────────────────────────────
+// ─── Componente principal del mensaje de chat ─────────────────────────────────
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -279,7 +279,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
     );
   }
 
-  // ── Burbuja error ────────────────────────────────────────────────
+  // ── Burbuja de error ─────────────────────────────────────────────
   if (message.error) {
     return (
       <div className="flex items-start gap-3 px-4 md:px-8">
@@ -295,7 +295,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
     );
   }
 
-  // ── Burbuja asistente ────────────────────────────────────────────
+  // ── Burbuja del asistente ────────────────────────────────────────
   const apiResp = message.apiResponse;
   const validation = apiResp?.validation;
   const showValidationWarning = validation?.status === 'failed' || validation?.confidence === 'low';
@@ -309,12 +309,12 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
       <BotIcon />
       <div className="bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl rounded-tl-none px-5 py-4 shadow-sm max-w-[85%] md:max-w-xl lg:max-w-2xl">
 
-        {/* Validation badge */}
+        {/* Insignia de validación */}
         {validation && (
           <div className="mb-3"><ValidationBadge validation={validation} /></div>
         )}
 
-        {/* Validation alerts */}
+        {/* Alertas de validación */}
         {showValidationWarning && validation?.status === 'failed' && (
           <div className="mb-3 flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2 text-xs text-red-700 dark:text-red-400">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -328,10 +328,10 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
           </div>
         )}
 
-        {/* Markdown content */}
+        {/* Contenido Markdown */}
         <MarkdownRenderer content={respText} isStreaming={message.isStreaming} />
 
-        {/* Full details */}
+        {/* Detalles completos */}
         {apiResp && !message.isStreaming && (
           <FullDetails
             apiResponse={apiResp}
@@ -340,7 +340,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
           />
         )}
 
-        {/* Footer: cache badge + timestamp */}
+        {/* Pie: insignia de caché y marca de tiempo */}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-2">
             {apiResp?.cached && (
@@ -359,7 +359,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
           </span>
         </div>
 
-        {/* Loading full response */}
+        {/* Carga de la respuesta completa */}
         {message.isLoadingFull && apiResp === undefined && (
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-600">
             <Clock className="w-3.5 h-3.5 animate-spin" />

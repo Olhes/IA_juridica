@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { X, MessageSquare, Clock, Trash2 } from 'lucide-react';
 
 interface ChatSession {
@@ -25,10 +25,16 @@ export function HistoryPanel({
   onSelectSession,
   onDeleteSession,
 }: HistoryPanelProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
 
   return (
-    <div
+    <div role="region" aria-label="Historial de consultas"
       className={`fixed top-0 left-0 h-full w-80 bg-gray-900/95 backdrop-blur-xl border-r border-gray-700/50 shadow-2xl z-[10000] transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
@@ -37,6 +43,7 @@ export function HistoryPanel({
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50">
         <h2 className="text-lg font-semibold text-white">Historial</h2>
         <button
+          aria-label="Cerrar historial"
           onClick={onClose}
           className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
         >
@@ -55,6 +62,11 @@ export function HistoryPanel({
           sessions.map((session) => (
             <div
               key={session.id}
+              role="button" tabIndex={0} aria-label={`Seleccionar ${session.title}`}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectSession(session.id); }
+              }}
               className="group relative p-4 rounded-xl bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-indigo-500/50 transition-all cursor-pointer"
               onClick={() => onSelectSession(session.id)}
             >
@@ -63,6 +75,7 @@ export function HistoryPanel({
                   {session.title}
                 </h3>
                 <button
+                  aria-label={`Eliminar ${session.title}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteSession(session.id);
@@ -89,7 +102,7 @@ export function HistoryPanel({
         )}
       </div>
 
-      {/* Footer */}
+      {/* Pie */}
       <div className="px-6 py-4 border-t border-gray-700/50">
         <button
           onClick={onClose}
