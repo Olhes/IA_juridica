@@ -1137,7 +1137,7 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 | Caso | Qué verifica |
 |---|---|
 | `login por cookie actualiza estado sin persistir tokens` | Login por formulario seguido de /auth/me marca autenticación sin escribir tokens en localStorage. |
-| `usuario se recupera desde cookies tras nueva instancia sin token JS` | Una instancia sin token JavaScript restaura al usuario mediante cookies en /auth/me. |
+| `usuario se recupera desde cookies tras nueva instancia sin token JS` | Una instancia sin token JavaScript restaura al usuario mediante cookies en /auth/me y notifica una vez a sus suscriptores. |
 | `login inválido no autentica y conserva mensaje de error` | 401 conserva el mensaje y deja al usuario no autenticado. |
 | `logout limpia estado y notifica aunque la red falle` | Logout limpia usuario/tokens incluso sin red; desuscribir impide notificaciones posteriores. |
 | `401 refresca cookie una vez y reintenta conservando opciones` | Tras 401 hace exactamente un refresh y reenvía método/cuerpo de la solicitud. |

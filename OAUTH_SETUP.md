@@ -173,6 +173,84 @@ window.location.href = 'https://api.tu-dominio.com/auth/google';
 - Revisa la consola del navegador para logs de autenticación
 - Verifica que las cookies se estén estableciendo en el backend
 
+### Error: "GET /auth/me HTTP/1.1" 404 Not Found
+
+**Problema**: El endpoint `/auth/me` devolvía 404 después del callback de Google OAuth.
+
+**Causa**: Los routers se registraban antes del middleware CORS, lo que causaba que las rutas no fueran accesibles correctamente.
+
+**Solución**: Mover el registro de routers (`app.include_router`) después del middleware CORS en `backend/main.py`:
+
+```python
+# Orden correcto:
+app.add_middleware(CORSMiddleware, ...)
+app.include_router(chat_router)
+app.include_router(auth_router)
+```
+
+### Error: "Usuario no encontrado" en /auth/me (aunque el usuario existe)
+
+**Problema**: El endpoint `/auth/me` no encontraba usuarios en la base de datos aunque existieran.
+
+**Causa**: El método `get_user_by_id` no inicializaba la conexión a PostgreSQL antes de consultar.
+
+**Solución**: Agregar `await db.initialize()` en el endpoint `/auth/me` antes de consultar el usuario:
+
+```python
+db = PostgreSQLAdapter()
+await db.initialize()  # Asegurar que la conexión esté inicializada
+user = await db.get_user_by_id(payload.get("user_id"))
+```
+
+### Error: picture=None en la respuesta de /auth/me
+
+**Problema**: El campo `picture` se devolvía como `None` en la respuesta del endpoint `/auth/me`.
+
+**Causa**: La consulta SQL en `get_user_by_id` no incluía el campo `picture`.
+
+**Solución**: Actualizar la consulta SQL en `backend/database/postgres_adapter_final.py`:
+
+```python
+# Antes:
+SELECT id, email, username, full_name, role, is_active, last_login, created_at
+
+# Después:
+SELECT id, email, username, full_name, picture, role, is_active, last_login, created_at
+```
+
+Y actualizar el mapeo del resultado para incluir `picture`:
+```python
+return {
+    'id': str(result[0]),
+    'email': result[1],
+    'username': result[2],
+    'full_name': result[3],
+    'picture': result[4],  # Agregado
+    'role': result[5],
+    'is_active': result[6],
+    'last_login': result[7].isoformat() if result[7] else None,
+    'created_at': result[8].isoformat()
+}
+```
+
+### La imagen del perfil no es la correcta de Google
+
+**Problema**: La imagen mostrada no coincide con la foto de perfil de Google.
+
+**Causa**: Este problema puede ocurrir si:
+1. La URL de la imagen de Google no se está guardando correctamente en la base de datos
+2. El frontend no está usando la URL correcta para mostrar la imagen
+
+**Verificación**: Revisa los logs del backend para ver qué URL de imagen de Google se está recibiendo:
+```
+🖼️ Google picture URL: https://lh3.googleusercontent.com/a/...
+```
+
+**Solución**: Asegúrate de que:
+1. La URL de Google se está guardando correctamente en la base de datos
+2. El frontend está usando `user.picture` para mostrar la imagen
+3. La URL de Google es accesible (las URLs de Google Content son públicas)
+
 ## Seguridad
 
 - **Nunca** commits el archivo `.env` con credenciales reales

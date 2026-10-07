@@ -221,16 +221,17 @@ export class AuthService {
 
   async getCurrentUser(): Promise<User | null> {
     if (this.user) return this.user;
-    
+    // OAuth usa cookies httpOnly: restaurar el usuario sin exigir un token JS.
     try {
       await this.fetchCurrentUser();
       this.token = 'from_cookie';
+      this.notifyListeners();
     } catch {
       this.token = null;
       this.user = null;
       return null;
     }
-    
+
     return this.user;
   }
 

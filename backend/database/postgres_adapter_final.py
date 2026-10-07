@@ -690,7 +690,7 @@ class PostgreSQLAdapter:
         def get_sync():
             with self.conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, email, username, full_name, role, is_active, last_login, created_at
+                    SELECT id, email, username, full_name, picture, role, is_active, last_login, created_at
                     FROM auth_schema.users
                     WHERE id = %s
                 """, (user_id,))
@@ -704,10 +704,11 @@ class PostgreSQLAdapter:
                     'email': result[1],
                     'username': result[2],
                     'full_name': result[3],
-                    'role': result[4],
-                    'is_active': result[5],
-                    'last_login': result[6].isoformat() if result[6] else None,
-                    'created_at': result[7].isoformat()
+                    'picture': result[4],
+                    'role': result[5],
+                    'is_active': result[6],
+                    'last_login': result[7].isoformat() if result[7] else None,
+                    'created_at': result[8].isoformat()
                 }
         
         return await loop.run_in_executor(None, get_sync)

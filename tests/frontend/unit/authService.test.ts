@@ -17,8 +17,13 @@ test('usuario se recupera desde cookies tras nueva instancia sin token JS', asyn
   server.use(http.get(`${API}/auth/me`, ({ request }) => {
     expect(request.credentials).toBe('include'); return HttpResponse.json(user);
   }));
-  const api = new AuthService(); expect(await api.getCurrentUser()).toEqual(user);
+  const api = new AuthService();
+  const listener = vi.fn(); const off = api.subscribe(listener); listener.mockClear();
+  expect(await api.getCurrentUser()).toEqual(user);
   expect(api.isAuthenticated).toBe(true);
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(listener).toHaveBeenLastCalledWith({ isAuthenticated: true, token: 'from_cookie', user });
+  off();
 });
 test('login inválido no autentica y conserva mensaje de error', async () => {
   server.use(http.post(`${API}/auth/login`, () => HttpResponse.json({ detail: 'Inválido' }, { status: 401 })));

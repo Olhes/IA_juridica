@@ -106,6 +106,7 @@ async def get_current_user(request: Request):
 
     # Obtener usuario de la base de datos
     db = PostgreSQLAdapter()
+    await db.initialize()  # Asegurar que la conexión esté inicializada
     user = await db.get_user_by_id(payload.get("user_id"))
 
     if not user:
