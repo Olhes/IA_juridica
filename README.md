@@ -63,16 +63,17 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
                  → contenido final validado (JSON o NDJSON) → PostgreSQL
 ```
 
-| Capa | Ubicación / contrato |
-|---|---|
-| Interfaz | `frontend/app/`, `frontend/src/presentation/`; Next 16.3.8, React 19.3.0 |
-| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies |
-| API | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/` |
-| Pipeline común | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada |
-| RAG e ingesta | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/` |
-| Validación | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática |
-| Persistencia | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos |
-| Tests | Solo `tests/<backend|frontend|scripts>/<tipo>/` |
+
+| Capa                 | Ubicación / contrato                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.3.8, React 19.3.0                           |
+| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies        |
+| API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                  |
+| Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada    |
+| RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                          |
+| Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática |
+| Persistencia         | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos                 |
+| Tests                | Solo `tests/<backend                                                                               |
 
 El NDJSON transporta contenido **después** de la validación; no publica borradores
 provisionales del modelo. Sin documentos recuperados se devuelve abstención explícita.
@@ -102,10 +103,11 @@ comparativo RAGAS de estrategias de chunking.
 
 Medición **2026-10-06**, mismo alcance/exclusiones antes y después:
 
-| Componente | Líneas antes → después | Ramas antes → después |
-|---|---|---|
-| Backend Python | 46,62 % → **57,24 %** | 29,91 % → **45,25 %** |
-| Frontend | 41,68 % → **80,52 %** | 43,70 % → **72,51 %** |
+
+| Componente     | Líneas antes → después | Ramas antes → después |
+| ---------------- | --------------------------- | ------------------------- |
+| Backend Python | 46,62 % →**57,24 %**     | 29,91 % →**45,25 %**   |
+| Frontend       | 41,68 % →**80,52 %**     | 43,70 % →**72,51 %**   |
 
 Validación: **302 Python**, **23 Node**, **94 React** y **5 E2E con API simulada**
 aprobados; 3 evaluaciones reales omitidas y 2 xfail estrictos existentes.
@@ -135,16 +137,17 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 
 ## Documentación por objetivo
 
-| Quiero… | Documento |
-|---|---|
-| Usar la API y entender errores/permisos | [API](API_DOC.md) |
-| Ejecutar y ampliar tests | [Guía única](tests/README.md) |
-| Entender el frontend activo | [Arquitectura frontend](frontend/README_ARCHITECTURE.md) |
-| Preparar despliegue | [Render / checklist](DEPLOY_RENDER.md), [plantilla de entorno](env.production.example) |
-| Cargar/revisar corpus y grafo | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md) |
-| Entender validación y abstención | [Pipeline](backend/VALIDATION_GUIDE.md) |
-| Configurar OAuth local | [OAuth](OAUTH_SETUP.md) |
-| Diagnosticar PostgreSQL sin perder datos | [Conexión PostgreSQL](POSTGRES_CONNECTION_ISSUES.md) |
-| Importar cobertura a SonarQube | [SonarQube](docs/SONARQUBE.md) |
+
+| Quiero…                                        | Documento                                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Usar la API y entender errores/permisos         | [API](API_DOC.md)                                                                                         |
+| Ejecutar y ampliar tests                        | [Guía única](tests/README.md)                                                                           |
+| Entender el frontend activo                     | [Arquitectura frontend](frontend/README_ARCHITECTURE.md)                                                  |
+| Preparar despliegue                             | [Render / checklist](DEPLOY_RENDER.md), [plantilla de entorno](env.production.example)                    |
+| Cargar/revisar corpus y grafo                   | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md)                                                               |
+| Entender validación y abstención              | [Pipeline](backend/VALIDATION_GUIDE.md)                                                                   |
+| Configurar OAuth local                          | [OAuth](OAUTH_SETUP.md)                                                                                   |
+| Diagnosticar PostgreSQL sin perder datos        | [Conexión PostgreSQL](POSTGRES_CONNECTION_ISSUES.md)                                                     |
+| Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
 | Consultar antecedentes, no capacidades actuales | [Migración Cohere](CHANGELOG_MIGRACION_COHERE.md), [auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
-| Revisar propuestas aún no implementadas | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md) |
+| Revisar propuestas aún no implementadas        | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md)               |

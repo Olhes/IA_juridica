@@ -123,3 +123,26 @@ async def test_disconnected_adapter_never_returns_fabricated_conversations():
     assert await db.delete_conversation("c1", "owner") is False
     with pytest.raises(DatabaseUnavailableError):
         await db.create_conversation("owner")
+
+
+@pytest.mark.asyncio
+async def test_create_user_persists_google_profile_picture():
+    db, connection, cursor = adapter(
+        ("u1", "ana@example.com", "ana", "Ana", "https://example.com/ana.jpg", "user", True, NOW)
+    )
+
+    user = await db.create_user(
+        "ana@example.com",
+        "ana",
+        "hash",
+        full_name="Ana",
+        picture="https://example.com/ana.jpg",
+    )
+
+    sql, params = cursor.execute.call_args.args
+    assert "picture" in sql
+    assert params == (
+        "ana@example.com", "ana", "hash", "Ana", "https://example.com/ana.jpg", "user"
+    )
+    assert user["picture"] == "https://example.com/ana.jpg"
+    connection.commit.assert_called_once()

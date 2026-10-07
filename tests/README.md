@@ -971,8 +971,8 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 | Caso | Qué verifica |
 |---|---|
 | `provider restaura usuario por cookies y limpia flag sin guardar tokens` | Restaura estado desde cookie y retira flag de login, sin persistir tokens. |
-| `provider sesión ausente mantiene estado anónimo sin fallar render` | Ausencia de sesión conserva UI anónima sin fallar el montaje. |
-| `provider desmontado elimina suscripción y listener storage` | Desmontaje retira suscripción y listener storage para evitar revalidaciones tardías. |
+| `provider sesión simulada ausente mantiene estado anónimo sin fallar render` | Ausencia de sesión conserva UI anónima sin fallar el montaje. |
+| `provider desmontado con sesión simulada elimina suscripción y listener storage` | Desmontaje retira suscripción y listener storage para evitar revalidaciones tardías. |
 
 </details>
 
@@ -1355,6 +1355,7 @@ PostgreSQL: estas pruebas no verifican schemas, migraciones o permisos reales.
 | `test_conversation_update_and_delete_preserve_owner_and_return_result` | Comprueba que una actualización vacía no ejecute SQL; con un modelo Pydantic valida título, metadatos con fecha y `is_active=False`. UPDATE/DELETE incluyen propietario y devuelven verdadero o falso según la fila retornada, con commit. |
 | `test_conversation_update_rolls_back_database_error` | Simula fallo al ejecutar UPDATE y comprueba propagación del error, rollback y ausencia de commit para no presentar una actualización fallida como confirmada. |
 | `test_disconnected_adapter_never_returns_fabricated_conversations` | Sin conexión comprueba lecturas vacías, actualización/eliminación falsas y `DatabaseUnavailableError` al crear conversación; no se devuelve persistencia ficticia. |
+| `test_create_user_persists_google_profile_picture` | Verifica que `create_user` acepte la foto de perfil recibida de Google, la incluya en los parámetros del INSERT, la devuelva en el usuario creado y confirme la transacción. Evita la regresión del parámetro `picture` no admitido; usa un cursor simulado y no comprueba migraciones ni el login real con Google. |
 
 
 ### `frontend/component/SandAnimation.test.tsx`
@@ -1502,3 +1503,72 @@ Evidencia local ignorada: `coverage.xml`, `temp/coverage-baseline.xml`,
 `temp/frontend-coverage-baseline.json`, `temp/sonar-reports/` y trazas Playwright.
 El harness de ejecución es pnpm/pytest/Vitest/Playwright; no se requiere un
 servicio de modelos real para estas unidades ni se revierten datos del corpus.
+
+## Google OAuth: regresiones HTTP y sesiones simuladas
+
+### Ejecutar y entender el alcance
+
+```bash
+pnpm test:python tests/backend/http/test_google_oauth.py
+pnpm test:frontend tests/frontend/component/AuthProvider.test.tsx
+```
+
+`backend/http/test_google_oauth.py` contiene **25 escenarios parametrizados**:
+ejecuta las rutas FastAPI reales, el intercambio HTTP mediante `MockTransport`
+y firma/decodificación JWT reales con claves sintéticas. PostgreSQL usa dobles
+asíncronos; Google, credenciales, cuentas y avatares son ficticios. No inicia el
+backend completo, toca tu cuenta, lee cookies de tu navegador ni requiere red.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_google_login_redirect_contains_oauth_parameters` | Redirección al proveedor configurado, client ID, callback, scopes y parámetros de consentimiento; no consulta proveedor ni base de datos. |
+| `test_google_login_requires_client_id` | Configuración incompleta devuelve 500 sin iniciar el intercambio con Google. |
+| `test_google_callback_exchanges_code_and_issues_real_jwts` | Usuario nuevo y existente: código con caracteres especiales correctamente codificado, POST del grant y GET con Bearer; creación/actualización de perfil y avatar; redirección frontend, cookies HttpOnly/SameSite/path/vigencia y JWT de acceso/refresh con identidad, tipo, firma y expiración correctos. |
+| `test_google_callback_handles_optional_profile_fields` | Perfil sin nombre/avatar: crea valores vacíos para usuario nuevo y conserva los valores existentes en la actualización. |
+| `test_google_callback_requires_configuration` | Ausencia de client ID o secret aborta antes de llamadas al proveedor y sin emitir tokens/cookies. |
+| `test_google_callback_rejects_missing_or_empty_code` | Código omitido produce 422 de FastAPI; código vacío produce 400 de la ruta. Ninguno consulta Google ni inicializa la base. |
+| `test_google_callback_provider_failures_do_not_issue_session` | HTTP 401, timeout y JSON inválido, tanto en token como en perfil: devuelve solo el error genérico, no inicializa PostgreSQL ni crea sesión; verifica que no continúe el intercambio fallido y que el logger OAuth no incluya secretos, mensajes privados ni traceback. |
+| `test_google_callback_requires_provider_token_and_email` | Falta de access token o email impide crear/actualizar usuarios y emitir sesión. |
+| `test_google_callback_database_failures_do_not_issue_session` | Fallos en inicialización, búsqueda, creación o actualización terminan con error genérico sin JWT ni cookies; los primeros fallos tampoco escriben usuarios. |
+| `test_google_callback_preserves_explicit_http_exception` | Un HTTPException 503 conserva código y detalle, en vez de convertirse en 500; no emite sesión. |
+| `test_google_callback_cannot_issue_session_without_created_user` | Si la creación devuelve None, no firma tokens ni emite cookies. |
+| `test_google_session_can_read_profile_and_logout` | Callback exitoso, cookies aceptadas por `/auth/me`, perfil/avatar/roles correctos, logout elimina ambas cookies y la siguiente consulta devuelve 401; no vuelve a llamar a Google. |
+
+### Por qué los logs de los tests no describen tu cuenta
+
+En `frontend/component/AuthProvider.test.tsx`, `getCurrentUser` está simulado:
+los casos anónimos devuelven deliberadamente `null`, aunque estés conectado con
+Google en tu navegador. jsdom tiene su propio storage y no comparte esa sesión.
+Los mensajes de depuración `console.log` del componente se capturan **solo en
+este archivo de pruebas**, con restauración después de cada caso; no se ocultan
+fallos de tests, warnings ni errores, y los logs de la aplicación no cambian.
+
+| Caso adicional | Qué comprueba |
+|---|---|
+| provider callback Google simulado revalida sesión por storage y muestra usuario | Partiendo de sesión anónima simulada, el evento storage de callback dispara una segunda consulta, propaga el usuario Google ficticio hasta la UI, elimina el flag y no guarda access/refresh tokens en localStorage. No abre Google ni prueba el callback Next completo. |
+
+**Límites de seguridad:** estos tests describen el contrato actual, no certifican
+OAuth para producción. No validan CSRF/state (el callback aún no lo verifica),
+verificación de email, ID token, PKCE ni `Secure` de las cookies OAuth; tampoco
+ejecutan PostgreSQL real, TLS/CORS ni navegación real a Google. No sustituir
+estos escenarios por pruebas que usen tu sesión personal.
+
+**Unidad de rollback:** el archivo HTTP nuevo, las mejoras locales de
+`AuthProvider.test.tsx` y este bloque/corrección de nombres del catálogo.
+Incluye la corrección puntual del logger OAuth: conserva tipo de error e ID de
+petición, sin texto de excepción ni traceback que puedan filtrar credenciales.
+La suite detectó esta regresión mediante `test_oauth_failure_is_redacted`;
+no se cambian contratos OAuth ni se revierten migraciones o datos de usuarios.
+
+### Verificación de esta ampliación (2026-10-06)
+
+- Google OAuth HTTP: **25/25** escenarios aprobados.
+- AuthProvider: **4/4** casos aprobados, sin mensajes de sesión ambiguos.
+- Suite Python completa (`pnpm test:python`): **328 aprobados**, 3 omitidos de
+  evaluaciones reales opt-in, 2 xfail previos y 20 warnings de dependencias.
+- Suite React completa (`pnpm test:frontend`): **95 aprobados**, 19 archivos.
+- `pnpm --dir frontend exec tsc --noEmit` y `git diff --check`: sin errores.
+
+No se recalculó cobertura ni se ejecutaron E2E contra Google: las cifras de
+cobertura de la ampliación transversal anterior siguen siendo históricas.
+El harness HTTP usa las rutas reales de auth con dependencias externas simuladas.

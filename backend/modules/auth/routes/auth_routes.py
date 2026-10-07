@@ -296,6 +296,8 @@ async def google_callback(request: Request, code: str, state: str = None):
     except HTTPException:
         raise
     except Exception as e:
+        # Provider exceptions may contain authorization codes or token payloads.
+        # Keep only safe diagnostics, never exception text or traceback.
         logging.getLogger("ia_juridica.auth").error(
             "oauth_callback_failed request_id=%s error_type=%s",
             getattr(request.state, "request_id", "unknown"),

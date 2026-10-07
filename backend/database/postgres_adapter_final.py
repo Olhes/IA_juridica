@@ -561,8 +561,15 @@ class PostgreSQLAdapter:
         return await loop.run_in_executor(None, search_sync)
     
     # ── Métodos para Autenticación y Usuarios ─────────────────────────────────────
-    async def create_user(self, email: str, username: str, password_hash: str, 
-                         full_name: str = None, role: str = 'user') -> Optional[Dict[str, Any]]:
+    async def create_user(
+        self,
+        email: str,
+        username: str,
+        password_hash: str,
+        full_name: str = None,
+        picture: str = None,
+        role: str = 'user',
+    ) -> Optional[Dict[str, Any]]:
         """Crear un nuevo usuario"""
         if not self.conn:
             raise DatabaseUnavailableError("PostgreSQL unavailable")
@@ -573,10 +580,11 @@ class PostgreSQLAdapter:
             with self.conn.cursor() as cursor:
                 try:
                     cursor.execute("""
-                        INSERT INTO auth_schema.users (email, username, password_hash, full_name, role)
-                        VALUES (%s, %s, %s, %s, %s)
-                        RETURNING id, email, username, full_name, role, is_active, created_at
-                    """, (email, username, password_hash, full_name, role))
+                        INSERT INTO auth_schema.users
+                            (email, username, password_hash, full_name, picture, role)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id, email, username, full_name, picture, role, is_active, created_at
+                    """, (email, username, password_hash, full_name, picture, role))
                     
                     result = cursor.fetchone()
                     self.conn.commit()
@@ -586,9 +594,10 @@ class PostgreSQLAdapter:
                         'email': result[1],
                         'username': result[2],
                         'full_name': result[3],
-                        'role': result[4],
-                        'is_active': result[5],
-                        'created_at': result[6].isoformat()
+                        'picture': result[4],
+                        'role': result[5],
+                        'is_active': result[6],
+                        'created_at': result[7].isoformat()
                     }
                 except Exception as e:
                     self.conn.rollback()
