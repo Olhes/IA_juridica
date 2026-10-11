@@ -141,6 +141,16 @@ class Settings(BaseSettings):
     # Configuración de Traducción
     TRANSLATION_ENABLED: bool = True
     TRANSLATION_METHOD: str = "google_translate"
+
+    # Configuración de Voz TTS (microservicio voice-service en docker-compose)
+    VOICE_ENABLED: bool = True
+    VOICE_SERVICE_URL: str = "http://localhost:8001"
+    VOICE_ID: str = "ancash-masculino-01"
+    VOICE_TIMEOUT_SECONDS: float = 120.0
+    VOICE_CACHE_TTL: int = 86400
+    VOICE_MAX_CHARS: int = 800
+    VOICE_MAX_CACHED_BYTES: int = 2 * 1024 * 1024
+    VOICE_RATE_LIMIT: str = "20/minute"
     
     # Configuración de Monitoreo
     OPIK_ENABLED: bool = False

@@ -1,0 +1,221 @@
+{
+  "info": {
+    "name": "IA Juridica - Voice TTS Ancash (MMS)",
+    "description": "Colección para probar el microservicio TTS Quechua Ancash (Meta MMS, voz masculina).\n\nImportar en Bruno: Open Collection > Import > Postman (.json).\n\nVariables:\n- baseVoiceUrl: microservicio TTS directo (docker compose `voice`, puerto 8001)\n- baseApiUrl: backend principal FastAPI (puerto 8000, proxy /voice/* de Fase 1)\n\nFlujo sugerido:\n1) Voice Service > Health (ver model_loaded)\n2) Voice Service > Voices\n3) Voice Service > Speak Quechua Ancash (debe devolver 200 audio/wav)\n4) Backend > Voice Health / Voice Speak (YA FUNCIONAN: proxy con caché Redis, mira el header X-Cache)\n5) Backend > Speak repetir (HIT) y Speak variante léxico (canonicaliza → HIT)\n6) Backend > Legal Query (obtener texto RAG) > pegarlo en Speak para oírlo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseVoiceUrl",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "baseApiUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "voiceId",
+      "value": "ancash-masculino-01"
+    }
+  ],
+  "item": [
+    {
+      "name": "Voice Service (directo :8001)",
+      "description": "Microservicio TTS en Docker (voice-service/app.py). No requiere auth.",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseVoiceUrl}}/health",
+            "description": "200 {status:ok, model_id, model_loaded, torch_available}. En el primer arranque model_loaded=false hasta el primer /speak (descarga facebook/mms-tts-quy ~400MB)."
+          }
+        },
+        {
+          "name": "Voices",
+          "request": {
+            "method": "GET",
+            "url": "{{baseVoiceUrl}}/voices",
+            "description": "Lista voces lógicas. v1: solo ancash-masculino-01."
+          }
+        },
+        {
+          "name": "Speak Quechua Ancash",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseVoiceUrl}}/speak",
+            "description": "Esperado: 200 audio/wav + headers X-Voice / X-Model. En Bruno: la respuesta se previsualiza como binario; usa 'Save response to file' para guardarla como .wav y escucharla.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Atuqmi ashkallata mikun\",\n  \"lang\": \"qu-ancash\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Speak Frase Legal Quechua",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseVoiceUrl}}/speak",
+            "description": "Frase tipo RAG legal en quechua ancashino (Fase 0: acento base Ayacucho, se afina en Fase 2).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Ley 30364 qamta protegenki, denuncia comisariaman churanqui\",\n  \"lang\": \"qu-ancash\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Speak Español",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseVoiceUrl}}/speak",
+            "description": "v1 usa el mismo checkpoint quy para español (sonará con acento quechua). Modelo español dedicado queda fuera de Fase 0/1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"La ley 30364 te protege, puedes denunciar en la comisaría\",\n  \"lang\": \"es\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Speak Lang inválido (debe dar 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseVoiceUrl}}/speak",
+            "description": "Caso negativo: lang no soportado -> 422.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"hola\",\n  \"lang\": \"en\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Backend proxy (:8000)",
+      "description": "Proxy del backend principal hacia el voice-service (backend/modules/voice). Requiere backend :8000 + Redis arriba; 503 solo si el voice-service está caído. Mira el header X-Cache: MISS (sintetizado) vs HIT (vino de Redis).",
+      "item": [
+        {
+          "name": "Voice Health (backend)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseApiUrl}}/voice/health",
+            "description": "Fase 1: refleja salud del voice-service + caché Redis."
+          }
+        },
+        {
+          "name": "Voice Speak (backend)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseApiUrl}}/voice/speak",
+            "description": "Primera llamada: 200 audio/wav con X-Cache MISS (sintetiza y guarda en Redis). Guárdalo con Save response to file → .wav.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Atuqmi ashkallata mikun\",\n  \"lang\": \"qu-ancash\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Voice Speak repetir (debe dar X-Cache HIT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseApiUrl}}/voice/speak",
+            "description": "Mismo body que el anterior: correla de inmediato con X-Cache HIT (vino de Redis, sin llamar al modelo).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Atuqmi ashkallata mikun\",\n  \"lang\": \"qu-ancash\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Voice Speak variante léxico (canonicaliza)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseApiUrl}}/voice/speak",
+            "description": "Otra puntuación/caso, misma oración del corpus Sihuas: el backend la canonicaliza a la grafía del léxico y debe dar X-Cache HIT sin haberla pedido antes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"¡ATUQMI, ashkallata mikun!\",\n  \"lang\": \"qu-ancash\",\n  \"voice\": \"{{voiceId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Voice Speak voz desconocida (debe dar 404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseApiUrl}}/voice/speak",
+            "description": "Caso negativo del backend: voice distinta de ancash-masculino-01 → 404.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"hola\",\n  \"lang\": \"es\",\n  \"voice\": \"otra-voz\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Legal Query (texto RAG para luego oírlo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseApiUrl}}/legal-query",
+            "description": "Obtén respuesta_espanol/respuesta_quechua y pégala como text en Speak.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"¿Qué hago si sufro violencia familiar?\",\n  \"language\": \"spanish\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

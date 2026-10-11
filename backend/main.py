@@ -317,8 +317,15 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
-# Registrar rutas de chat persistente
+# Registrar rutas de chat persistente y voz TTS
 app.include_router(chat_router)
+
+try:
+    from modules.voice.controllers.voice_routes import router as voice_router
+
+    app.include_router(voice_router)
+except Exception as e:
+    print(f"Advertencia: módulo de voz no registrado: {e}")
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@
 | `docs/operations/POSTGRES_CONNECTION_ISSUES.md` | Bitácora de errores de conexión PostgreSQL (puerto 5433 vs 5432 local, adapters legacy) y soluciones | Backend / dev local con Docker |
 | `docs/operations/SECURITY.md` | Modelo de seguridad (sesión anónima HMAC, cookies, uploads, migración manual segura) | Backend / seguridad |
 | `docs/evaluations/CHANGELOG_MIGRACION_COHERE.md` | Changelog de migración a Cohere (`command-r7b`, `embed-multilingual-v3.0`, rerank, regeneración de vectores) | Backend / RAG |
+| `docs/voice/VOICE_TTS_ANCASH.md` | Voz TTS quechua ancashina (MMS, microservicio `voice`, proxy backend, léxico Sihuas+Chiquián 1993 pares, licencias, checklist Fase 2) | Backend / voz |
 | `backend/VALIDATION_GUIDE.md` _(en su sitio, junto al código)_ | Pipeline de validación de respuestas del LLM en `POST /legal-query` | Backend / QA |
 | `frontend/README_ARCHITECTURE.md` _(en su sitio, junto al código)_ | Arquitectura Next.js (domain/application/infrastructure/presentation) | Frontend |
 
