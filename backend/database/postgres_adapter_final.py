@@ -666,7 +666,7 @@ class PostgreSQLAdapter:
         def get_sync():
             with self.conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, email, username, full_name, role, password_hash, is_active, last_login, created_at
+                    SELECT id, email, username, full_name, picture, role, password_hash, is_active, last_login, created_at
                     FROM auth_schema.users
                     WHERE email = %s AND is_active = true
                 """, (email,))
@@ -680,11 +680,12 @@ class PostgreSQLAdapter:
                     'email': result[1],
                     'username': result[2],
                     'full_name': result[3],
-                    'role': result[4],
-                    'password_hash': result[5],
-                    'is_active': result[6],
-                    'last_login': result[7].isoformat() if result[7] else None,
-                    'created_at': result[8].isoformat()
+                    'picture': result[4],
+                    'role': result[5],
+                    'password_hash': result[6],
+                    'is_active': result[7],
+                    'last_login': result[8].isoformat() if result[8] else None,
+                    'created_at': result[9].isoformat()
                 }
         
         return await loop.run_in_executor(None, get_sync)
@@ -745,29 +746,32 @@ class PostgreSQLAdapter:
         """Obtener los roles de un usuario"""
         if not self.conn:
             return []
-        
+
         loop = asyncio.get_event_loop()
-        
+
         def get_sync():
             with self.conn.cursor() as cursor:
+                # Usar la columna role directamente de la tabla users
                 cursor.execute("""
-                    SELECT r.id, r.name, r.description, ur.assigned_at
-                    FROM auth_schema.roles r
-                    INNER JOIN auth_schema.user_roles ur ON r.id = ur.role_id
-                    WHERE ur.user_id = %s
+                    SELECT role
+                    FROM auth_schema.users
+                    WHERE id = %s
                 """, (user_id,))
-                
-                results = cursor.fetchall()
+
+                result = cursor.fetchone()
+                if not result or not result[0]:
+                    return []
+
+                # Retornar como lista de diccionarios para compatibilidad
                 return [
                     {
-                        'id': str(row[0]),
-                        'name': row[1],
-                        'description': row[2],
-                        'assigned_at': row[3].isoformat()
+                        'id': result[0],
+                        'name': result[0],
+                        'description': f'Role: {result[0]}',
+                        'assigned_at': None
                     }
-                    for row in results
                 ]
-        
+
         return await loop.run_in_executor(None, get_sync)
     
     async def get_user_permissions(self, user_id: str) -> List[str]:

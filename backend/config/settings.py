@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "IA Jurídica"
     APP_VERSION: str = "v8"
     DEBUG: bool = False
-    HOST: str = "0.0.0.0"
+    HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = 8000
     
     # Entorno
@@ -37,11 +37,11 @@ class Settings(BaseSettings):
     SQLALCHEMY_DATABASE_URL: str = os.getenv("SQLALCHEMY_DATABASE_URL", f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
     
     # Configuración de Redis
-    REDIS_URL: str = "redis://localhost:6379"
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
-    REDIS_PASSWORD: Optional[str] = None
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD", None)
     
     # Configuración de SQLAlchemy
     SQLALCHEMY_ECHO: bool = False
@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "https://ia-juridica-frontend-web.onrender.com"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID"]
@@ -150,6 +150,9 @@ class Settings(BaseSettings):
     # Configuración de Traducción
     TRANSLATION_ENABLED: bool = True
     TRANSLATION_METHOD: str = "google_translate"
+
+    # Configuración de HuggingFace
+    HF_HOME: Optional[str] = os.getenv("HF_HOME", None)
     
     # Configuración de Monitoreo
     OPIK_ENABLED: bool = False
@@ -182,9 +185,16 @@ class Settings(BaseSettings):
             self.PDF_OUTPUT_DIR,
             self.PDF_TEMPLATE_DIR
         ]
-        
+
+        # No crear HF_HOME automáticamente porque podría estar en otra unidad
+        # HuggingFace lo creará cuando sea necesario
+
         for directory in directories:
-            Path(directory).mkdir(parents=True, exist_ok=True)
+            try:
+                Path(directory).mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                # Ignorar errores al crear directorios (ej: unidad no existente)
+                print(f"Warning: No se pudo crear directorio {directory}: {e}")
     
     def is_development(self) -> bool:
         return self.DEBUG or self.ENVIRONMENT.lower() == "development"

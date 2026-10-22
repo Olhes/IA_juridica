@@ -16,7 +16,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="es" className="h-full" suppressHydrationWarning>
-      <body className="h-full bg-slate-50 dark:bg-gray-950 transition-colors duration-300">
+      <body className="h-full bg-slate-50 dark:bg-gray-950 transition-colors duration-300" suppressHydrationWarning>
         <AuthProvider>
           <ThemeProvider>{children}</ThemeProvider>
         </AuthProvider>

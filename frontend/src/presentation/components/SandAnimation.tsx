@@ -33,20 +33,20 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       startText: "IA jurídica",
       hiddenText: "Bienvenido a IA Jurídica",
 
-      releaseTestsPerFrame: 2500, // Aumentado para liberar más partículas por frame
-      releaseChance: 0.035, // Aumentado para mayor probabilidad de liberación
+      releaseTestsPerFrame: 1200, // Aumentado para liberar más partículas por frame (más rápido)
+      releaseChance: 0.025, // Aumentado para mayor probabilidad de liberación (más rápido)
 
-      gravity: 1200, // Aumentado para caída más rápida
-      airDrag: 0.995, // Aumentado para menos resistencia
+      gravity: 600, // Reducido para caída más lenta
+      airDrag: 0.985, // Aumentado para más resistencia (más lento)
 
-      settleStepsPerFrame: 5,
+      settleStepsPerFrame: 5, // Aumentado para física más rápida
 
-      pileHoldSeconds: 1.5, // Tiempo que el montículo se mantiene antes de reformar
-      hiddenFadeInSeconds: 0.45,
-      reformDurationSeconds: 2,
-      reformStaggerSeconds: 0.65,
-      revealHoldSeconds: 3,
-      revealFadeSeconds: .6,
+      pileHoldSeconds: 1.0, // Reducido para carga más rápida
+      hiddenFadeInSeconds: 0.4, // Reducido para fade in más rápido
+      reformDurationSeconds: 1.8, // Reducido para reformar más rápido
+      reformStaggerSeconds: 0.6, // Reducido para stagger más rápido
+      revealHoldSeconds: 1.5, // Reducido para mantener el texto menos tiempo
+      revealFadeSeconds: 0.6, // Reducido para fade out más rápido
 
       reformArrivalDistance: 1.5
     };

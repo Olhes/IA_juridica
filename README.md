@@ -1,10 +1,11 @@
 # IA Jurídica
 
 Asistente experimental de orientación legal bilingüe español/quechua, con
-recuperación documental, validación de respuestas y conversaciones persistentes.
+recuperación documental, validación de respuestas, conversaciones persistentes
+y autenticación Google OAuth 2.0.
 No sustituye la revisión de un profesional ni certifica la vigencia de una norma.
 
-**Estado documentado: rama `v8` · Actualización: 2026-10-06.**
+**Estado documentado: rama `v8` · Actualización: 2026-10-18.**
 `v8` identifica la rama de trabajo, no una release semántica. No hay tags de
 release en el historial consultado. Los manifiestos conservan `1.0.0` (Node)
 y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por entorno.
@@ -57,6 +58,7 @@ No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin bac
 
 ```text
 Next App Router → ChatPage → useChat / useChatSessions / apiService
+                 → Google OAuth 2.0 (autenticación opcional)
                  → FastAPI (cookies, propietario, límites)
                  → recuperación LightRAG + reranking
                  → generación Cohere → validación/corrección → traducción
@@ -119,8 +121,9 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 
 - `/session/bootstrap` emite una identidad anónima firmada en cookie HttpOnly;
   consultas y conversaciones requieren esa identidad y validan propietario.
-  Google OAuth es un flujo separado; no convierte automáticamente la identidad
-  anónima de chat en una cuenta ni migra su historial.
+  Google OAuth 2.0 permite autenticación con cuenta de Google; los usuarios
+  autenticados con Google tienen su información (nombre, foto) guardada en
+  PostgreSQL. Los tokens JWT se almacenan en cookies httpOnly (más seguro que localStorage).
 - Administración: `ADMIN_ENDPOINTS_ENABLED=true` y una `ADMIN_API_KEY` independiente.
   No hay bypass por estar en desarrollo. No pongas esa clave en el navegador.
 - Producción: orígenes CORS explícitos, secretos aleatorios, HTTPS, cookies y
@@ -129,9 +132,6 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
   permite llegar al servicio; revisa puertos publicados, proxy y firewall del host.
   Compose de desarrollo limita sus servicios a loopback, pero usa PostgreSQL
   `trust` y credenciales de prueba: **no es configuración de producción**.
-- No se promete preparación para producción: el módulo OAuth heredado requiere
-  endurecimiento (estado OAuth, cookies y endpoint temporal de reset), como
-  advierte [la guía OAuth](OAUTH_SETUP.md).
 - Ingesta conserva PDF/Markdown y evidencia SHA-256. Un `evidence_id` o
   `graph_write_state=unverified` no acredita fuente oficial ni vigencia legal.
 

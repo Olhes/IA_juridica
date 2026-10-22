@@ -234,7 +234,14 @@ async def google_callback(request: Request, code: str, state: str = None):
         # Crear o actualizar usuario en la base de datos
         db = PostgreSQLAdapter()
         await db.initialize()  # Asegurar que la conexión esté inicializada
-        user = await db.get_user_by_email(userinfo["email"])
+
+        try:
+            user = await db.get_user_by_email(userinfo["email"])
+        except Exception as e:
+            print(f"❌ Error en get_user_by_email: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error al buscar usuario: {str(e)}")
 
         if not user:
             # Crear nuevo usuario con Google OAuth (sin contraseña)
@@ -242,23 +249,35 @@ async def google_callback(request: Request, code: str, state: str = None):
             # Hash de "google_oauth_temp" con bcrypt
             temp_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5NU7bXqL0f1eS"
 
-            user = await db.create_user(
-                email=userinfo["email"],
-                username=userinfo["email"].split("@")[0],
-                password_hash=temp_hash,
-                full_name=userinfo.get("name", ""),
-                picture=userinfo.get("picture", ""),
-                role="user",
-            )
+            try:
+                user = await db.create_user(
+                    email=userinfo["email"],
+                    username=userinfo["email"].split("@")[0],
+                    password_hash=temp_hash,
+                    full_name=userinfo.get("name", ""),
+                    picture=userinfo.get("picture", ""),
+                    role="user",
+                )
+            except Exception as e:
+                print(f"❌ Error en create_user: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"Error al crear usuario: {str(e)}")
         else:
             # Actualizar usuario con datos de Google (picture, full_name)
-            await db.update_user(
-                user["id"],
-                {
-                    "full_name": userinfo.get("name", user.get("full_name", "")),
-                    "picture": userinfo.get("picture", user.get("picture", "")),
-                },
-            )
+            try:
+                await db.update_user(
+                    user["id"],
+                    {
+                        "full_name": userinfo.get("name", user.get("full_name", "")),
+                        "picture": userinfo.get("picture", user.get("picture", "")),
+                    },
+                )
+            except Exception as e:
+                print(f"❌ Error en update_user: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"Error al actualizar usuario: {str(e)}")
 
         # Generar tokens JWT
         security_service = SecurityService()

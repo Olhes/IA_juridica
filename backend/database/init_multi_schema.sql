@@ -4,7 +4,7 @@
 -- Extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-CREATE EXTENSION IF NOT EXISTS "vector"; -- Para embeddings
+-- CREATE EXTENSION IF NOT EXISTS "vector"; -- Para embeddings (requiere pgvector, desactivado por ahora)
 
 -- ========================================
 -- CREACIÓN DE SCHEMAS
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS conversations_schema.messages (
     content TEXT NOT NULL,
     language VARCHAR(10) DEFAULT 'spanish',
     metadata JSONB DEFAULT '{}',
-    embedding vector(1024), -- Para búsqueda semántica
+    -- embedding vector(1024), -- Para búsqueda semántica (requiere pgvector, desactivado por ahora)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS rag_schema.document_chunks (
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
     chunk_type VARCHAR(50) DEFAULT 'text',
-    embedding vector(1024),
+    -- embedding vector(1024), -- Para búsqueda semántica (requiere pgvector, desactivado por ahora)
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -155,14 +155,14 @@ CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations_schema.con
 CREATE INDEX IF NOT EXISTS idx_conversations_active ON conversations_schema.conversations(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON conversations_schema.messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON conversations_schema.messages(created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_embedding ON conversations_schema.messages USING ivfflat (embedding vector_cosine_ops);
+-- CREATE INDEX IF NOT EXISTS idx_messages_embedding ON conversations_schema.messages USING ivfflat (embedding vector_cosine_ops); -- Requiere pgvector
 
 -- RAG Schema
 CREATE INDEX IF NOT EXISTS idx_documents_status ON rag_schema.processed_documents(processing_status);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON rag_schema.processed_documents(document_type);
 CREATE INDEX IF NOT EXISTS idx_documents_jurisdiction ON rag_schema.processed_documents(jurisdiction);
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON rag_schema.document_chunks(document_id);
-CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON rag_schema.document_chunks USING ivfflat (embedding vector_cosine_ops);
+-- CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON rag_schema.document_chunks USING ivfflat (embedding vector_cosine_ops); -- Requiere pgvector
 
 -- Legal Schema
 CREATE INDEX IF NOT EXISTS idx_legal_entities_type ON legal_schema.legal_entities(entity_type);

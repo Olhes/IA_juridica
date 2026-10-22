@@ -2,8 +2,11 @@
 
 import { Compass, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useChat } from '../../application/legal/use-cases/useChat';
 import { useChatSessions } from '../../application/legal/use-cases/useChatSessions';
+import { useAuth } from '../components/AuthProvider';
+import { AuthModal } from '../components/AuthModal';
 import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatSidebar, SidebarToggleButton } from '../components/sidebar/ChatSidebar';
@@ -13,6 +16,7 @@ import { TerminalModal } from '../components/TerminalModal';
 import { HistoryPanel } from '../components/HistoryPanel';
 
 const LANGUAGE_KEY = 'preferredLanguage';
+const ANIMATION_COMPLETE_KEY = 'animationComplete';
 
 interface Point {
   x: number;
@@ -54,6 +58,9 @@ const landingI18n = {
 } as const;
 
 export function ChatPage() {
+  const router = useRouter();
+  const { isAuthenticated, mounted } = useAuth();
+  
   const [language, setLanguage] = useState<SupportedLanguage>('spanish');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
@@ -61,6 +68,7 @@ export function ChatPage() {
   
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [terminalMessages, setTerminalMessages] = useState<Array<{ id: string; content: string; isUser: boolean }>>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,6 +77,11 @@ export function ChatPage() {
   useEffect(() => {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
+    
+    const savedAnimation = localStorage.getItem(ANIMATION_COMPLETE_KEY);
+    if (savedAnimation === 'true') {
+      setAnimationComplete(true);
+    }
   }, []);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
@@ -241,6 +254,10 @@ export function ChatPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNewSession = async () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     await createSession(language);
     setShowLanding(false);
     setSidebarOpen(false);
@@ -248,6 +265,10 @@ export function ChatPage() {
   };
 
   const handleSelectSession = (id: string) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     setActiveSessionId(id);
     setShowLanding(false);
     setSidebarOpen(false);
@@ -257,8 +278,37 @@ export function ChatPage() {
   const handleStartChat = () => { void handleNewSession(); };
 
   const handleSendTerminalMessage = (message: string) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     setShowLanding(false);
     sendQuery(message);
+  };
+
+  const handleCameraOpen = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+  };
+
+  const handleMicToggle = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+  };
+
+  const handleFileUpload = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = 'http://localhost:8000/auth/google';
   };
 
   const showLandingScreen = showLanding && messages.length === 0;
@@ -280,7 +330,10 @@ export function ChatPage() {
       )}
 
       {/* Sand Animation */}
-      {showAnimation && <SandAnimation onComplete={() => setAnimationComplete(true)} />}
+      {showAnimation && <SandAnimation onComplete={() => {
+        setAnimationComplete(true);
+        localStorage.setItem(ANIMATION_COMPLETE_KEY, 'true');
+      }} />}
 
       {!showAnimation && (
         <>
@@ -359,9 +412,9 @@ export function ChatPage() {
           terminalButtonRef={terminalButtonRef}
           onTerminalOpen={() => setTerminalOpen(true)}
           onHistoryOpen={() => setHistoryOpen(true)}
-          onFileUpload={() => {}}
-          onCameraOpen={() => {}}
-          onMicToggle={() => {}}
+          onFileUpload={handleFileUpload}
+          onCameraOpen={handleCameraOpen}
+          onMicToggle={handleMicToggle}
         />
       )}
 
@@ -387,6 +440,13 @@ export function ChatPage() {
         }))}
         onSelectSession={handleSelectSession}
         onDeleteSession={deleteSession}
+      />
+
+      {/* Modal de Autenticación */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onGoogleLogin={handleGoogleLogin}
       />
     </div>
   );
