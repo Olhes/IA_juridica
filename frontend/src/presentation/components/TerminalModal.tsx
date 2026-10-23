@@ -2,11 +2,23 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import type {
+  PipelineStage,
+  ResponseTimings,
+  StreamErrorInfo,
+  SupportedLanguage,
+} from '../../domain/legal/types';
+import { ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
-interface TerminalMessage {
+export interface TerminalMessage {
   id: string;
   content: string;
   isUser: boolean;
+  isStreaming?: boolean;
+  stage?: PipelineStage;
+  completedStages?: PipelineStage[];
+  errorInfo?: StreamErrorInfo;
+  timings?: ResponseTimings;
 }
 
 interface TerminalModalProps {
@@ -15,6 +27,8 @@ interface TerminalModalProps {
   onSend: (message: string) => void;
   messages: TerminalMessage[];
   isLoading?: boolean;
+  language?: SupportedLanguage;
+  onRetry?: (messageId: string) => void;
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -24,6 +38,8 @@ export function TerminalModal({
   onSend,
   messages,
   isLoading = false,
+  language = 'spanish',
+  onRetry,
   returnFocusRef,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
@@ -147,7 +163,18 @@ export function TerminalModal({
                     : 'bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {(msg.content || msg.isUser) && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
+                  <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
+                ) : null}
+                {!msg.isUser && msg.errorInfo && (
+                  <StreamErrorCard
+                    language={language}
+                    error={msg.errorInfo}
+                    onRetry={onRetry ? () => onRetry(msg.id) : undefined}
+                  />
+                )}
+                {!msg.isUser && msg.timings && <ResponseTiming language={language} timings={msg.timings} />}
               </div>
             </div>
           ))}

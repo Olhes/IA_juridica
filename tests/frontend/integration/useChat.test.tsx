@@ -151,3 +151,41 @@ test('PDF ausente MIME inválido y fallo de red no descargan ni dejan carga', as
   await act(async () => { await result.current.downloadPdf({ id: 'm', apiResponse: payload } as any); });
   expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(result.current.downloadingPdfId).toBeNull();
 });
+test('contrato v1: etapas en vivo, texto validado y tiempos en el payload final', async () => {
+  const { result } = await hook();
+  const v1 = (seq: number, event: object) => JSON.stringify({ v: 1, seq, request_id: 'r', ...event }) + '\n';
+  const gate = deferred<void>();
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream({
+    async start(controller) {
+      const send = (text: string) => controller.enqueue(new TextEncoder().encode(text));
+      send(v1(0, { type: 'meta', data: {} }) + v1(1, { type: 'stage', stage: 'retrieval', status: 'start' }));
+      await gate.promise;
+      send(v1(2, { type: 'stage', stage: 'retrieval', status: 'end', elapsed_ms: 5 })
+        + v1(3, { type: 'final', data: { ...payload, metadata: { timings: { total_ms: 5, stages: { retrieval: 5 }, cache_hit: false } } } })
+        + v1(4, { type: 'done' }));
+      controller.close();
+    },
+  }))));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.sendQuery('q'); });
+  await waitFor(() => expect(result.current.messages[1].stage).toBe('retrieval'));
+  gate.resolve();
+  await act(async () => { await pending; });
+  expect(result.current.messages[1].stage).toBeUndefined();
+  expect(result.current.messages[1].content).toBe(payload.response.respuesta_espanol);
+  expect(result.current.messages[1].apiResponse?.metadata.timings?.stages.retrieval).toBe(5);
+});
+test('contrato v1: error con code se conserva y reintentar reenvía la misma consulta', async () => {
+  const { result } = await hook();
+  const error = JSON.stringify({ v: 1, seq: 1, request_id: 'r', type: 'error', code: 'TIMEOUT', message: 'x', retryable: true }) + '\n'
+    + JSON.stringify({ v: 1, seq: 2, request_id: 'r', type: 'done' }) + '\n';
+  const fetch = vi.fn(async () => streamResponse(error));
+  vi.stubGlobal('fetch', fetch);
+  await act(async () => { await result.current.sendQuery('consulta'); });
+  expect(result.current.messages[1].errorInfo).toEqual({ code: 'TIMEOUT', retryable: true });
+  expect(result.current.messages[1].isStreaming).toBe(false);
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(JSON.stringify({ type: 'final', data: payload }) + '\n')));
+  await act(async () => { result.current.retry(result.current.messages[1].id); });
+  await waitFor(() => expect(result.current.messages.map(m => m.content)).toEqual(['consulta', payload.response.respuesta_espanol]));
+  expect(result.current.messages[1].errorInfo).toBeUndefined();
+});

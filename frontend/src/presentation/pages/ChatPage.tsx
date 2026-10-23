@@ -12,7 +12,7 @@ import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatSidebar, SidebarToggleButton } from '../components/sidebar/ChatSidebar';
 import { SandAnimation } from '../components/SandAnimation';
 import { FloatingRadialHub } from '../components/FloatingRadialHub';
-import { TerminalModal } from '../components/TerminalModal';
+import { TerminalModal, type TerminalMessage } from '../components/TerminalModal';
 import { HistoryPanel } from '../components/HistoryPanel';
 
 const LANGUAGE_KEY = 'preferredLanguage';
@@ -69,7 +69,7 @@ export function ChatPage() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [terminalMessages, setTerminalMessages] = useState<Array<{ id: string; content: string; isUser: boolean }>>([]);
+  const [terminalMessages, setTerminalMessages] = useState<TerminalMessage[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
@@ -236,6 +236,7 @@ export function ChatPage() {
     isLoading,
     isOnline,
     sendQuery,
+    retry,
     checkHealth,
   } = useChat({ sessionId: activeSessionId, language, onSessionUpdated });
 
@@ -246,6 +247,11 @@ export function ChatPage() {
         id: m.id,
         content: m.content || m.streamingContent || '',
         isUser: m.role === 'user',
+        isStreaming: m.isStreaming,
+        stage: m.stage,
+        completedStages: m.completedStages,
+        errorInfo: m.errorInfo,
+        timings: m.apiResponse?.metadata?.timings,
       }));
       setTerminalMessages(formatted);
   }, [messages]);
@@ -426,6 +432,8 @@ export function ChatPage() {
         onSend={handleSendTerminalMessage}
         messages={terminalMessages}
         isLoading={isLoading}
+        language={language}
+        onRetry={retry}
       />
 
       {/* Historial */}

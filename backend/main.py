@@ -52,6 +52,7 @@ from modules.validation.services.response_validator import (
 from optimization.llm_optimizer import LLMOptimizer
 from optimization.query_cache import answer_cache_key
 from services.legal_queries import answer_query
+from services.legal_stream import stream_legal_query
 from context.conversation_prompt import bounded_history, with_conversation
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
 from database.postgres_adapter_final import DatabaseUnavailableError
@@ -637,22 +638,17 @@ async def legal_query(request: Request, payload: LegalQueryRequest, principal: P
 @app.post("/legal-query-stream")
 @limiter.limit(settings.LLM_RATE_LIMIT)
 async def legal_query_stream(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
-    """NDJSON transports validated final content, never a provisional model draft."""
+    """NDJSON v1: etapas en vivo y texto solo ya validado, nunca borradores.
+
+    Autorización y conversación ajena (401/404) se resuelven antes de abrir el
+    stream; los fallos posteriores salen como evento `error` con `code`.
+    """
     try:
         cache_key, history = await _prepare_query_context(payload, principal.id, "query")
         if payload.conversation_id:
             from models.chat_models import MessageCreate, MessageRole
             await chat_service.add_message(payload.conversation_id, principal.id,
                 MessageCreate(content=payload.query, role=MessageRole.USER, language=payload.language))
-        result = await answer_query(app.state, payload.query, payload.language, history=history,
-                                    context=payload.context, cache_key=cache_key)
-        await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
-                                         payload.language, {"sources": result["sources"], "validation": result["validation"]})
-        async def events():
-            yield _ndjson_event({"type": "chunk", "delta": _extract_response_text(result["response"], payload.language)})
-            yield _ndjson_event({"type": "final", "data": result})
-        return StreamingResponse(events(), media_type="application/x-ndjson",
-            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
     except HTTPException:
         raise
     except DatabaseUnavailableError:
@@ -662,6 +658,22 @@ async def legal_query_stream(request: Request, payload: LegalQueryRequest, princ
     except Exception as error:
         _log_failure("legal_query_stream_failed", error, request)
         raise HTTPException(500, "Legal query stream failed")
+
+    async def persist(result):
+        await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
+                                         payload.language, {"sources": result["sources"], "validation": result["validation"]})
+
+    events = stream_legal_query(
+        run_pipeline=lambda on_stage: answer_query(app.state, payload.query, payload.language, history=history,
+                                                   context=payload.context, cache_key=cache_key, on_stage=on_stage),
+        extract_text=lambda result: _extract_response_text(result["response"], payload.language),
+        persist=persist,
+        request_id=getattr(request.state, "request_id", "unknown"),
+        language=payload.language,
+        timeout_s=settings.STREAM_PIPELINE_TIMEOUT_SECONDS,
+    )
+    return StreamingResponse(events, media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 

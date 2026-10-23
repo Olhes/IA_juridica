@@ -1,4 +1,23 @@
+import type { ErrorEvent, StageEvent } from './streamEvents.generated';
+
 export type SupportedLanguage = 'spanish' | 'quechua';
+
+/** Etapas del pipeline (contrato NDJSON v1). */
+export type PipelineStage = StageEvent['stage'];
+/** Códigos de error del stream (contrato NDJSON v1). */
+export type StreamErrorCode = ErrorEvent['code'];
+
+export interface StreamErrorInfo {
+  code: StreamErrorCode;
+  retryable: boolean;
+}
+
+/** Tiempos por etapa que entrega el backend en `metadata.timings`. Solo números. */
+export interface ResponseTimings {
+  total_ms: number;
+  stages: Partial<Record<PipelineStage, number>>;
+  cache_hit: boolean;
+}
 
 export type LegalTopic =
   | 'violencia_familiar'
@@ -85,6 +104,7 @@ export interface LegalQueryApiResponse {
   sources: string[];
   validation: ValidationReport;
   metadata: {
+    timings?: ResponseTimings;
     rerank_scores: number[];
     retrieval_method: string;
     total_candidates: number;
@@ -107,6 +127,12 @@ export interface ChatMessage {
   apiResponse?: LegalQueryApiResponse;
   isStreaming?: boolean;
   isLoadingFull?: boolean;
+  /** Etapa del pipeline en curso mientras llega la respuesta. */
+  stage?: PipelineStage;
+  /** Etapas ya terminadas, en orden de llegada. */
+  completedStages?: PipelineStage[];
+  /** Error del stream con código; la UI lo traduce y ofrece reintentar. */
+  errorInfo?: StreamErrorInfo;
   timestamp: Date;
   error?: string;
   language?: SupportedLanguage;

@@ -8,6 +8,15 @@ from fastapi.encoders import jsonable_encoder
 
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
+from services.pipeline_telemetry import PipelineTimer
+
+
+class PipelineError(HTTPException):
+    """HTTPException con un `code` estable que el stream NDJSON reenvía al cliente."""
+
+    def __init__(self, status_code, detail, code):
+        super().__init__(status_code, detail)
+        self.code = code
 
 
 def response_text(data, language="spanish"):
@@ -27,30 +36,45 @@ def response_text(data, language="spanish"):
 
 
 async def answer_query(
-    state, query, language, *, history=None, context=None, cache_key=None
+    state,
+    query,
+    language,
+    *,
+    history=None,
+    context=None,
+    cache_key=None,
+    on_stage=None,
 ):
+    timer = PipelineTimer(on_stage)
     phase = getattr(state, "corpus_state", None)
     if phase in {"loading", "failed", "stopped"}:
-        raise HTTPException(503, "Legal corpus unavailable")
+        raise PipelineError(503, "Legal corpus unavailable", "RETRIEVAL_UNAVAILABLE")
     if phase == "degraded" and not getattr(state.rag_engine, "documents", {}):
-        raise HTTPException(503, "Legal corpus unavailable")
+        raise PipelineError(503, "Legal corpus unavailable", "RETRIEVAL_UNAVAILABLE")
     optimizer = state.llm_optimizer
     cached = optimizer.get_cached(cache_key) if cache_key else None
     if cached:
-        return {
+        timer.cache_hit = True
+        result = {
             "success": True,
             "query": query,
             "language": language,
             **deepcopy(cached),
             "cached": True,
         }
+        result["metadata"] = {**(result.get("metadata") or {}), "timings": timer.snapshot()}
+        return result
 
     processed_query = query
     translator = TranslationService()
     if LanguageDetector().detect_language(query) == "qu":
-        translated = await translator.translate(query, "qu", "es")
+        async with timer.stage("translate_in"):
+            translated = await translator.translate(query, "qu", "es")
         if not translated.get("success"):
-            raise HTTPException(503, "Query translation unavailable; retry in Spanish")
+            raise PipelineError(
+                503, "Query translation unavailable; retry in Spanish",
+                "TRANSLATION_UNAVAILABLE",
+            )
         processed_query = translated["translated_text"]
     retrieval_query = processed_query
     if history:
@@ -61,14 +85,17 @@ async def answer_query(
             "\nContexto de preguntas anteriores:\n" + prior_questions[-3000:]
         )
     try:
-        rag_result = await state.rag_engine.query_with_rerank(retrieval_query)
+        async with timer.stage("retrieval"):
+            rag_result = await state.rag_engine.query_with_rerank(retrieval_query)
     except Exception as error:
         logging.getLogger("ia_juridica.pipeline").error(
             "retrieval_failed error_type=%s", type(error).__name__
         )
-        raise HTTPException(503, "Legal retrieval unavailable") from None
+        raise PipelineError(
+            503, "Legal retrieval unavailable", "RETRIEVAL_UNAVAILABLE"
+        ) from None
     if rag_result.get("method") == "error":
-        raise HTTPException(503, "Legal retrieval unavailable")
+        raise PipelineError(503, "Legal retrieval unavailable", "RETRIEVAL_UNAVAILABLE")
     documents = rag_result.get("documents", [])
     enriched_prompt, enriched_context = state.context_engineer.build_legal_prompt(
         query=processed_query,
@@ -79,17 +106,20 @@ async def answer_query(
     )
     if documents:
         try:
-            response = await state.legal_agent.respond_general(
-                query=processed_query,
-                context=rag_result,
-                language="spanish",
-                enriched_prompt=enriched_prompt,
-            )
+            async with timer.stage("generation"):
+                response = await state.legal_agent.respond_general(
+                    query=processed_query,
+                    context=rag_result,
+                    language="spanish",
+                    enriched_prompt=enriched_prompt,
+                )
         except Exception as error:
             logging.getLogger("ia_juridica.pipeline").error(
                 "generation_failed error_type=%s", type(error).__name__
             )
-            raise HTTPException(502, "Legal response unavailable") from None
+            raise PipelineError(
+                502, "Legal response unavailable", "GENERATION_UNAVAILABLE"
+            ) from None
         data = response.model_dump() if hasattr(response, "model_dump") else response
     else:
         # Lack of evidence is an explicit abstention, not invented advice.
@@ -98,24 +128,26 @@ async def answer_query(
             "Solicita revisión profesional o incorpora una fuente verificable.",
             "fuentes_legales": [],
         }
-    validated = await state.response_validator.validate(
-        response_data=data,
-        rag_result=rag_result,
-        query=processed_query,
-        language="spanish",
-        enriched_context=enriched_context,
-    )
+    async with timer.stage("validation"):
+        validated = await state.response_validator.validate(
+            response_data=data,
+            rag_result=rag_result,
+            query=processed_query,
+            language="spanish",
+            enriched_context=enriched_context,
+        )
     final = jsonable_encoder(validated.answer_data)
     if not documents:
         final = data  # Self-correction must not manufacture advice without evidence.
     if not response_text(final).strip():
-        raise HTTPException(502, "Legal response unavailable")
+        raise PipelineError(502, "Legal response unavailable", "GENERATION_UNAVAILABLE")
     validation = validated.validation_report.model_dump()
     validation["is_reliable"] = bool(documents and validated.is_reliable)
     translation = None
     if language == "quechua":
         original = response_text(final)
-        result = await translator.translate(original, "es", "qu")
+        async with timer.stage("translate_out"):
+            result = await translator.translate(original, "es", "qu")
         translation = {
             k: result.get(k)
             for k in ("success", "complete", "warning", "review_required")
@@ -155,6 +187,7 @@ async def answer_query(
         and (translation is None or translation.get("success"))
     ):
         optimizer.cache_response(cache_key, deepcopy(payload))
+    payload["metadata"]["timings"] = timer.snapshot()
     return {
         "success": True,
         "query": query,

@@ -1572,3 +1572,54 @@ no se cambian contratos OAuth ni se revierten migraciones o datos de usuarios.
 No se recalculó cobertura ni se ejecutaron E2E contra Google: las cifras de
 cobertura de la ampliación transversal anterior siguen siendo históricas.
 El harness HTTP usa las rutas reales de auth con dependencias externas simuladas.
+
+## Harness de evaluación — v8, 2026-10-22
+
+Plan completo y orden de fases: [plan del harness](../docs/HARNESS-IMPLEMENTATION-PLAN.md).
+Las secciones siguientes catalogan los tests que añade cada fase.
+
+### F0 — Contrato NDJSON v1 y tiempos por etapa
+
+El stream emite `meta`, `stage`, `chunk`, `final`, `error` y `done`, todos con
+`{v, seq, request_id, type}`. Los tests solo usan estados simulados: no llaman a
+Cohere, Google ni OpenAI. El contrato se exporta con
+`uv run python backend/scripts/export_stream_contract.py` a
+`backend/contracts/stream_event.v1.schema.json` y a
+`frontend/src/domain/legal/streamEvents.generated.ts`; un test falla si quedan
+desactualizados.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/contract/test_stream_contract.py`](backend/contract/test_stream_contract.py) | Eventos válidos e inválidos del contrato v1, códigos de error con mensaje fijo y archivos exportados al día. |
+| [`backend/unit/test_stream_pipeline.py`](backend/unit/test_stream_pipeline.py) | Tiempos por etapa de `answer_query`, caché sin tiempos, errores con `code`, orden del stream, timeout, cancelación y fallo de persistencia. |
+| [`frontend/component/PipelineStatus.test.tsx`](frontend/component/PipelineStatus.test.tsx) | Etapas en vivo, errores por `code` con Reintentar, "Respondió en X s" con desglose, en español y quechua. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_valid_events_round_trip` | Cada tipo de evento válido se parsea y se serializa sin cambios. |
+| `test_invalid_events_are_rejected` | Se rechazan eventos sin `v`/`seq`, con campos extra, etapa o código desconocido, versión distinta o `seq` negativo. |
+| `test_every_error_code_has_fixed_message_and_retry_policy` | Todo `code` tiene mensaje fijo y política de reintento; `INTERNAL_ERROR` no es reintentable. |
+| `test_exported_schema_and_typescript_are_up_to_date` | El JSON Schema y los tipos TypeScript coinciden con el modelo Pydantic. |
+| `test_timer_records_stage_and_notifies_start_and_end` | El temporizador acumula milisegundos por etapa, avisa inicio y fin y rechaza etapas desconocidas. |
+| `test_answer_query_reports_every_stage_in_order_and_timings` | `answer_query` notifica retrieval, generation y validation en orden y devuelve `metadata.timings`. |
+| `test_cache_hit_has_timings_and_timings_are_not_cached` | Un acierto de caché marca `cache_hit` y los tiempos nunca se guardan en la caché. |
+| `test_pipeline_errors_carry_stable_code` | Fallos de recuperación y generación llevan `code` estable y no filtran el texto de la excepción. |
+| `test_stream_emits_stages_before_validated_text_then_done` | `meta` y `stage` preceden al texto, que solo sale validado; `seq` consecutivo, un solo `request_id`, termina en `done`. |
+| `test_stream_failures_become_a_single_error_event_with_code` | Un fallo posterior a abrir el stream produce un único `error` con `code` y `retryable`, sin eco del texto privado. |
+| `test_stream_times_out_and_cancels_the_pipeline` | El timeout emite `TIMEOUT` reintentable y cancela el pipeline en curso. |
+| `test_persistence_failure_is_an_error_not_a_final` | Si no se puede persistir la respuesta no se entrega `final`, sino `error`. |
+
+| Caso | Qué verifica |
+|---|---|
+| `etapas en vivo marcan la activa y las terminadas, en español y quechua` | La etapa en curso tiene `aria-current`, las terminadas se marcan y los textos cambian de idioma. |
+| `la traducción de entrada y salida se muestra como un único paso` | `translate_in` y `translate_out` se presentan como un solo "Traduciendo". |
+| `error muestra texto según code, sin eco del servidor, y reintenta solo si es reintentable` | El texto sale de `translations.ts` según `code`; el botón Reintentar solo aparece si `retryable`. |
+| `tiempo de respuesta muestra segundos y desglose por etapa` | "Respondió en X s", desglose por etapa y variante de caché. |
+| `la terminal integra etapas, error con reintento y tiempos del asistente` | `TerminalModal` muestra etapas, error con reintento y tiempos de los mensajes del asistente. |
+| `contrato v1: etapas en vivo, texto validado y tiempos en el payload final` | `useChat` actualiza la etapa en vivo y conserva `metadata.timings` del `final`. |
+| `contrato v1: error con code se conserva y reintentar reenvía la misma consulta` | `useChat` guarda `errorInfo` y `retry` reenvía la consulta sin duplicar mensajes locales. |
+
+**Cambio de comportamiento:** los fallos posteriores a la autorización y a la
+comprobación de la conversación (401/404) dejan de ser un HTTP 5xx y salen como
+evento `error` dentro de un stream 200. `test_stream_error_and_logs_do_not_echo_query_or_request_id`
+documenta ese caso.

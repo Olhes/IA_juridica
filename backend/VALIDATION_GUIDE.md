@@ -15,6 +15,7 @@ Actualización: **2026-10-06**. Describe código ejecutado, no garantías juríd
 7. Entregar JSON o contenido final por NDJSON; persistir en el flujo de chat/stream.
 
 No se emiten borradores provisionales por `/legal-query-stream`.
+`answer_query` mide cada etapa (`services/pipeline_telemetry.py`) y entrega `metadata.timings`; el stream NDJSON v1 las anuncia en vivo ([contrato](../API_DOC.md)).
 Sin documentos: abstención explícita, fuentes vacías, `is_reliable=false`.
 La corrección no debe fabricar asesoría cuando falta evidencia.
 

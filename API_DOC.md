@@ -52,18 +52,42 @@ no asumas siempre una única clave. Traducción quechua incompleta/no disponible
 conserva texto y advertencias. `validation.is_reliable` no certifica verdad jurídica.
 Sin documentos recuperados: abstención, sin fuentes y sin fiabilidad positiva.
 
-## NDJSON: validación antes de entrega
+## NDJSON v1: etapas en vivo, texto solo validado
 
-`POST /legal-query-stream` acepta el mismo payload. La recuperación, generación,
-validación y persistencia ocurren **antes** de comenzar el stream. El contrato
-actual emite dos líneas, no token-streaming provisional:
+`POST /legal-query-stream` acepta el mismo payload. La autorización (401) y la
+conversación ajena o inexistente (404) se resuelven **antes** de abrir el stream;
+el resto del pipeline corre mientras el stream ya está abierto. Cada línea es un
+evento `{v, seq, request_id, type, ...}` (`v` = 1, `seq` consecutivo desde 0,
+`request_id` = cabecera `X-Request-ID`):
 
 ```json
-{"type":"chunk","delta":"Contenido final validado"}
-{"type":"final","data":{"success":true,"response":{"respuesta_espanol":"Contenido final validado"}}}
+{"v":1,"seq":0,"request_id":"3f1c…","type":"meta","data":{"language":"spanish"}}
+{"v":1,"seq":1,"request_id":"3f1c…","type":"stage","stage":"retrieval","status":"start"}
+{"v":1,"seq":2,"request_id":"3f1c…","type":"stage","stage":"retrieval","status":"end","elapsed_ms":412.5}
+{"v":1,"seq":7,"request_id":"3f1c…","type":"chunk","delta":"Contenido final validado"}
+{"v":1,"seq":8,"request_id":"3f1c…","type":"final","data":{"success":true,"metadata":{"timings":{"total_ms":2310.4,"stages":{"retrieval":412.5},"cache_hit":false}}}}
+{"v":1,"seq":9,"request_id":"3f1c…","type":"done"}
 ```
 
-El ejemplo `final` está abreviado; el real incluye los campos comunes. Se envían
+Etapas (`stage`): `translate_in`, `retrieval`, `generation`, `validation` y
+`translate_out`; solo aparecen las que se ejecutan. El texto (`chunk`) se envía
+únicamente cuando ya está validado: nunca hay borradores. Un fallo posterior a
+la apertura emite un único `error` y luego `done`, sin `final`:
+
+```json
+{"v":1,"seq":3,"request_id":"3f1c…","type":"error","code":"RETRIEVAL_UNAVAILABLE","message":"Legal retrieval unavailable","retryable":true}
+```
+
+`code` es uno de `RETRIEVAL_UNAVAILABLE`, `GENERATION_UNAVAILABLE`,
+`TRANSLATION_UNAVAILABLE`, `TIMEOUT` (`STREAM_PIPELINE_TIMEOUT_SECONDS`, 120 s por
+defecto) o `INTERNAL_ERROR` (no reintentable). El mensaje es fijo: nunca repite
+la consulta ni el texto de una excepción. `final.data.metadata.timings` lleva
+`total_ms`, `stages` (milisegundos por etapa) y `cache_hit`; los tiempos no se
+guardan en la caché de respuestas.
+
+El contrato se define en `backend/models/stream_events.py` y se exporta a
+`backend/contracts/stream_event.v1.schema.json` y a
+`frontend/src/domain/legal/streamEvents.generated.ts`. Se envían
 `Content-Type: application/x-ndjson`, `Cache-Control: no-cache, no-transform`
 y `X-Accel-Buffering: no`. El cliente debe gestionar líneas partidas entre lecturas,
 UTF-8 incremental, cancelación y errores HTTP antes del primer evento.

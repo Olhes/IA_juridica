@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
+import type {
+  ChatMessage,
+  LegalQueryApiResponse,
+  PipelineStage,
+  StreamErrorCode,
+  SupportedLanguage,
+} from '../../../domain/legal/types';
 import { apiService, type Message as BackendMessage } from '../services/apiService';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -167,6 +173,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       // ── Stream + payload final (NDJSON) ───────────────────────────────
       let streamedText = '';
       let gotFinalPayload = false;
+      let gotStreamError = false;
       let finalPayload: LegalQueryApiResponse | null = null;
       try {
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
@@ -201,11 +208,31 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           if (!isCurrent()) return;
           if (!line.trim()) return;
           const event = JSON.parse(line) as {
-            type?: 'chunk' | 'final' | 'error';
+            type?: 'meta' | 'stage' | 'chunk' | 'final' | 'error' | 'done';
             delta?: string;
             data?: LegalQueryApiResponse;
             error?: string;
+            stage?: PipelineStage;
+            status?: 'start' | 'end';
+            code?: StreamErrorCode;
+            retryable?: boolean;
           };
+
+          if (event.type === 'stage' && event.stage) {
+            if (event.status === 'start') {
+              updateMessage(assistantId, { stage: event.stage });
+            } else {
+              const stage = event.stage;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, stage: undefined, completedStages: [...(m.completedStages ?? []), stage] }
+                    : m
+                )
+              );
+            }
+            return;
+          }
 
           if (event.type === 'chunk') {
             const delta = typeof event.delta === 'string' ? event.delta : '';
@@ -226,12 +253,26 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
               content: finalText,
               apiResponse: event.data,
               isLoadingFull: false,
+              stage: undefined,
             });
             onSessionUpdated?.({ preview: finalText.slice(0, 80) });
             return;
           }
 
           if (event.type === 'error') {
+            if (event.code) {
+              // Error del contrato v1: la UI lo traduce según `code` y ofrece reintentar.
+              gotStreamError = true;
+              updateMessage(assistantId, {
+                isStreaming: false,
+                isLoadingFull: false,
+                stage: undefined,
+                streamingContent: undefined,
+                content: streamedText,
+                errorInfo: { code: event.code, retryable: event.retryable === true },
+              });
+              return;
+            }
             throw new Error(event.error || 'Error procesando respuesta en streaming.');
           }
         };
@@ -256,11 +297,11 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           processLine(buffer.trim());
         }
 
-        if (!gotFinalPayload) {
+        if (!gotFinalPayload && !gotStreamError) {
           flushStreaming(true);
         }
 
-        if (!gotFinalPayload) {
+        if (!gotFinalPayload && !gotStreamError) {
           updateMessage(assistantId, {
             isStreaming: false,
             content: streamedText,
@@ -319,6 +360,20 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     [isLoading, language, sessionId, messages, pushMessage, updateMessage, onSessionUpdated, resolveFinalText]
   );
 
+  // ─── Reintentar una consulta fallida ───────────────────────────────────────
+
+  const retry = useCallback(
+    (assistantId: string) => {
+      if (isLoading) return;
+      const index = messages.findIndex((m) => m.id === assistantId);
+      const question = index > 0 ? messages[index - 1] : undefined;
+      if (!question || question.role !== 'user') return;
+      setMessages((prev) => prev.filter((m) => m.id !== assistantId && m.id !== question.id));
+      void sendQuery(question.content);
+    },
+    [isLoading, messages, sendQuery]
+  );
+
   // ─── Abort ─────────────────────────────────────────────────────────────────
 
   const abort = useCallback(() => {
@@ -373,6 +428,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     isOnline,
     downloadingPdfId,
     sendQuery,
+    retry,
     abort,
     downloadPdf,
     clearChat,

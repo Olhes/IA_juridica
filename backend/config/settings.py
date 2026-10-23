@@ -133,6 +133,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX_REQUESTS: int = 100
     RATE_LIMIT_STORAGE_URI: str = "memory://"
     LLM_RATE_LIMIT: str = "10/minute"
+    STREAM_PIPELINE_TIMEOUT_SECONDS: float = float(os.getenv("STREAM_PIPELINE_TIMEOUT_SECONDS", "120"))
     CONVERSATION_CREATE_RATE_LIMIT: str = "20/hour"
     ADMIN_RATE_LIMIT: str = "5/hour"
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
