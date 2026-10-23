@@ -15,6 +15,8 @@ La documentación interactiva está deshabilitada por defecto en producción.
 | `POST /session/bootstrap` | Público, limitado por IP | Cookie de principal anónimo firmada; `principal_id`, `expires_at` |
 | `POST /legal-query` | Principal anónimo | Respuesta JSON validada |
 | `POST /legal-query-stream` | Principal anónimo | Respuesta final transportada por NDJSON |
+| `POST /telemetry/stream` | Público, limitado por IP | Telemetría numérica del cliente (sin texto); 204 |
+| `GET /telemetry/stream/summary` | Admin | p50/p95 por etapa, resultados y líneas inválidas |
 | `POST /generate-pdf-report` | Principal anónimo | PDF de consulta/respuesta suministradas por cliente |
 | `/chat/*` | Principal anónimo, excepto health | Conversaciones, mensajes y caché del propietario |
 | `POST /upload-pdf`, `POST /batch-process` | Admin | Ingesta documental |
@@ -102,6 +104,19 @@ defecto) o `INTERNAL_ERROR` (no reintentable). El mensaje es fijo: nunca repite
 la consulta ni el texto de una excepción. `final.data.metadata.timings` lleva
 `total_ms`, `stages` (milisegundos por etapa) y `cache_hit`; los tiempos no se
 guardan en la caché de respuestas.
+
+`StreamGuard` verifica todo lo que sale: esquema, `seq` consecutivo, un único terminal seguido de un único
+`done`, y que el `chunk` coincida con el texto del `final`. Si el origen se queda mudo más de
+`STREAM_IDLE_TIMEOUT_SECONDS` (135 s por defecto) emite `error` `TIMEOUT`; ante cualquier violación el
+cliente recibe `INTERNAL_ERROR` en lugar de datos dudosos y se registra solo el tipo de violación.
+
+El cliente debe tolerar BOM, CRLF y líneas partidas, descartar o reparar líneas inválidas contándolas,
+deduplicar por `seq` y, si falta el `final`, usar el `chunk` avisando de que la respuesta es parcial
+(`frontend/src/application/legal/stream/ndjsonParser.ts`). Al terminar envía, con `navigator.sendBeacon`, una
+telemetría de **solo números** y el `request_id` a `POST /telemetry/stream` (cuerpo JSON de hasta 4 KB, sin
+campos extra; límite `TELEMETRY_RATE_LIMIT`, 120/minuto): resultado, `ttfb_ms`, `total_ms`, `stage_ms` y
+contadores de líneas válidas/inválidas/reparadas/duplicadas. Nunca texto de consultas ni de respuestas.
+`GET /telemetry/stream/summary` (admin) agrega los últimos 2000 streams en memoria.
 
 El contrato se define en `backend/models/stream_events.py` y se exporta a
 `backend/contracts/stream_event.v1.schema.json` y a

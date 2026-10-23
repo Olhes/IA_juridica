@@ -165,7 +165,8 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 37 casos **candidatos** y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
 | F2 | Hecha | Evaluación por sistema (`retrieval_eval.py`), regla de solapamiento (`overlap.py`), `retrieval.v1.jsonl`, `trace` en `query_with_rerank` y UI de jurisprudencia relacionada. Los sistemas con LightRAG o Cohere solo se miden con `--run-model-evals` o desde un cassette (no grabado). |
 | F3 | Hecha | 319 pares es→qu **candidatos** con su origen verificado (manuales cusco-collao y chanka, Ley 30364), chrF++/BLEU/TER y señales de contrato propios, `translation_qe` (calidad alta/media/baja), aviso fuera del texto y UI de calidad, aviso de revisión y "Ver original en español". El sistema real (Google) solo con `--run-model-evals` o cassette (no grabado). Pendiente de humanos: revisión de hablantes nativos. |
-| F4–F6 | Pendientes | |
+| F4 | Hecha | `StreamGuard` (servidor), `ndjsonParser.ts` puro integrado en `useChat`, `POST /telemetry/stream` y resumen admin, 15 streams rotos reproducibles con fuzzing en pytest y vitest, suite `stream` (p50/p95 por etapa) y Playwright con streams rotos (12 pruebas pasan con Edge). |
+| F5–F6 | Pendientes | |
 
 Hallazgos que condicionan el resto del plan:
 
@@ -185,3 +186,8 @@ Hallazgos que condicionan el resto del plan:
   obtiene chrF++ macro ~0,09 y la estimación de calidad la marca `baja` en el 100 % de los pares.
 - Los hablantes de la edición de la Ley 30364 no declaran la variante: el gold la marca
   `sureno-sin-confirmar`.
+- `ChatPage.test.tsx` y el mock de Playwright estaban desfasados: el chat exige sesión y simulaban un visitante
+  anónimo. Se corrigieron (usuario sintético por defecto). Playwright usa `PLAYWRIGHT_CHANNEL=msedge` si falta el
+  Chromium que pide la versión instalada.
+- Cuatro pruebas de `test_google_oauth.py` fallan en la base (v8) por mensajes de error que filtran detalle de
+  la base de datos en el callback de Google; no se tocó el código de autenticación.

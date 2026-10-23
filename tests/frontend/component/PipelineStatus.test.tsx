@@ -72,3 +72,19 @@ test('la terminal integra etapas, error con reintento y tiempos del asistente', 
   await user.click(screen.getByRole('button', { name: 'Reintentar' }));
   expect(retry).toHaveBeenCalledWith('a2');
 });
+
+test('aviso de respuesta parcial se muestra en la terminal solo cuando el mensaje es degradado', () => {
+  render(
+    <TerminalModal
+      isOpen
+      onSend={vi.fn()}
+      onClose={vi.fn()}
+      messages={[
+        { id: 'a', content: 'Texto recibido', isUser: false, degraded: true },
+        { id: 'b', content: 'Texto completo', isUser: false },
+      ]}
+    />,
+  );
+  expect(screen.getAllByRole('status').filter((node) => /Respuesta parcial/.test(node.textContent ?? ''))).toHaveLength(1);
+  expect(screen.getByText(/no terminó de enviar la verificación/)).toBeVisible();
+});

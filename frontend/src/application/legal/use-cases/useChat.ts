@@ -9,6 +9,15 @@ import type {
   SupportedLanguage,
 } from '../../../domain/legal/types';
 import { apiService, type Message as BackendMessage } from '../services/apiService';
+import {
+  createParserState,
+  finishStream,
+  pushChunk,
+  summarise,
+  type StreamSummary,
+  type TimedEvent,
+} from '../stream/ndjsonParser';
+import { buildStreamTelemetry, sendStreamTelemetry, type StreamOutcome } from '../stream/telemetry';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const STREAM_FLUSH_MS = 60; // Flush de contenido en streaming cada 60ms para evitar demasiados renders, config. recomendada
@@ -170,11 +179,12 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         onSessionUpdated?.({ title: query.trim().slice(0, 60) });
       }
 
-      // ── Stream + payload final (NDJSON) ───────────────────────────────
+      // ── Stream + payload final (NDJSON v1, tolerante a líneas rotas) ───
       let streamedText = '';
       let gotFinalPayload = false;
       let gotStreamError = false;
-      let finalPayload: LegalQueryApiResponse | null = null;
+      let parser = createParserState(performance.now());
+      let summary: StreamSummary | null = null;
       try {
         const streamRes = await fetch(`${API_BASE}/legal-query-stream`, {
           method: 'POST',
@@ -194,7 +204,6 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
         let lastFlushAt = 0;
 
         const flushStreaming = (force = false) => {
@@ -204,21 +213,10 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           updateMessage(assistantId, { streamingContent: streamedText });
         };
 
-        const processLine = (line: string) => {
+        const handleEvent = (event: TimedEvent) => {
           if (!isCurrent()) return;
-          if (!line.trim()) return;
-          const event = JSON.parse(line) as {
-            type?: 'meta' | 'stage' | 'chunk' | 'final' | 'error' | 'done';
-            delta?: string;
-            data?: LegalQueryApiResponse;
-            error?: string;
-            stage?: PipelineStage;
-            status?: 'start' | 'end';
-            code?: StreamErrorCode;
-            retryable?: boolean;
-          };
 
-          if (event.type === 'stage' && event.stage) {
+          if (event.type === 'stage' && !event.legacy) {
             if (event.status === 'start') {
               updateMessage(assistantId, { stage: event.stage });
             } else {
@@ -235,23 +233,22 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           }
 
           if (event.type === 'chunk') {
-            const delta = typeof event.delta === 'string' ? event.delta : '';
-            if (!delta) return;
-            streamedText += delta;
+            if (!event.delta) return;
+            streamedText += event.delta;
             flushStreaming();
             return;
           }
 
-          if (event.type === 'final' && event.data) {
+          if (event.type === 'final') {
+            const data = event.data as unknown as LegalQueryApiResponse;
             gotFinalPayload = true;
-            finalPayload = event.data;
-            const finalText = resolveFinalText(event.data, streamedText);
+            const finalText = resolveFinalText(data, streamedText);
             streamedText = finalText;
             updateMessage(assistantId, {
               isStreaming: false,
               streamingContent: undefined,
               content: finalText,
-              apiResponse: event.data,
+              apiResponse: data,
               isLoadingFull: false,
               stage: undefined,
             });
@@ -260,58 +257,83 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           }
 
           if (event.type === 'error') {
-            if (event.code) {
+            gotStreamError = true;
+            const code = (event as { code?: StreamErrorCode }).code;
+            if (code) {
               // Error del contrato v1: la UI lo traduce según `code` y ofrece reintentar.
-              gotStreamError = true;
               updateMessage(assistantId, {
                 isStreaming: false,
                 isLoadingFull: false,
                 stage: undefined,
                 streamingContent: undefined,
                 content: streamedText,
-                errorInfo: { code: event.code, retryable: event.retryable === true },
+                errorInfo: { code, retryable: (event as { retryable?: boolean }).retryable === true },
               });
-              return;
+            } else {
+              // Evento de error antiguo, sin código: se conserva el texto y se avisa.
+              updateMessage(assistantId, {
+                isStreaming: false,
+                isLoadingFull: false,
+                stage: undefined,
+                streamingContent: undefined,
+                content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
+              });
             }
-            throw new Error(event.error || 'Error procesando respuesta en streaming.');
           }
+        };
+
+        const consume = (accepted: TimedEvent[]) => {
+          for (const event of accepted) handleEvent(event);
         };
 
         while (true) {
           const { value, done } = await reader.read();
           if (!isCurrent()) { await reader.cancel(); return; }
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          let newlineIndex = buffer.indexOf('\n');
-          while (newlineIndex !== -1) {
-            const line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
-            processLine(line);
-            newlineIndex = buffer.indexOf('\n');
-          }
+          const pushed = pushChunk(parser, decoder.decode(value, { stream: true }), performance.now());
+          parser = pushed.state;
+          consume(pushed.accepted);
         }
 
-        buffer += decoder.decode();
-        if (buffer.trim()) {
-          processLine(buffer.trim());
+        const tail = decoder.decode();
+        if (tail) {
+          const pushed = pushChunk(parser, tail, performance.now());
+          parser = pushed.state;
+          consume(pushed.accepted);
         }
+        const closed = finishStream(parser, performance.now());
+        parser = closed.state;
+        consume(closed.accepted);
+        summary = closed.summary;
 
         if (!gotFinalPayload && !gotStreamError) {
           flushStreaming(true);
+          if (summary.incomplete) {
+            updateMessage(assistantId, {
+              isStreaming: false,
+              isLoadingFull: false,
+              stage: undefined,
+              streamingContent: undefined,
+              content: 'No se pudo completar la respuesta. Intenta nuevamente.',
+            });
+          } else {
+            // Faltó el `final` (validación y fuentes): se usa el texto recibido y se marca como degradado.
+            updateMessage(assistantId, {
+              isStreaming: false,
+              isLoadingFull: false,
+              stage: undefined,
+              streamingContent: undefined,
+              content: streamedText,
+              degraded: true,
+            });
+          }
         }
-
-        if (!gotFinalPayload && !gotStreamError) {
-          updateMessage(assistantId, {
-            isStreaming: false,
-            content: streamedText,
-            streamingContent: undefined,
-            isLoadingFull: false,
-          });
-        }
+        const outcome: StreamOutcome = gotFinalPayload ? 'final' : gotStreamError ? 'error' : summary.incomplete ? 'incomplete' : 'degraded';
+        sendStreamTelemetry(API_BASE, buildStreamTelemetry(summary, outcome));
       } catch (err) {
         if (!isCurrent()) return;
         if ((err as Error).name === 'AbortError') {
+          sendStreamTelemetry(API_BASE, buildStreamTelemetry(summarise(parser, performance.now()), 'aborted'));
           const partial = streamedText || '(Respuesta interrumpida)';
           updateMessage(assistantId, {
             isStreaming: false,

@@ -34,6 +34,10 @@ export const chatTranslations = {
       DEFAULT: 'No se pudo completar la respuesta.',
     },
     retry: 'Reintentar',
+    degraded: {
+      title: 'Respuesta parcial',
+      body: 'El servidor no terminó de enviar la verificación ni las fuentes. Léela con cautela y confírmala con una persona profesional.',
+    },
     answeredIn: (seconds: string) => `Respondió en ${seconds} s`,
     answeredFromCache: 'Respuesta desde caché',
     timingsDetail: 'Ver desglose por etapa',
@@ -120,6 +124,10 @@ export const chatTranslations = {
       DEFAULT: 'Manam kutichiyta tukuchiyta atirqanchu.',
     },
     retry: 'Yapamanta ruway',
+    degraded: {
+      title: 'Pisi kutichiy',
+      body: 'Servidorqa manam tukuchirqanchu chiqaqchayta nitaq willakuykunata. Allinta qhaway, yachaq runawan takyachiy.',
+    },
     answeredIn: (seconds: string) => `${seconds} s ukhupi kutichirqan`,
     answeredFromCache: 'Waqaychasqamanta kutichiy',
     timingsDetail: 'Sapa ruwaypa tiemponta qhaway',

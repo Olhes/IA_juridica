@@ -189,3 +189,43 @@ test('contrato v1: error con code se conserva y reintentar reenvía la misma con
   await waitFor(() => expect(result.current.messages.map(m => m.content)).toEqual(['consulta', payload.response.respuesta_espanol]));
   expect(result.current.messages[1].errorInfo).toBeUndefined();
 });
+
+test('stream sin final marca la respuesta como degradada y conserva el texto recibido', async () => {
+  const { result } = await hook();
+  const lines = [
+    { v: 1, seq: 0, request_id: '0123456789abcdef0123456789abcdef', type: 'meta', data: {} },
+    { v: 1, seq: 1, request_id: '0123456789abcdef0123456789abcdef', type: 'chunk', delta: 'Texto sin validar' },
+    { v: 1, seq: 2, request_id: '0123456789abcdef0123456789abcdef', type: 'done' },
+  ].map((event) => JSON.stringify(event)).join('\r\n') + '\r\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse('\ufeff' + lines, 7)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1]).toMatchObject({ content: 'Texto sin validar', degraded: true, isStreaming: false });
+  expect(result.current.messages[1].apiResponse).toBeUndefined();
+});
+test('una línea corrupta ya no tira la respuesta: se descarta y el final se conserva', async () => {
+  const { result } = await hook();
+  const id = '0123456789abcdef0123456789abcdef';
+  const text = ['{no es json', JSON.stringify({ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }),
+    JSON.stringify({ v: 1, seq: 1, request_id: id, type: 'final', data: payload }),
+    JSON.stringify({ v: 1, seq: 2, request_id: id, type: 'done' })].join('\n') + '\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1].content).toBe(payload.response.respuesta_espanol);
+  expect(result.current.messages[1].degraded).toBeUndefined();
+});
+test('al terminar envía telemetría solo numérica con sendBeacon cuando el servidor informa request_id', async () => {
+  const { result } = await hook();
+  const sent: string[] = [];
+  Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: (_url: string, body: Blob) => { sent.push(String(body.size)); return true; } });
+  try {
+    const id = '0123456789abcdef0123456789abcdef';
+    const text = [{ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }, { v: 1, seq: 1, request_id: id, type: 'final', data: payload },
+      { v: 1, seq: 2, request_id: id, type: 'done' }].map((event) => JSON.stringify(event)).join('\n') + '\n';
+    vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+    await act(async () => { await result.current.sendQuery('consulta privada'); });
+    expect(sent).toHaveLength(1);
+    expect(Number(sent[0])).toBeGreaterThan(0);
+  } finally {
+    delete (navigator as unknown as Record<string, unknown>).sendBeacon;
+  }
+});

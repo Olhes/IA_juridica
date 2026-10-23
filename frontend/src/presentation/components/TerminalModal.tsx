@@ -10,13 +10,14 @@ import type {
   SupportedLanguage,
 } from '../../domain/legal/types';
 import { AssistantEvidence } from './chat/EvidencePanels';
-import { ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
+import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
 export interface TerminalMessage {
   id: string;
   content: string;
   isUser: boolean;
   isStreaming?: boolean;
+  degraded?: boolean;
   stage?: PipelineStage;
   completedStages?: PipelineStage[];
   errorInfo?: StreamErrorInfo;
@@ -170,6 +171,7 @@ export function TerminalModal({
                 {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
                   <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
                 ) : null}
+                {!msg.isUser && msg.degraded && <DegradedNotice language={language} />}
                 {!msg.isUser && msg.errorInfo && (
                   <StreamErrorCard
                     language={language}

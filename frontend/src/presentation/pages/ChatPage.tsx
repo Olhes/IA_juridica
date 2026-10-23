@@ -248,6 +248,7 @@ export function ChatPage() {
         content: m.content || m.streamingContent || '',
         isUser: m.role === 'user',
         isStreaming: m.isStreaming,
+        degraded: m.degraded,
         stage: m.stage,
         completedStages: m.completedStages,
         errorInfo: m.errorInfo,

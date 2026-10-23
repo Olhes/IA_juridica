@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
 import type {
   PipelineStage,
   ResponseTimings,
@@ -106,5 +106,19 @@ export function ResponseTiming({ language, timings }: ResponseTimingProps) {
         </ul>
       )}
     </details>
+  );
+}
+
+/** La respuesta llegó sin el `final` del servidor: se muestra el texto recibido y se avisa. */
+export function DegradedNotice({ language }: { language: SupportedLanguage }) {
+  const t = chatTranslations[language].degraded;
+  return (
+    <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-900 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+      <div>
+        <p className="font-semibold">{t.title}</p>
+        <p>{t.body}</p>
+      </div>
+    </div>
   );
 }

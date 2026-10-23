@@ -1,0 +1,272 @@
+{
+  "valid.ndjson": {
+    "description": "Stream correcto de referencia.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "bom_crlf.ndjson": {
+    "description": "BOM al inicio y saltos de línea CRLF.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "invalid_line.ndjson": {
+    "description": "Una línea basura entre eventos válidos.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 1,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "repairable_prefix.ndjson": {
+    "description": "Un evento con el prefijo `data: ` de SSE.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 1,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "concatenated_objects.ndjson": {
+    "description": "Dos eventos pegados en una línea (salto perdido).",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 1,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "truncated_final.ndjson": {
+    "description": "El stream se corta a mitad del `final`.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": true,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": true,
+      "invalid": 1,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 8
+    }
+  },
+  "missing_final.ndjson": {
+    "description": "Hay `chunk` y `done`, pero no `final`.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": true,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 9
+    }
+  },
+  "duplicate_events.ndjson": {
+    "description": "Un evento repetido (mismo `seq`).",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 1,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "out_of_order.ndjson": {
+    "description": "Líneas desordenadas dentro de una misma lectura.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "error_event.ndjson": {
+    "description": "Error terminal `TIMEOUT` reintentable.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": "TIMEOUT",
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 4
+    }
+  },
+  "unsupported_version.ndjson": {
+    "description": "Todos los eventos con `v: 2`.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "",
+      "degraded": false,
+      "incomplete": true,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 10,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 0
+    }
+  },
+  "legacy_no_seq.ndjson": {
+    "description": "Servidor antiguo: eventos sin `v` ni `seq`.",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 2,
+      "out_of_order": 0,
+      "valid": 2
+    }
+  },
+  "empty.ndjson": {
+    "description": "Respuesta vacía.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "",
+      "degraded": false,
+      "incomplete": true,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 0
+    }
+  },
+  "foreign_request_id.ndjson": {
+    "description": "Un evento de otra petición (distinto `request_id`).",
+    "expected": {
+      "final_text": "Respuesta final validada ñ 🦙",
+      "chunk_text": "Respuesta final validada ñ 🦙",
+      "degraded": false,
+      "incomplete": false,
+      "error_code": null,
+      "missing_done": false,
+      "invalid": 1,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 10
+    }
+  },
+  "only_stages.ndjson": {
+    "description": "Solo `meta` y etapas; el stream termina sin terminal.",
+    "expected": {
+      "final_text": null,
+      "chunk_text": "",
+      "degraded": false,
+      "incomplete": true,
+      "error_code": null,
+      "missing_done": true,
+      "invalid": 0,
+      "repaired": 0,
+      "duplicates": 0,
+      "unsupported": 0,
+      "legacy": 0,
+      "out_of_order": 0,
+      "valid": 4
+    }
+  }
+}

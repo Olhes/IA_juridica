@@ -1834,3 +1834,88 @@ mide la línea base "copiar el español".
 servicio); una traducción humana que las reescribe obtendría `baja`. En frases de menos de cuatro palabras
 no puede confirmar el idioma y devuelve `media`.
 
+### F4 — QA del stream
+
+Servidor: `StreamGuard` (`services/stream_guard.py`) envuelve el generador del stream y garantiza
+esquema válido, `seq` consecutivo, `request_id` único, **un solo** terminal (`final` o `error`) seguido de
+un único `done`, `chunk` igual al texto del `final` (se retiene hasta verlo) y un watchdog que emite
+`TIMEOUT` si el origen se queda mudo. Cliente: `ndjsonParser.ts` es una función pura (reloj inyectado)
+que tolera BOM, CRLF y líneas partidas, repara o descarta contando, deduplica y ordena por `seq`, usa el
+`chunk` si falta el `final` (`degraded`) y mide los tiempos. `POST /telemetry/stream` recibe solo números.
+
+Los streams rotos de `tests/backend/fixtures/gold/ndjson_broken/` se generan con
+`uv run python -m evaluation.harness.stream_fixtures` (desde `backend/`) y los usan pytest, vitest y
+Playwright. Playwright necesita un navegador: con `npx playwright install` o, si ya tienes Edge,
+`PLAYWRIGHT_CHANNEL=msedge pnpm test:e2e`. La suite `stream` del harness (`python -m evaluation.harness.runner
+stream`) informa validez y latencia p50/p95 por etapa; sin `--run-model-evals` usa un pipeline simulado y
+mide solo el costo propio del stream.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/unit/test_stream_guard.py`](backend/unit/test_stream_guard.py) | Contrato garantizado por `StreamGuard`, violaciones, watchdog y fuzzing con mutaciones. |
+| [`backend/harness/test_stream.py`](backend/harness/test_stream.py) | Fixtures rotos reproducibles, validez del contrato, p50/p95 por etapa, suite `stream` y esquema de telemetría. |
+| [`backend/http/test_stream_telemetry.py`](backend/http/test_stream_telemetry.py) | `POST /telemetry/stream` (solo números), resumen administrativo y stream HTTP real bajo el guardián. |
+| [`frontend/unit/ndjsonParser.test.ts`](frontend/unit/ndjsonParser.test.ts) | Analizador del cliente: fixtures, cortes en cualquier byte, fuzzing, tiempos y telemetría. |
+| [`frontend/e2e/stream-resilience.spec.js`](frontend/e2e/stream-resilience.spec.js) | Navegador con streams rotos: la interfaz muestra la respuesta, el aviso parcial o un error recuperable. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_a_valid_stream_passes_through_unchanged` | Un stream válido pasa sin cambios. |
+| `test_chunk_is_held_until_its_final_and_dropped_if_the_texts_differ` | El `chunk` espera a su `final`; si el texto difiere no se entrega. |
+| `test_violations_are_reported_and_the_client_gets_a_single_error_then_done` | Cada violación se registra y el cliente recibe un solo `error` y `done`. |
+| `test_events_after_the_terminal_are_dropped_but_the_delivered_final_is_kept` | El ruido tras el `final` se descarta sin perder lo entregado. |
+| `test_the_client_always_sees_meta_first_even_if_the_source_never_sent_it` | El cliente ve `meta` primero aunque el origen falle antes de enviarlo. |
+| `test_garbage_lines_and_missing_terminal_are_closed_with_an_error` | Líneas basura o ausencia de terminal se cierran con `error`. |
+| `test_an_upstream_error_is_passed_on_and_its_done_is_kept` | Un `error` del origen se reenvía con su `done`. |
+| `test_seq_is_renumbered_by_the_guard_not_trusted_from_upstream` | El `seq` lo asigna el guardián. |
+| `test_fuzz_mutated_streams_always_satisfy_the_contract` | 400 streams mutados al azar siempre cumplen el contrato. |
+| `test_guard_stream_delivers_valid_streams_and_closes_short_ones` | El generador entrega streams válidos y cierra los cortos. |
+| `test_watchdog_emits_a_retryable_timeout_when_the_source_goes_silent` | El watchdog emite `TIMEOUT` reintentable. |
+| `test_the_source_is_closed_when_the_guard_stops_early` | El origen se cierra cuando el guardián termina antes. |
+| `test_broken_stream_fixtures_match_their_generator_byte_for_byte` | Los fixtures coinciden byte a byte con su generador. |
+| `test_fixtures_cover_the_failure_modes_the_client_must_survive` | Los fixtures cubren BOM, CRLF, líneas rotas, truncado, duplicados, versión y más. |
+| `test_the_reference_valid_stream_satisfies_the_contract_and_broken_ones_do_not` | El stream de referencia cumple el contrato y los rotos no. |
+| `test_contract_checker_names_each_kind_of_problem` | El verificador nombra cada tipo de problema. |
+| `test_percentiles_use_nearest_rank_and_are_na_without_data` | Percentiles por rango más cercano; `n/a` sin datos. |
+| `test_streams_over_the_real_generator_are_valid_and_report_latency_per_stage` | Streams reales del generador: válidos y con latencia por etapa. |
+| `test_pipeline_failures_still_produce_valid_error_streams` | Un fallo del pipeline sigue produciendo un stream válido de error. |
+| `test_summary_is_na_for_an_empty_run` | Sin streams, el resumen es `n/a`. |
+| `test_stream_suite_writes_a_report_with_reproducibility_metadata` | La suite escribe su informe con metadatos de reproducibilidad. |
+| `test_client_telemetry_schema_is_numbers_only` | El esquema de telemetría rechaza texto, ids inválidos y rangos absurdos. |
+| `test_stream_metrics_aggregate_percentiles_outcomes_and_lines_and_stay_bounded` | Agregación acotada de p50/p95, resultados y líneas inválidas. |
+| `test_valid_telemetry_is_accepted_without_a_session_and_with_plain_text_bodies` | Acepta telemetría válida sin sesión y con cuerpo `text/plain`. |
+| `test_telemetry_with_text_or_invalid_numbers_is_rejected_and_never_stored` | Rechaza y no guarda telemetría con texto o números inválidos. |
+| `test_oversized_telemetry_is_rejected_with_413` | Rechaza cuerpos de más de 4 KB. |
+| `test_summary_requires_the_admin_key_and_reports_p50_p95_per_stage` | El resumen exige clave de administración e informa p50/p95. |
+| `test_the_http_stream_is_contract_valid_and_shares_the_request_id_header` | El stream HTTP cumple el contrato y comparte `X-Request-ID`. |
+| cada stream de referencia produce lo que declara su manifiesto | Cada fixture produce lo declarado en `manifest.json`. |
+| tolera BOM y CRLF y entrega el mismo resultado que el stream limpio | BOM y CRLF no cambian el resultado. |
+| el resultado no depende de dónde se parta el stream, ni siquiera en medio de un carácter UTF-8 | Cortes en cualquier byte dan el mismo resultado. |
+| un CRLF partido entre dos lecturas no genera líneas fantasma | Un CRLF partido no crea líneas fantasma. |
+| fuzz: cortes aleatorios en cualquier stream de referencia dan el mismo resultado | Fuzzing de cortes sobre todos los fixtures. |
+| fuzz: corrupción aleatoria nunca lanza y las cuentas son coherentes | Fuzzing de corrupción: nunca lanza y las cuentas cuadran. |
+| fuzz: mezclar líneas y duplicarlas conserva el contenido y cuenta los duplicados | Fuzzing de orden y duplicados. |
+| ordena por seq dentro de cada lectura y cuenta como desordenado lo que llega tarde | Orden por `seq` y cuenta de eventos tardíos. |
+| sin final usa el chunk y marca la respuesta como degradada | Sin `final` se usa el `chunk` y se marca `degraded`. |
+| un error terminal se informa con su código y si es reintentable, sin degradar | Error terminal con código y reintento. |
+| los eventos antiguos sin v ni seq se aceptan; los de otra versión se descartan contados | Compatibilidad con eventos antiguos; versiones ajenas descartadas. |
+| extractObjects separa objetos pegados, ignora basura exterior y respeta las cadenas | Reparación de objetos pegados. |
+| un evento de otra petición no se mezcla con el resultado | Aislamiento por `request_id`. |
+| mide los tiempos con el reloj inyectado: primer byte, primer chunk, terminal, total y etapas | Tiempos medidos con reloj inyectado. |
+| la telemetría del cliente contiene solo números y el request_id, y nada de texto | La telemetría no contiene texto. |
+| la telemetría usa sendBeacon con text/plain y nunca lanza ni envía sin datos | `sendBeacon` con `text/plain`, sin lanzar. |
+| stream sin final marca la respuesta como degradada y conserva el texto recibido | `useChat` marca `degraded` sin `final`. |
+| una línea corrupta ya no tira la respuesta: se descarta y el final se conserva | Una línea corrupta ya no tira la respuesta. |
+| al terminar envía telemetría solo numérica con sendBeacon cuando el servidor informa request_id | `useChat` envía telemetría numérica. |
+| aviso de respuesta parcial se muestra en la terminal solo cuando el mensaje es degradado | Aviso de respuesta parcial en la terminal. |
+| stream con BOM y CRLF se muestra completo con el tiempo de respuesta | Navegador: BOM y CRLF. |
+| una línea corrupta, un prefijo data: y eventos pegados no tiran la respuesta | Navegador: líneas rotas y reparables. |
+| eventos duplicados o desordenados muestran la respuesta una sola vez | Navegador: duplicados y desorden. |
+| sin evento final se muestra el texto recibido con aviso de respuesta parcial | Navegador: aviso de respuesta parcial. |
+| un error con código se explica en español y permite reintentar | Navegador: error con código y reintento. |
+| un stream vacío o de otra versión termina con un mensaje recuperable | Navegador: stream vacío o de otra versión. |
+| la telemetría del stream viaja sin texto de la consulta ni de la respuesta | Navegador: la telemetría no lleva texto. |
+
+**Mantenimiento de tests previos:** `ChatPage.test.tsx` y el mock de Playwright asumían que se podía chatear sin
+sesión, pero `ChatPage` exige autenticación desde antes de este harness; ahora simulan un usuario autenticado
+(`authenticated: true`).

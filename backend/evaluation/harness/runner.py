@@ -25,7 +25,7 @@ from evaluation.harness.cassettes import RECORD_MISSING, REPLAY, Cassette
 from evaluation.harness.corpus import DEFAULT_CORPUS_DIR, Corpus
 from evaluation.harness.gold import LEGAL_QA_PATH, gold_hash, load_gold
 from evaluation.harness.judges import make_judge
-from evaluation.harness import retrieval_eval, retrieval_gold, translation_eval, translation_gold
+from evaluation.harness import retrieval_eval, retrieval_gold, stream_eval, translation_eval, translation_gold
 from evaluation.harness.overlap import SegmentMatcher
 from evaluation.harness.pipeline_eval import evaluate_gold
 
@@ -215,6 +215,37 @@ async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CAS
     return write_result(report, meta, "retrieval", results_dir), report
 
 
+async def run_stream_suite(*, source="offline", results_dir=RESULTS_DIR, splits=None, limit=None):
+    """``offline``: pipeline simulado (mide el costo propio del stream). ``live``: pipeline real (red/coste)."""
+    corpus = Corpus.load()
+    cases = load_gold(corpus=corpus, splits=splits)[:limit]
+    live = None
+    if source == "live":
+        import main  # noqa: PLC0415
+
+        live = main.lifespan(main.app)
+        await live.__aenter__()
+    records = []
+    try:
+        for case in cases:
+            if live is None:
+                run = stream_eval.stub_pipeline(case)
+            else:
+                from services.legal_queries import answer_query
+
+                async def run(on_stage, case=case):
+                    return await answer_query(main.app.state, case.query, case.language, cache_key=None, on_stage=on_stage)
+
+            records.append(await stream_eval.run_stream(case.id, run_pipeline=run, language=case.language))
+    finally:
+        if live is not None:
+            await live.__aexit__(None, None, None)
+    report = {"suite": "stream", "source": source, **stream_eval.summarise_streams(records)}
+    meta = collect_metadata(corpus=corpus, judge=make_judge("none"), samples=1, eval_mode=source == "live")
+    meta["answer_source"] = "stub_pipeline" if source == "offline" else "pipeline"
+    return write_result(report, meta, "stream", results_dir), report
+
+
 DEFAULT_TRANSLATION_CASSETTE = ROOT / "tests" / "backend" / "fixtures" / "gold" / "cassettes" / "translation.cassette.json"
 
 
@@ -287,7 +318,7 @@ async def run_translation(*, source="offline", cassette_path=DEFAULT_TRANSLATION
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("suite", choices=["legal_qa", "retrieval", "translation"])
+    parser.add_argument("suite", choices=["legal_qa", "retrieval", "translation", "stream"])
     parser.add_argument("--split", action="append", choices=["dev", "holdout"])
     parser.add_argument("--samples", type=int, default=None)
     parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
@@ -299,6 +330,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     eval_mode = os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
+    if args.suite == "stream":
+        path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline"))
+        print(f"stream ({report['source']}) -> {path}")
+        print(f"validos: {report['valid_stream_rate']}  ttfb p95: {report['ttfb_ms']['p95']}")
+        return 0 if report["valid_stream_rate"] == 1.0 else 1
     if args.suite == "translation":
         source = "live" if args.run_model_evals else args.source
         path, report = asyncio.run(run_translation(source=source, cassette_path=args.translation_cassette))

@@ -53,6 +53,8 @@ from optimization.llm_optimizer import LLMOptimizer
 from optimization.query_cache import answer_cache_key
 from services.legal_queries import answer_query
 from services.legal_stream import stream_legal_query
+from services.stream_guard import guard_stream
+from services.stream_telemetry import StreamTelemetry, stream_metrics
 from context.conversation_prompt import bounded_history, with_conversation
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
 from database.postgres_adapter_final import DatabaseUnavailableError
@@ -663,18 +665,54 @@ async def legal_query_stream(request: Request, payload: LegalQueryRequest, princ
         await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
                                          payload.language, {"sources": result["sources"], "validation": result["validation"]})
 
-    events = stream_legal_query(
+    request_id = getattr(request.state, "request_id", "unknown")
+    source = stream_legal_query(
         run_pipeline=lambda on_stage: answer_query(app.state, payload.query, payload.language, history=history,
                                                    context=payload.context, cache_key=cache_key, on_stage=on_stage),
         extract_text=lambda result: _extract_response_text(result["response"], payload.language),
         persist=persist,
-        request_id=getattr(request.state, "request_id", "unknown"),
+        request_id=request_id,
         language=payload.language,
         timeout_s=settings.STREAM_PIPELINE_TIMEOUT_SECONDS,
+    )
+    # StreamGuard garantiza esquema, un solo terminal + done, chunk == final y watchdog.
+    events = guard_stream(
+        source,
+        extract_text=lambda data: _extract_response_text(data["response"], payload.language),
+        request_id=request_id,
+        idle_timeout_s=settings.STREAM_IDLE_TIMEOUT_SECONDS,
     )
     return StreamingResponse(events, media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
+
+
+MAX_TELEMETRY_BYTES = 4096
+
+
+@app.post("/telemetry/stream", status_code=204)
+@limiter.limit(settings.TELEMETRY_RATE_LIMIT)
+async def stream_telemetry(request: Request):
+    """Telemetría del cliente: solo números y el `request_id`, nunca texto.
+
+    Acepta `text/plain` (navigator.sendBeacon evita así el preflight CORS); el cuerpo es JSON.
+    """
+    body = await request.body()
+    if len(body) > MAX_TELEMETRY_BYTES:
+        raise HTTPException(413, "Telemetry payload too large")
+    try:
+        item = StreamTelemetry.model_validate_json(body)
+    except ValueError:
+        raise HTTPException(422, "Invalid telemetry payload")
+    stream_metrics.record(item)
+    return Response(status_code=204)
+
+
+@app.get("/telemetry/stream/summary")
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def stream_telemetry_summary(request: Request, _auth: bool = Depends(verify_admin_api_key)):
+    """p50/p95 por etapa, resultados y líneas inválidas de los últimos streams (solo administración)."""
+    return {"success": True, "summary": stream_metrics.summary()}
 
 
 @app.post(
