@@ -80,6 +80,26 @@ export interface CrossCheckSummary {
   supporting_chunks: string[];
 }
 
+/** Cita legal verificada contra las fuentes recuperadas (`metadata.citations`). */
+export interface CitationCheck {
+  key: string;
+  /** Texto tal como lo citó la respuesta. */
+  text: string;
+  status: 'verified' | 'unverified';
+  source: string | null;
+  /** Extracto del corpus donde aparece la cita; nunca texto del modelo. */
+  excerpt: string | null;
+}
+
+/** Fuente recuperada con su relevancia y un extracto del corpus (`metadata.evidence`). */
+export interface EvidenceItem {
+  source: string;
+  relevance: number | null;
+  excerpt: string;
+}
+
+export type EvidenceStatus = 'retrieved' | 'insufficient_evidence';
+
 export interface ValidationReport {
   status: ValidationStatus;
   confidence: ConfidenceLevel;
@@ -93,6 +113,8 @@ export interface ValidationReport {
   warnings: string[];
   processing_time_ms: number;
   validated_at: string;
+  /** El pipeline lo considera fiable: hubo evidencia y el validador la aprobó. No certifica verdad jurídica. */
+  is_reliable?: boolean;
 }
 
 export interface LegalQueryApiResponse {
@@ -105,6 +127,9 @@ export interface LegalQueryApiResponse {
   validation: ValidationReport;
   metadata: {
     timings?: ResponseTimings;
+    evidence_status?: EvidenceStatus;
+    citations?: CitationCheck[];
+    evidence?: EvidenceItem[];
     rerank_scores: number[];
     retrieval_method: string;
     total_candidates: number;

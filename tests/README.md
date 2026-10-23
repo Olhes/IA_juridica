@@ -39,6 +39,8 @@ se muestran como **skipped**; los 2 escenarios temporales conocidos son
 | Toda la suite + evaluación real del generador | `pnpm test:all --run-model-evals` | Cohere + juez OpenAI; red/coste |
 | Solo calidad real | `pnpm test:quality --run-model-evals` | Tres casos sintéticos; red/coste |
 | Solo evaluador offline | `pnpm test:quality:offline` | Sin proveedor |
+| Harness de evaluación offline | `pnpm test:harness` | Gold, métricas, cassettes y umbrales; sin proveedor |
+| Harness real | `pnpm test:harness:real --run-model-evals` | Pipeline real con `EVAL_MODE=1` (temperatura 0, sin caché, 3 muestras); red/coste |
 | Cobertura Python + frontend | `pnpm test:coverage` | Cobertura/xUnit Python y LCOV frontend |
 | Lo anterior + scanner y Quality Gate | `pnpm sonar` | Token desde backend/.env; solo tras éxito de todas las suites |
 | Navegador con API simulada | `pnpm test:e2e` | Arranca Next en localhost:3100; sin backend ni modelos |
@@ -1623,3 +1625,113 @@ desactualizados.
 comprobación de la conversación (401/404) dejan de ser un HTTP 5xx y salen como
 evento `error` dentro de un stream 200. `test_stream_error_and_logs_do_not_echo_query_or_request_id`
 documenta ese caso.
+
+### F1 — Gold y métricas contra alucinaciones
+
+El gold (`tests/backend/fixtures/gold/legal_qa.v1.jsonl`) contiene 37 casos **candidatos**
+(`status: "candidate"`, `reviewers: []`) extraídos de `backend/docs/processed/`; cada hecho
+cita un fragmento textual de su segmento y el cargador lo comprueba contra el corpus. Lo que
+el gold llama "hecho" es lo que el corpus afirma, no verdad jurídica verificada. Se regenera
+con `uv run python -m evaluation.harness.seed_legal_qa` (desde `backend/`). Los tests no llaman a
+Cohere, Google ni OpenAI.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_gold.py`](backend/harness/test_gold.py) | Esquema estricto del gold, procedencia de los 37 casos semilla (`candidate`), citas textuales verificadas contra el corpus y rechazo de casos incoherentes. |
+| [`backend/harness/test_metrics.py`](backend/harness/test_metrics.py) | Regla `n/a`, agregación macro/micro, legal factuality, precisión de citas, abstención, calibración y faithfulness como diagnóstico. |
+| [`backend/harness/test_pipeline_eval.py`](backend/harness/test_pipeline_eval.py) | Evaluación del gold con respuestas sintéticas, errores sin ceros falsos, jueces, cassettes, umbrales prerregistrados y metadatos del resultado. |
+| [`backend/unit/test_citation_verifier.py`](backend/unit/test_citation_verifier.py) | Extracción de Ley/artículo/Casación/D.S. con su código, coincidencia por número y verificación contra evidencia, también con OCR espaciado. |
+| [`frontend/component/EvidencePanels.test.tsx`](frontend/component/EvidencePanels.test.tsx) | Tarjeta de evidencia insuficiente con recursos, chips de citas ✓/⚠ con extracto y panel "¿Por qué confiar en esta respuesta?". |
+
+**`backend/harness/test_gold.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_segmenter_is_deterministic_and_drops_page_noise` | El segmentador produce los mismos segmentos con LF o CRLF y descarta imágenes, URLs, contadores de página y sellos de fecha. |
+| `test_document_ids_are_unique_and_stable` | Los `doc_id` salen del nombre de archivo, son únicos y la revisión del corpus es estable entre cargas. |
+| `test_seed_cases_are_candidates_without_reviewers` | Los casos semilla son `candidate`, sin revisores: ninguno se presenta como verdad. |
+| `test_seed_covers_all_strata_splits_and_topics` | La semilla cubre positivo/límite/negativo, dev/holdout y los cinco temas más `fuera_de_corpus`. |
+| `test_every_fact_and_contradiction_quotes_the_corpus` | Cada hecho y cada contradicción cita un fragmento que existe en su segmento de origen. |
+| `test_checked_in_jsonl_matches_the_seed_definition` | El JSONL versionado coincide con lo que genera `seed_legal_qa`; no se edita a mano. |
+| `test_each_fact_text_satisfies_its_own_anchors` | Un hecho escrito con sus propias palabras cuenta como cubierto: las anclas no son más estrictas que el hecho. |
+| `test_forbidden_patterns_detect_their_example_but_not_the_facts` | Cada patrón prohibido detecta su ejemplo y no se activa con los hechos correctos. |
+| `test_negative_cases_are_out_of_corpus_and_require_abstention` | Los negativos exigen abstención, no tienen segmentos y sus términos ausentes no están en el corpus. |
+| `test_loader_filters_splits_and_adjudicated` | El cargador filtra por split y por casos adjudicados (hoy ninguno). |
+| `test_gold_hash_ignores_line_endings` | El hash del gold es el mismo con LF o CRLF. |
+| `test_schema_rejects_inconsistent_cases` | Se rechazan campos extra, revisores en un candidato, adjudicación incompleta, abstención con hechos, estrato o split inválidos e IDs mal formados. |
+| `test_negative_with_segments_or_without_absent_terms_is_rejected` | Un negativo sin `absent_terms` o con un tema del corpus no es válido. |
+| `test_two_blind_approvals_make_a_case_adjudicated` | Dos revisores distintos, ciegos y que aprueban habilitan `adjudicated`. |
+| `test_verification_detects_invented_quote_changed_text_and_corpus_leaks` | La verificación detecta una cita inventada, un segmento cambiado, un patrón `unsupported` presente en el corpus, un término ausente que sí aparece y una cita aceptable inexistente. |
+| `test_loader_reports_every_problem_with_its_line` | Un JSON roto y un `id` repetido se informan juntos, con el número de línea. |
+
+**`backend/harness/test_metrics.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_na_is_never_a_silent_zero_in_macro_or_micro` | Un `n/a` no entra en macro ni micro y se cuenta aparte. |
+| `test_macro_and_micro_differ_when_cases_have_different_sizes` | Macro (media por caso) y micro (suma de numeradores/denominadores) se calculan por separado. |
+| `test_all_na_reports_reason_instead_of_a_number` | Si todo es `n/a` el resultado es `null` con la razón, no 0. |
+| `test_zero_denominator_is_na_and_samples_are_merged` | Denominador cero es `n/a`; las muestras de un caso se unen por media y suma. |
+| `test_fact_recall_counts_covered_facts_and_is_na_when_abstention_is_required` | Recall de hechos exigidos; `n/a` cuando el caso exige abstenerse. |
+| `test_legal_factuality_zeroes_out_when_a_forbidden_claim_is_made` | Una afirmación prohibida pone la factualidad en 0 aunque los hechos estén cubiertos. |
+| `test_negated_forbidden_claim_is_not_flagged` | "No pierdes el derecho" no dispara la afirmación "pierdes el derecho". |
+| `test_forbidden_claim_is_na_when_the_case_defines_none` | Sin afirmaciones prohibidas definidas la métrica es `n/a`, no 0. |
+| `test_oracle_answers_are_fully_factual_for_every_answerable_case` | La respuesta ideal de cada caso cubre todos sus hechos sin afirmar nada prohibido. |
+| `test_citation_precision_uses_the_corpus_and_the_acceptable_list` | Precisión de citas contra el corpus y contra las citas aceptables del caso. |
+| `test_citation_metrics_are_na_without_citations_or_acceptable_list` | Sin citas o sin lista aceptable, la métrica es `n/a`. |
+| `test_citation_index_finds_citations_in_spaced_ocr_documents` | El índice encuentra Casación y artículo en documentos con OCR espaciado. |
+| `test_citation_grounded_reads_runtime_statuses` | La precisión contra evidencia recuperada lee `metadata.citations` del runtime. |
+| `test_abstention_metrics_are_complementary_and_semantic_markers_count` | Recall de abstención y abstención innecesaria son complementarias; una no-respuesta explícita cuenta. |
+| `test_calibration_perfect_overconfident_and_empty` | ECE y Brier para confianza perfecta, sobreconfiada y sin datos. |
+| `test_faithfulness_is_a_diagnostic_with_na_when_missing` | Faithfulness es diagnóstico: `n/a` si el validador o el juez no lo midieron. |
+| `test_answer_from_payload_reads_the_pipeline_contract` | `Answer` se construye desde el payload de `answer_query` (texto, estado, confianza, citas, tiempos). |
+
+**`backend/harness/test_pipeline_eval.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_oracle_answers_score_perfectly_on_every_applicable_metric` | Con respuestas ideales todas las métricas aplicables son perfectas y los estratos/splits se agregan. |
+| `test_degraded_answers_lower_factuality_and_expose_missing_facts` | Respuestas degradadas bajan la factualidad, exponen los hechos faltantes y la calibración lo refleja. |
+| `test_forbidden_claim_in_an_otherwise_correct_answer_is_reported` | Una afirmación prohibida se informa por caso aunque el hecho correcto esté presente. |
+| `test_errors_are_counted_not_converted_into_zeros` | Un error al responder se cuenta como error, sin texto de la excepción y sin ceros falsos. |
+| `test_samples_are_merged_per_case` | Con N muestras cada caso promedia sus muestras y se conservan todas las respuestas. |
+| `test_judge_metrics_are_na_without_a_judge_and_present_with_one` | Sin juez las métricas del juez son `n/a`; con juez se registran su nombre, modelo y disponibilidad. |
+| `test_judge_factory_registers_availability_without_calling_models` | El juez `deepeval` informa si está disponible sin llamar a ningún modelo ni revelar claves. |
+| `test_cassette_replays_records_and_refuses_unrecorded_requests` | El cassette reproduce, graba solo en modo de grabación y falla ante una solicitud no grabada. |
+| `test_result_file_carries_reproducibility_metadata` | El resultado en disco lleva sha, `prompt_digest`, corpus, hash del gold, modelos, juez y su disponibilidad. |
+| `test_thresholds_are_unregistered_by_default_and_never_pass_silently` | Sin umbrales prerregistrados el veredicto es `unregistered`, nunca `pass`. |
+| `test_registration_requires_a_baseline_measurement_and_adjudicated_gold` | Registrar umbrales exige un baseline medido, métricas aplicables y gold adjudicado (o marcarlo provisional). |
+| `test_registered_thresholds_pass_fail_and_go_stale_with_the_gold` | Umbrales registrados: pass, fail, n/a como fallo y `stale` si cambia el gold. |
+
+**`backend/unit/test_citation_verifier.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_extracts_normalised_citation_keys` | Claves normalizadas para Ley, artículo (con su código), Casación y Decreto Supremo, incluidas variantes del OCR. |
+| `test_extraction_keeps_the_original_text_of_each_citation` | Cada cita conserva el texto original, con mayúsculas y tildes. |
+| `test_code_is_not_borrowed_from_a_later_citation` | Un artículo no toma el código de la cita siguiente. |
+| `test_codeless_article_matches_by_number_but_different_codes_do_not` | Un artículo sin código coincide por número; códigos distintos no coinciden. |
+| `test_despace_joins_letter_spaced_ocr_runs` | Se unen las rachas de letras sueltas del OCR espaciado. |
+| `test_verification_marks_traceable_and_untraceable_citations_with_excerpt` | Citas trazables a la evidencia con extracto y citas no halladas marcadas `unverified`. |
+| `test_verification_reads_spaced_ocr_evidence` | La verificación lee evidencia con OCR espaciado. |
+| `test_verification_without_evidence_leaves_everything_unverified` | Sin evidencia ninguna cita queda verificada. |
+| `test_answer_includes_verified_citations_and_evidence_excerpts` | `answer_query` agrega `metadata.citations` verificadas y `metadata.evidence` con extractos del corpus. |
+| `test_answer_without_documents_has_no_citations_or_evidence` | Sin documentos hay abstención formal, sin citas ni evidencia. |
+
+**`frontend/component/EvidencePanels.test.tsx`**
+
+| Caso | Qué verifica |
+|---|---|
+| evidencia insuficiente muestra la tarjeta con recursos de ayuda y teléfonos | Línea 100, CEM y Defensoría con enlaces `tel:`. |
+| tarjeta de evidencia insuficiente existe en quechua y reemplaza chips y panel | Existe en quechua y sustituye a los chips y al panel de confianza. |
+| chips de citas distinguen verificadas y no verificadas y muestran el extracto del corpus | ✓/⚠ accesibles y extracto del corpus al abrir el chip. |
+| sin citas no se dibuja el bloque de citas | Sin citas no se renderiza nada. |
+| panel de confianza resume solo lo medido: fuentes, validador, riesgo, citas y aviso | Fuentes, validador, riesgo, citas verificadas, fiabilidad y aviso. |
+| panel de confianza advierte cuando no es fiable y no inventa datos ausentes | Sin fuentes ni citas lo dice; si no es fiable lo advierte. |
+| la terminal muestra tarjeta, chips y panel solo en respuestas finales del asistente | La terminal no muestra estos bloques mientras la respuesta aún se transmite. |
+
+**`scripts/unit/run-tests.test.mjs`**
+
+| Caso | Qué verifica |
+|---|---|
+| harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1 | `harness` es offline; `harness-real` falla sin el flag y fuerza `EVAL_MODE=1`. |

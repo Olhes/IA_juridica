@@ -8,7 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function testPlan(mode, extra = []) {
   const real = extra.includes('--run-model-evals');
-  if (['quality', 'e2e-real'].includes(mode) && !real) {
+  if (['quality', 'e2e-real', 'harness-real'].includes(mode) && !real) {
     throw new Error('Confirma red/coste con --run-model-evals. No se inició ninguna prueba real.');
   }
   if (['frontend', 'frontend-coverage', 'e2e', 'e2e-real'].includes(mode)) {
@@ -24,6 +24,12 @@ export function testPlan(mode, extra = []) {
         ...(mode === 'frontend-coverage' ? ['--coverage'] : []), ...extra.filter(arg => arg !== '--run-model-evals')],
       env: { RUN_MODEL_EVALS: '0' } }];
   }
+  if (mode === 'harness-real') {
+    // Evaluación real del harness: temperatura 0, sin caché de respuestas y N=3 muestras (EVAL_MODE=1).
+    return [{ name: 'Harness / evaluación real (red/coste)', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', 'python', '-m', 'evaluation.harness.runner', 'legal_qa', ...extra],
+      env: { EVAL_MODE: '1', PYTHONPATH: 'backend' } }];
+  }
   const flags = {
     python: [],
     backend: ['tests/backend'],
@@ -32,6 +38,7 @@ export function testPlan(mode, extra = []) {
     coverage: ['--cov', '--cov-report=term-missing', '--cov-report=xml:coverage.xml',
       '--junitxml=temp/sonar-reports/pytest.xml', '-o', 'junit_family=legacy'],
     all: [],
+    harness: ['tests/backend/harness'],
     quality: ['tests/backend/quality', '-m', 'model_quality', '--run-model-evals'],
     'quality-offline': ['tests/backend/quality', '-m', 'quality'],
   };

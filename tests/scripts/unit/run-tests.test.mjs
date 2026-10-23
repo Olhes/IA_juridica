@@ -57,6 +57,18 @@ test('quality selecciona solo las pruebas del modelo y reenvía opciones', () =>
   assert.ok(plan[0].args.includes('model_quality'));
 });
 
+test('harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1', () => {
+  const offline = testPlan('harness');
+  assert.equal(offline.length, 1);
+  assert.ok(offline[0].args.includes('tests/backend/harness'));
+  assert.ok(!offline[0].args.includes('--run-model-evals'));
+  assert.throws(() => testPlan('harness-real'), /--run-model-evals/);
+  const real = testPlan('harness-real', ['--run-model-evals']);
+  assert.equal(real[0].env.EVAL_MODE, '1');
+  assert.ok(real[0].args.includes('evaluation.harness.runner'));
+  assert.ok(real[0].args.includes('--run-model-evals'));
+});
+
 test('quality-offline y modos inválidos no activan facturación', () => {
   assert.ok(!testPlan('quality-offline')[0].args.includes('--run-model-evals'));
   assert.throws(() => testPlan('invalid'), /Modo desconocido/);

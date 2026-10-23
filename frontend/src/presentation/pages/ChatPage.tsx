@@ -252,6 +252,7 @@ export function ChatPage() {
         completedStages: m.completedStages,
         errorInfo: m.errorInfo,
         timings: m.apiResponse?.metadata?.timings,
+        apiResponse: m.apiResponse,
       }));
       setTerminalMessages(formatted);
   }, [messages]);

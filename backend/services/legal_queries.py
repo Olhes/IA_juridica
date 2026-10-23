@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
+from services.citation_verifier import verify_citations
 from services.pipeline_telemetry import PipelineTimer
 
 
@@ -17,6 +18,33 @@ class PipelineError(HTTPException):
     def __init__(self, status_code, detail, code):
         super().__init__(status_code, detail)
         self.code = code
+
+
+EXCERPT_CHARS = 240
+
+
+def _evidence(documents):
+    """Fuentes recuperadas para citar: ``[{source, text}]`` (texto del corpus, no del modelo)."""
+    return [
+        {
+            "source": (d.get("metadata") or {}).get("title")
+            or (d.get("metadata") or {}).get("filename")
+            or "Fuente desconocida",
+            "text": d.get("content") or "",
+        }
+        for d in documents
+    ]
+
+
+def _evidence_summary(documents):
+    return [
+        {
+            "source": item["source"],
+            "relevance": d.get("relevance_score"),
+            "excerpt": " ".join(item["text"].split())[:EXCERPT_CHARS],
+        }
+        for item, d in zip(_evidence(documents), documents)
+    ]
 
 
 def response_text(data, language="spanish"):
@@ -177,6 +205,8 @@ async def answer_query(
             "pipeline": "validated-before-delivery-v1",
             "evidence_status": "retrieved" if documents else "insufficient_evidence",
             "retrieval_method": rag_result.get("method", "unknown"),
+            "citations": verify_citations(response_text(final), _evidence(documents)) if documents else [],
+            "evidence": _evidence_summary(documents),
             "total_candidates": rag_result.get("total_candidates", 0),
             "optimizer_stats": optimizer.get_session_stats(),
         },

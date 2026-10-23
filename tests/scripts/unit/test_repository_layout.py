@@ -31,7 +31,7 @@ def test_test_suites_are_confined_to_single_tree():
             assert len(parts) >= 3, path
             component, kind = parts[:2]
             assert component in {"backend", "frontend", "scripts"}, path
-            assert kind in {"unit", "component", "integration", "security", "http", "contract", "bdd", "benchmark", "quality", "e2e"}, path
+            assert kind in {"unit", "component", "integration", "security", "http", "contract", "bdd", "benchmark", "quality", "harness", "e2e"}, path
             if path.name.endswith(".test.mts"):
                 assert component == "frontend", path
             if path.name.endswith(".test.mjs"):

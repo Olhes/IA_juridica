@@ -3,11 +3,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
 import type {
+  LegalQueryApiResponse,
   PipelineStage,
   ResponseTimings,
   StreamErrorInfo,
   SupportedLanguage,
 } from '../../domain/legal/types';
+import { AssistantEvidence } from './chat/EvidencePanels';
 import { ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
 export interface TerminalMessage {
@@ -19,6 +21,7 @@ export interface TerminalMessage {
   completedStages?: PipelineStage[];
   errorInfo?: StreamErrorInfo;
   timings?: ResponseTimings;
+  apiResponse?: LegalQueryApiResponse;
 }
 
 interface TerminalModalProps {
@@ -173,6 +176,9 @@ export function TerminalModal({
                     error={msg.errorInfo}
                     onRetry={onRetry ? () => onRetry(msg.id) : undefined}
                   />
+                )}
+                {!msg.isUser && msg.apiResponse && !msg.isStreaming && (
+                  <AssistantEvidence language={language} apiResponse={msg.apiResponse} />
                 )}
                 {!msg.isUser && msg.timings && <ResponseTiming language={language} timings={msg.timings} />}
               </div>

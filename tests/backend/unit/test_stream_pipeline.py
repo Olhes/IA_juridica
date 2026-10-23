@@ -181,3 +181,29 @@ async def test_persistence_failure_is_an_error_not_a_final():
     events = await collect(persist=persist)
     assert "final" not in [e["type"] for e in events]
     assert events[-2]["type"] == "error"
+
+
+async def test_answer_includes_verified_citations_and_evidence_excerpts():
+    document = {
+        "content": "Prelación de obligados (Art. 475 CC). " + "texto " * 80,
+        "metadata": {"title": "Guía de pensión"},
+        "relevance_score": 0.8,
+    }
+    state = make_state(retrieval=AsyncMock(return_value={"documents": [document], "method": "fixture"}))
+    state.response_validator.validate.return_value.answer_data = {
+        "respuesta_espanol": "Rige el artículo 475 del Código Civil y la Ley 99999."
+    }
+    metadata = (await answer_query(state, "Consulta", "spanish"))["metadata"]
+    statuses = {c["key"]: c["status"] for c in metadata["citations"]}
+    assert statuses == {"cc:art:475": "verified", "ley:99999": "unverified"}
+    assert metadata["citations"][0]["source"] == "Guía de pensión"
+    (evidence,) = metadata["evidence"]
+    assert evidence["source"] == "Guía de pensión" and evidence["relevance"] == 0.8
+    assert len(evidence["excerpt"]) <= 240 and "Art. 475" in evidence["excerpt"]
+
+
+async def test_answer_without_documents_has_no_citations_or_evidence():
+    state = make_state(documents=False)
+    metadata = (await answer_query(state, "Consulta", "spanish"))["metadata"]
+    assert metadata["evidence_status"] == "insufficient_evidence"
+    assert metadata["citations"] == [] and metadata["evidence"] == []

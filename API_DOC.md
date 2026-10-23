@@ -52,6 +52,18 @@ no asumas siempre una única clave. Traducción quechua incompleta/no disponible
 conserva texto y advertencias. `validation.is_reliable` no certifica verdad jurídica.
 Sin documentos recuperados: abstención, sin fuentes y sin fiabilidad positiva.
 
+`metadata` también incluye, para que la interfaz explique la respuesta sin inventar nada:
+
+| Campo | Contenido |
+|---|---|
+| `evidence_status` | `retrieved` o `insufficient_evidence` (abstención) |
+| `citations` | `[{key, text, status, source, excerpt}]`: cada norma citada (Ley, artículo, Casación, D.S.) y si aparece (`verified`) o no (`unverified`) en las fuentes recuperadas; `excerpt` es texto del corpus, nunca del modelo |
+| `evidence` | `[{source, relevance, excerpt}]`: fuentes recuperadas con un extracto de hasta 240 caracteres |
+| `timings` | `total_ms`, `stages` y `cache_hit` (ver NDJSON) |
+
+Que una cita sea `verified` solo significa que aparece en el texto recuperado: no acredita
+vigencia ni que la norma diga lo que la respuesta le atribuye.
+
 ## NDJSON v1: etapas en vivo, texto solo validado
 
 `POST /legal-query-stream` acepta el mismo payload. La autorización (401) y la

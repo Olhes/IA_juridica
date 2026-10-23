@@ -156,3 +156,18 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | Gold de traducción | Hablante nativo de quechua | Pares marcados como pendientes de revisión |
 | Umbrales de lanzamiento | Equipo, tras medir un baseline | Solo el mecanismo de prerregistro |
 | Cassettes | Usuario autoriza la grabación | Se graban únicamente con su permiso |
+
+## Estado de implementación
+
+| Fase | Estado | Notas |
+| --- | --- | --- |
+| F0 | Hecha | Contrato NDJSON v1, tiempos por etapa y UI de etapas, errores y tiempos. |
+| F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 37 casos **candidatos** y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
+| F2–F6 | Pendientes | |
+
+Hallazgos que condicionan el resto del plan:
+
+- La interfaz activa es `TerminalModal`; `ChatMessage.tsx` no se renderiza en ninguna página, por lo
+  que las funcionalidades visibles se integran en la terminal.
+- Cuatro de los documentos jurídicos más largos del corpus tienen OCR espaciado (más del 90 % de los
+  tokens son una letra), lo que degrada su recuperación; F2 lo mide.
