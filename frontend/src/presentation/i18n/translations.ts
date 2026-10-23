@@ -74,6 +74,19 @@ export const chatTranslations = {
       unverified: 'No se encontró en las fuentes recuperadas',
       excerptFrom: (source: string) => `Extracto de ${source}`,
     },
+    related: {
+      title: 'Jurisprudencia relacionada',
+      relevance: (percent: string) => `Relevancia ${percent} %`,
+      unknownRelevance: 'Relevancia no medida',
+      citedCases: 'Casaciones citadas',
+      pathLabel: 'Cómo se encontró',
+      origins: { lightrag: 'Grafo de conocimiento', lexical: 'Búsqueda léxica' },
+      methods: {
+        cohere_rerank: 'reordenada por el reranker semántico',
+        fallback_keyword_rerank: 'reordenada por coincidencia de palabras (sin reranker)',
+        unknown: 'método no informado',
+      },
+    },
   },
   quechua: {
     stageLabels: {
@@ -131,6 +144,19 @@ export const chatTranslations = {
       verified: 'Willakuykunapi chiqaqchasqa',
       unverified: 'Taripasqa willakuykunapi mana tarisqachu',
       excerptFrom: (source: string) => `${source} nisqamanta pisi simi`,
+    },
+    related: {
+      title: 'Kikin hina jurisprudencia',
+      relevance: (percent: string) => `Chaypaq ${percent} %`,
+      unknownRelevance: 'Mana tupusqachu',
+      citedCases: 'Casacionkuna sutichasqa',
+      pathLabel: 'Imaynatam tarisqa',
+      origins: { lightrag: 'Yachay llika (grafo)', lexical: 'Simi maskay' },
+      methods: {
+        cohere_rerank: 'reranker nisqawan kutichisqa',
+        fallback_keyword_rerank: 'simikuna tupachiywan kutichisqa (mana rerankerwan)',
+        unknown: 'mana willasqachu',
+      },
     },
   },
 } as const;

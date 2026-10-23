@@ -207,3 +207,14 @@ async def test_answer_without_documents_has_no_citations_or_evidence():
     metadata = (await answer_query(state, "Consulta", "spanish"))["metadata"]
     assert metadata["evidence_status"] == "insufficient_evidence"
     assert metadata["citations"] == [] and metadata["evidence"] == []
+
+
+async def test_evidence_reports_retrieval_origin_and_cited_jurisprudence():
+    graph = {"content": "Resolvió la Casación 2154-2018, Arequipa.", "metadata": {"title": "Grafo", "retrieval_origin": "lightrag"}, "relevance_score": 0.7}
+    lexical = {"content": "Texto sin jurisprudencia.", "metadata": {"title": "Léxico"}, "relevance_score": 0.4}
+    state = make_state(retrieval=AsyncMock(return_value={"documents": [graph, lexical], "method": "cohere_rerank"}))
+    metadata = (await answer_query(state, "Consulta", "spanish"))["metadata"]
+    first, second = metadata["evidence"]
+    assert (first["origin"], first["jurisprudence"]) == ("lightrag", ["casacion:2154-2018"])
+    assert (second["origin"], second["jurisprudence"]) == ("lexical", [])
+    assert metadata["retrieval_method"] == "cohere_rerank"

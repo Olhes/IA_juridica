@@ -163,7 +163,8 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | --- | --- | --- |
 | F0 | Hecha | Contrato NDJSON v1, tiempos por etapa y UI de etapas, errores y tiempos. |
 | F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 37 casos **candidatos** y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
-| F2–F6 | Pendientes | |
+| F2 | Hecha | Evaluación por sistema (`retrieval_eval.py`), regla de solapamiento (`overlap.py`), `retrieval.v1.jsonl`, `trace` en `query_with_rerank` y UI de jurisprudencia relacionada. Los sistemas con LightRAG o Cohere solo se miden con `--run-model-evals` o desde un cassette (no grabado). |
+| F3–F6 | Pendientes | |
 
 Hallazgos que condicionan el resto del plan:
 
@@ -171,3 +172,10 @@ Hallazgos que condicionan el resto del plan:
   que las funcionalidades visibles se integran en la terminal.
 - Cuatro de los documentos jurídicos más largos del corpus tienen OCR espaciado (más del 90 % de los
   tokens son una letra), lo que degrada su recuperación; F2 lo mide.
+- Medición offline (`python -m evaluation.harness.runner retrieval`, gold aún `candidate`): el motor
+  léxico local alcanza un recall de evidencia@5 macro de ~0,63; con el rerank de respaldo baja a ~0,58 y
+  la jurisprudencia recuperada de ~0,83 a ~0,67. Las preguntas fuera del corpus siempre devuelven
+  fragmentos: la abstención descansa por completo en el umbral del rerank.
+- El índice de LightRAG está desfasado respecto del corpus procesado: 10 de los 50 segmentos del gold no
+  los cubre ningún fragmento indexado (ningún modo puede recuperarlos), 210 de 759 fragmentos indexados no
+  corresponden a ningún segmento y todos tienen `file_path: unknown_source` (la fuente se pierde).

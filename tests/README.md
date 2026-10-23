@@ -1735,3 +1735,45 @@ Cohere, Google ni OpenAI.
 | Caso | Qué verifica |
 |---|---|
 | harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1 | `harness` es offline; `harness-real` falla sin el flag y fuerza `EVAL_MODE=1`. |
+
+### F2 — Recuperación de jurisprudencia
+
+`backend/evaluation/harness/retrieval_eval.py` evalúa **por separado** cada etapa: LightRAG puro
+(`naive`, `local`, `global`, `hybrid`, `mix`), solo léxico (BM25), la mezcla actual antes del
+rerank, el resultado tras el rerank con umbral 0.1 y el mismo rerank sin umbral. Los fragmentos
+se mapean a segmentos con la regla de solapamiento de `overlap.py` (n-gramas de 10 caracteres; el
+fragmento contiene ≥ 60 % del segmento o es ≥ 60 % parte de él; lo no mapeado se conserva como
+`unmapped:<huella>`). Los sistemas que dependen de LightRAG o de Cohere son `n/a` sin
+`--run-model-evals` o sin cassette; los tests no llaman a ningún proveedor.
+
+Comando sin red: `uv run python -m evaluation.harness.runner retrieval` (desde `backend/`). El gold de
+recuperación `retrieval.v1.jsonl` se deriva de `legal_qa` y hereda su estado `candidate`.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_retrieval.py`](backend/harness/test_retrieval.py) | Regla de solapamiento, recall/precisión de evidencia, MRR, nDCG, jurisprudencia, `no_match`, fallback, pérdida por umbral, auditoría del índice y trazas del motor. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_overlap_rule_maps_containing_inside_and_unrelated_chunks` | Un fragmento que contiene el segmento, que es casi todo parte de él o que no se parece a nada se mapea como corresponde. |
+| `test_overlap_rule_is_insensitive_to_spacing_and_accents` | Mayúsculas, tildes y espacios no cambian el mapeo; un texto demasiado corto no genera n-gramas. |
+| `test_a_long_chunk_maps_to_every_segment_it_contains` | Un fragmento largo corresponde a todos los segmentos que contiene. |
+| `test_recall_precision_mrr_ndcg_follow_the_sat_definitions` | Recall y precisión de evidencia con IDs distintos, precisión por fragmento, MRR y nDCG binario. |
+| `test_every_retrieval_metric_is_na_without_a_denominator` | Sin evidencia exigida, sin resultados o sin método la métrica es `n/a`, no 0 ni 1. |
+| `test_empty_result_and_jurisprudence_flags` | Resultado vacío (indebido o deseable), acierto de jurisprudencia y uso de fallback. |
+| `test_threshold_loss_counts_relevant_evidence_scored_under_the_minimum` | Fracción de evidencia relevante del reranker que el umbral mínimo descarta. |
+| `test_retrieval_gold_is_derived_from_legal_qa_and_matches_the_checked_in_file` | El gold de recuperación sale de `legal_qa` y el JSONL coincide con la derivación. |
+| `test_jurisprudence_is_detected_by_casacion_citations_and_casacion_documents` | La jurisprudencia se detecta por citas de Casación o por documentos sobre una Casación. |
+| `test_oracle_retrieval_is_perfect_and_unavailable_systems_are_na_with_reason` | Un recuperador ideal puntúa 1; un sistema no disponible es `n/a` con su razón. |
+| `test_irrelevant_results_score_zero_recall_but_are_not_empty` | Resultados irrelevantes dan recall 0 sin contarse como vacíos. |
+| `test_threshold_loss_is_measured_from_the_rerank_scores` | La pérdida por umbral se calcula con las puntuaciones del reranker. |
+| `test_retrieved_round_trips_through_json` | `Retrieved` se serializa y deserializa sin pérdida (cassettes). |
+| `test_index_audit_reports_segments_no_indexed_chunk_can_reach` | La auditoría del índice informa los segmentos que ningún fragmento indexado alcanza. |
+| `test_corpus_quality_flags_spaced_ocr_documents_and_gold_dependence` | Se marcan los cuatro documentos con OCR espaciado y cuántos segmentos del gold dependen de ellos. |
+| `test_offline_engine_runs_lexical_mix_and_fallback_rerank_without_network` | El motor local ejecuta léxico, mezcla y rerank de respaldo sin red, de forma determinista. |
+| `test_trace_exposes_every_rerank_score_without_changing_the_selection` | `trace` expone todas las puntuaciones del rerank sin cambiar los documentos seleccionados. |
+| `test_trace_without_reranker_marks_the_fallback` | Sin Cohere la traza marca el rerank de respaldo. |
+| `test_evidence_reports_retrieval_origin_and_cited_jurisprudence` | `metadata.evidence` informa el origen (grafo o léxico) y las Casaciones citadas. |
+| jurisprudencia relacionada muestra relevancia y camino de recuperación solo de fragmentos con Casación | La UI lista solo fragmentos con Casación, con relevancia y camino. |
+| jurisprudencia relacionada tolera relevancia ausente, método desconocido y quechua | Relevancia ausente, método desconocido y versión en quechua. |
+

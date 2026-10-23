@@ -91,6 +91,14 @@ def _article_parts(key: str):
     return (match.group(1) or "", match.group(2)) if match else None
 
 
+def jurisprudence_keys(text: str) -> list:
+    """Claves de las Casaciones citadas en ``text`` (también con OCR espaciado)."""
+    keys = {c.key for c in extract_citations(text) if c.kind == "casacion"}
+    if spaced_ocr_ratio(text) > 0.5:
+        keys |= {c.key for c in extract_citations(despace(text)) if c.kind == "casacion"}
+    return sorted(keys)
+
+
 def citation_matches(cited: str, reference: str) -> bool:
     """Igualdad de claves; un artículo sin código identificado coincide por número."""
     if cited == reference:

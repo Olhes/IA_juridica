@@ -1,6 +1,6 @@
 'use client';
 
-import { BadgeCheck, Phone, ShieldQuestion, TriangleAlert } from 'lucide-react';
+import { BadgeCheck, Phone, Scale, ShieldQuestion, TriangleAlert } from 'lucide-react';
 import type { LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
 import { chatTranslations } from '../../i18n/translations';
 
@@ -89,6 +89,52 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
   );
 }
 
+/** Jurisprudencia relacionada: fragmentos recuperados que citan una Casación, con su relevancia y camino. */
+export function RelatedJurisprudence({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
+  const t = chatTranslations[language].related;
+  const items = (apiResponse.metadata?.evidence ?? []).filter((item) => item.jurisprudence?.length);
+  if (!items.length) return null;
+  const methods = t.methods as Record<string, string>;
+  const method = methods[apiResponse.metadata?.retrieval_method ?? ''] ?? t.methods.unknown;
+  return (
+    <section aria-label={t.title} className="mt-3">
+      <h3 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        <Scale className="w-3 h-3" aria-hidden="true" />
+        {t.title}
+      </h3>
+      <ul className="mt-1 space-y-2">
+        {items.map((item) => {
+          const percent = typeof item.relevance === 'number' ? Math.round(item.relevance * 100) : null;
+          return (
+            <li key={`${item.source}-${item.jurisprudence?.join(',')}`} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-300">
+              <p className="font-semibold text-zinc-200">{item.source}</p>
+              <p className="mt-0.5 text-zinc-400">
+                {t.citedCases}: {item.jurisprudence?.map((key) => key.replace('casacion:', 'Casación ')).join(', ')}
+              </p>
+              <div className="mt-1 flex items-center gap-2">
+                {percent !== null ? (
+                  <>
+                    <div role="meter" aria-label={t.relevance(String(percent))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-1.5 w-24 rounded bg-zinc-800">
+                      <div className="h-1.5 rounded bg-indigo-500" style={{ width: `${percent}%` }} />
+                    </div>
+                    <span>{t.relevance(String(percent))}</span>
+                  </>
+                ) : (
+                  <span>{t.unknownRelevance}</span>
+                )}
+              </div>
+              <p className="mt-1 text-zinc-500">
+                {t.pathLabel}: {t.origins[item.origin ?? 'lexical']}, {method}.
+              </p>
+              <p className="mt-1 text-zinc-400">“{item.excerpt}”</p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** "¿Por qué confiar en esta respuesta?": solo hechos medidos por el pipeline, sin adjetivos propios. */
 export function TrustPanel({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
   const t = chatTranslations[language].trust;
@@ -122,6 +168,7 @@ export function AssistantEvidence({ language, apiResponse }: { language: Support
   return (
     <>
       <CitationChips language={language} apiResponse={apiResponse} />
+      <RelatedJurisprudence language={language} apiResponse={apiResponse} />
       <TrustPanel language={language} apiResponse={apiResponse} />
     </>
   );

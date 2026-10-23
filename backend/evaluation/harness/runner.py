@@ -22,9 +22,11 @@ from pathlib import Path
 
 from evaluation.harness.answers import Answer, answer_from_json, answer_from_payload
 from evaluation.harness.cassettes import RECORD_MISSING, REPLAY, Cassette
-from evaluation.harness.corpus import Corpus
+from evaluation.harness.corpus import DEFAULT_CORPUS_DIR, Corpus
 from evaluation.harness.gold import LEGAL_QA_PATH, gold_hash, load_gold
 from evaluation.harness.judges import make_judge
+from evaluation.harness import retrieval_eval, retrieval_gold
+from evaluation.harness.overlap import SegmentMatcher
 from evaluation.harness.pipeline_eval import evaluate_gold
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -136,17 +138,104 @@ async def run_legal_qa(*, splits=None, samples=1, judge_name="none", cassette_pa
     return write_result(report, meta, "legal_qa", results_dir), report
 
 
+DEFAULT_RETRIEVAL_CASSETTE = ROOT / "tests" / "backend" / "fixtures" / "gold" / "cassettes" / "retrieval.cassette.json"
+KG_CHUNKS = ROOT / "backend" / "docs" / "knowledge_graph" / "kv_store_text_chunks.json"
+
+
+def offline_engine(corpus_dir):
+    """Motor con el corpus procesado y sin red: solo recuperación léxica y rerank de respaldo."""
+    import tempfile
+
+    from config.settings import settings
+    from modules.rag.services.lightrag_engine import LegalRAGEngine
+
+    previous, settings.LOAD_LOCAL_KG = settings.LOAD_LOCAL_KG, False
+    try:
+        engine = LegalRAGEngine(working_dir=tempfile.mkdtemp(prefix="harness-kg-"))
+    finally:
+        settings.LOAD_LOCAL_KG = previous
+    engine._ensure_initialized = lambda: None
+    engine.cohere_client = None
+    for path in sorted(Path(corpus_dir).glob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        engine.documents[path.stem] = {
+            "content": content,
+            "metadata": {"filename": path.name, "title": path.stem, "document_type": "legal_document"},
+            "chunks": engine._chunk_content(content),
+        }
+    return engine
+
+
+async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CASSETTE, results_dir=RESULTS_DIR, kg_chunks=KG_CHUNKS):
+    """``source``: ``offline`` (motor local sin red), ``cassette`` (reproduce) o ``live`` (red/coste)."""
+    from config.settings import settings
+
+    corpus = Corpus.load()
+    cases = retrieval_gold.build_from_legal_qa(corpus)
+    matcher = SegmentMatcher(corpus)
+    top_k, budget = settings.RERANK_TOP_K, settings.RERANK_CANDIDATES
+    bundles: dict = {}
+    cassette = Cassette(cassette_path, RECORD_MISSING if source == "live" else REPLAY) if source != "offline" else None
+    engine, live = None, None
+    if source == "offline":
+        engine = offline_engine(DEFAULT_CORPUS_DIR)
+    elif source == "live":
+        import main  # noqa: PLC0415
+
+        live = main.lifespan(main.app)
+        await live.__aenter__()
+        engine = main.app.state.rag_engine
+    try:
+        for case in cases:
+            material = {"suite": "retrieval", "case": case.id, "query": case.query, "budget": budget, "top_k": top_k,
+                        "embed": settings.COHERE_EMBED_MODEL, "rerank": settings.COHERE_RERANK_MODEL}
+
+            async def produce(case=case):
+                found = await retrieval_eval.retrieve_bundle(engine, case.query, budget=budget, top_k=top_k)
+                return {name: item.to_json() for name, item in found.items()}
+
+            raw = await produce() if cassette is None else await cassette.call(material, produce)
+            bundles[case.id] = {name: retrieval_eval.Retrieved.from_json(item) for name, item in raw.items()}
+    finally:
+        if cassette is not None:
+            cassette.save()
+        if live is not None:
+            await live.__aexit__(None, None, None)
+    report = retrieval_eval.evaluate_retrieval(cases, bundles, matcher)
+    relevant = {c.id: c.relevant for c in cases}
+    report["corpus_quality"] = retrieval_eval.corpus_quality(corpus, relevant)
+    if Path(kg_chunks).exists():
+        stored = json.loads(Path(kg_chunks).read_text(encoding="utf-8"))
+        report["index_audit"] = retrieval_eval.index_audit(corpus, [c.get("content", "") for c in stored.values()], matcher, relevant)
+    report["source"] = source
+    meta = collect_metadata(corpus=corpus, judge=make_judge("none"), samples=1, eval_mode=source == "live",
+                            gold_path=retrieval_gold.RETRIEVAL_PATH if retrieval_gold.RETRIEVAL_PATH.exists() else LEGAL_QA_PATH,
+                            cassette=cassette)
+    meta["answer_source"] = {"offline": "offline_engine", "cassette": "cassette", "live": "pipeline"}[source]
+    return write_result(report, meta, "retrieval", results_dir), report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("suite", choices=["legal_qa"])
+    parser.add_argument("suite", choices=["legal_qa", "retrieval"])
     parser.add_argument("--split", action="append", choices=["dev", "holdout"])
     parser.add_argument("--samples", type=int, default=None)
     parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
     parser.add_argument("--cassette", default=str(DEFAULT_CASSETTE))
+    parser.add_argument("--source", default="offline", choices=["offline", "cassette"], help="retrieval: motor local o cassette")
+    parser.add_argument("--retrieval-cassette", default=str(DEFAULT_RETRIEVAL_CASSETTE))
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
     eval_mode = os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
+    if args.suite == "retrieval":
+        source = "live" if args.run_model_evals else args.source
+        path, report = asyncio.run(run_retrieval(source=source, cassette_path=args.retrieval_cassette))
+        main_metrics = report["main"].get("lexical", {})
+        recall = {k: v["macro"]["value"] for k, v in main_metrics.items() if k.startswith("evidence_recall")}
+        print(f"retrieval ({source}) -> {path}")
+        print(f"lexical@{report['main_k']}: {recall}")
+        return 0
     path, report = asyncio.run(
         run_legal_qa(splits=args.split, samples=samples, judge_name=args.judge, cassette_path=args.cassette,
                      real=args.run_model_evals, eval_mode=eval_mode)

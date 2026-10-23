@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {
   AssistantEvidence,
   CitationChips,
+  RelatedJurisprudence,
   InsufficientEvidenceCard,
   TrustPanel,
 } from '../../../frontend/src/presentation/components/chat/EvidencePanels';
@@ -83,4 +84,34 @@ test('la terminal muestra tarjeta, chips y panel solo en respuestas finales del 
   expect(screen.getAllByText('Art. 475 CC')).toHaveLength(1);
   expect(screen.getAllByText('¿Por qué confiar en esta respuesta?')).toHaveLength(1);
   expect(screen.getAllByRole('region', { name: /no hay evidencia suficiente/i })).toHaveLength(1);
+});
+
+const jurisprudence = [
+  { source: 'Casación 2154-2018', relevance: 0.82, excerpt: 'Condicionar la visita al pago menoscaba al menor', origin: 'lightrag', jurisprudence: ['casacion:2154-2018'] },
+  { source: 'Guía de pensión', relevance: 0.4, excerpt: 'Sin jurisprudencia', origin: 'lexical', jurisprudence: [] },
+];
+
+test('jurisprudencia relacionada muestra relevancia y camino de recuperación solo de fragmentos con Casación', () => {
+  render(
+    <RelatedJurisprudence
+      language="spanish"
+      apiResponse={withMetadata({ evidence: jurisprudence, retrieval_method: 'cohere_rerank' })}
+    />,
+  );
+  expect(screen.getByRole('region', { name: 'Jurisprudencia relacionada' })).toBeVisible();
+  expect(screen.getByText('Casación 2154-2018', { selector: 'p.font-semibold' })).toBeVisible();
+  expect(screen.getByText(/Casaciones citadas: Casación 2154-2018/)).toBeVisible();
+  expect(screen.getByRole('meter', { name: 'Relevancia 82 %' })).toHaveAttribute('aria-valuenow', '82');
+  expect(screen.getByText(/Grafo de conocimiento, reordenada por el reranker semántico/)).toBeVisible();
+  expect(screen.queryByText('Guía de pensión')).toBeNull();
+});
+
+test('jurisprudencia relacionada tolera relevancia ausente, método desconocido y quechua', () => {
+  const { rerender, container } = render(
+    <RelatedJurisprudence language="quechua" apiResponse={withMetadata({ evidence: [{ ...jurisprudence[0], relevance: null }] })} />,
+  );
+  expect(screen.getByRole('region', { name: 'Kikin hina jurisprudencia' })).toBeVisible();
+  expect(screen.getByText('Mana tupusqachu')).toBeVisible();
+  rerender(<RelatedJurisprudence language="spanish" apiResponse={withMetadata({ evidence: [jurisprudence[1]] })} />);
+  expect(container).toBeEmptyDOMElement();
 });

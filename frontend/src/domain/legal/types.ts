@@ -96,6 +96,10 @@ export interface EvidenceItem {
   source: string;
   relevance: number | null;
   excerpt: string;
+  /** Camino de recuperación: grafo de conocimiento (LightRAG) o búsqueda léxica local. */
+  origin?: 'lightrag' | 'lexical';
+  /** Casaciones citadas en el fragmento; vacío si no es jurisprudencia. */
+  jurisprudence?: string[];
 }
 
 export type EvidenceStatus = 'retrieved' | 'insufficient_evidence';

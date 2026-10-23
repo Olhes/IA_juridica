@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
-from services.citation_verifier import verify_citations
+from services.citation_verifier import jurisprudence_keys, verify_citations
 from services.pipeline_telemetry import PipelineTimer
 
 
@@ -42,6 +42,9 @@ def _evidence_summary(documents):
             "source": item["source"],
             "relevance": d.get("relevance_score"),
             "excerpt": " ".join(item["text"].split())[:EXCERPT_CHARS],
+            # Camino de recuperación: grafo de LightRAG o búsqueda léxica local.
+            "origin": (d.get("metadata") or {}).get("retrieval_origin") or "lexical",
+            "jurisprudence": jurisprudence_keys(item["text"]),
         }
         for item, d in zip(_evidence(documents), documents)
     ]
