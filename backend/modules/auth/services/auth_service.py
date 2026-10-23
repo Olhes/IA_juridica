@@ -40,8 +40,8 @@ class AuthService:
         
         # Crear payload del token
         payload = {
-            "sub": user['email'],
-            "user_id": user['id'],
+            "sub": str(user['id']),  # Usar user_id (UUID) como sub
+            "email": user['email'],
             "username": user['username'],
             "role": role_names[0] if role_names else user.get('role', 'user'),
             "roles": role_names
@@ -73,8 +73,8 @@ class AuthService:
             
             # Crear nuevo payload con roles actualizados
             new_payload = {
-                "sub": user['email'],
-                "user_id": user['id'],
+                "sub": str(user['id']),  # Usar user_id (UUID) como sub
+                "email": user['email'],
                 "username": user['username'],
                 "role": role_names[0] if role_names else user.get('role', 'user'),
                 "roles": role_names

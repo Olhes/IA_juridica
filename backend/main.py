@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -79,13 +79,13 @@ def _log_failure(
     )
 
 
-def _get_pdf_processor(app: FastAPI):
-    processor = getattr(app.state, "pdf_processor", None)
+def _get_document_processor(app: FastAPI):
+    processor = getattr(app.state, "document_processor", None)
     if processor is None:
-        from ingestion.docling_processor import LegalPDFProcessor
+        from ingestion.docling_processor import LegalDocumentProcessor
 
-        processor = LegalPDFProcessor()
-        app.state.pdf_processor = processor
+        processor = LegalDocumentProcessor()
+        app.state.document_processor = processor
     return processor
 
 
@@ -490,53 +490,190 @@ async def health_check():
     }
 
 
-@app.post("/upload-pdf")
+class DocumentQueryRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="Pregunta sobre el documento")
+    language: SupportedLanguage = "spanish"
+
+
+@app.post("/query-document")
+@limiter.limit(settings.LLM_RATE_LIMIT)
+async def query_document(
+    request: Request,
+    file: UploadFile = File(...),
+    query: str = Form(...),
+    language: SupportedLanguage = Form("spanish"),
+    principal: Principal = Depends(require_principal),
+):
+    """
+    Procesa un documento temporalmente (imagen/PDF) y responde preguntas usando Cohere.
+    El documento NO se guarda en el RAG permanentemente.
+    """
+    from ingestion.docling_processor import LegalDocumentProcessor
+
+    temp_path: Optional[Path] = None
+    try:
+        # Validar archivo
+        original_name = (
+            (file.filename or "upload").replace("\\", "/").rsplit("/", 1)[-1]
+        )
+        original_name = "".join(char for char in original_name if char.isprintable())[:255]
+
+        file_ext = Path(original_name).suffix.lower()
+        supported_exts = LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS | LegalDocumentProcessor.SUPPORTED_DOC_FORMATS
+        if file_ext not in supported_exts:
+            raise HTTPException(
+                400,
+                f"Formato no soportado: {file_ext}. "
+                f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
+            )
+
+        # Guardar archivo temporalmente
+        temp_dir = BASE_DIR / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = temp_dir / f"{uuid.uuid4().hex}{file_ext}"
+
+        total_size = 0
+        with temp_path.open("xb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                total_size += len(chunk)
+                if total_size > settings.MAX_FILE_SIZE:
+                    raise HTTPException(413, "File exceeds maximum allowed size")
+                buffer.write(chunk)
+
+        if total_size == 0:
+            raise HTTPException(400, "Empty file")
+
+        # Procesar documento con Docling
+        document_processor = LegalDocumentProcessor()
+        markdown_content = await document_processor.process_document(
+            str(temp_path), write_output=False
+        )
+
+        # Preparar prompt para Cohere con el contenido del documento
+        from agents.pydantic_agents import LegalAgent
+
+        legal_agent = LegalAgent()
+
+        if not legal_agent.cohere_client:
+            raise HTTPException(500, "Cohere client not initialized")
+
+        from agents.pydantic_agents import GLOBAL_SYSTEM_PROMPT, SYSTEM_PROMPT_GUARDRAILS
+
+        system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
+
+{SYSTEM_PROMPT_GUARDRAILS}
+
+INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS:
+1. Analiza el documento proporcionado en formato Markdown
+2. Identifica el tipo de documento (ley, reglamento, jurisprudencia, etc.)
+3. Extrae y estructura la información relevante: artículos modificados, cambios principales, plazos, entidades involucradas
+4. Cita artículos específicos y números de ley cuando sea posible
+5. Organiza la respuesta en secciones claras con encabezados
+6. Si el documento es una modificación legislativa, explica claramente qué cambia y qué no
+7. Mantén el tono profesional y técnico pero accesible
+
+Responde en {language}."""
+
+        user_message = f"""DOCUMENTO:
+{markdown_content}
+
+PREGUNTA:
+{query}
+
+Responde en {language}."""
+
+        # Llamar a Cohere
+        try:
+            response = await legal_agent.cohere_client.chat(
+                model="command-r-plus-08-2024",
+                message=user_message,
+                preamble=system_prompt,
+                chat_history=[],
+                temperature=0.3,
+            )
+        except AttributeError as e:
+            import traceback
+            error_details = f"AttributeError: {str(e)}\n{traceback.format_exc()}"
+            logging.getLogger("ia_juridica.api").error(f"Cohere client error: {error_details}")
+            raise HTTPException(500, f"Cohere client error: {str(e)}")
+        except Exception as e:
+            import traceback
+            error_details = f"Error: {str(e)}\n{traceback.format_exc()}"
+            logging.getLogger("ia_juridica.api").error(f"Cohere API error: {error_details}")
+            raise HTTPException(500, f"Cohere API error: {str(e)}")
+
+        return {
+            "success": True,
+            "query": query,
+            "response": response.text,
+            "language": language,
+            "document_type": "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document",
+            "original_filename": original_name,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as error:
+        _log_failure("document_query_failed", error, request)
+        raise HTTPException(500, "Document query failed")
+    finally:
+        # Limpiar archivo temporal
+        if temp_path and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+        await file.close()
+
+
+@app.post("/upload-document")
 @limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def upload_pdf(
+async def upload_document(
     request: Request,
     file: UploadFile = File(...),
     _auth: bool = Depends(verify_admin_api_key),
 ):
-    """Sube y procesa un PDF legal con Docling."""
+    """Sube y procesa un documento legal (PDF, imagen, DOCX, etc.) con Docling."""
+    from ingestion.docling_processor import LegalDocumentProcessor
+
     raw_path: Optional[Path] = None
     processed_path: Optional[Path] = None
     processed_created = False
     try:
         original_name = (
-            (file.filename or "upload.pdf").replace("\\", "/").rsplit("/", 1)[-1]
+            (file.filename or "upload").replace("\\", "/").rsplit("/", 1)[-1]
         )
         original_name = "".join(char for char in original_name if char.isprintable())[
             :255
         ]
-        if Path(original_name).suffix.lower() != ".pdf":
-            raise HTTPException(400, "Only PDF files are allowed")
-        if file.content_type != "application/pdf":
-            raise HTTPException(400, "Invalid PDF media type")
+
+        # Verificar extensión del archivo
+        file_ext = Path(original_name).suffix.lower()
+        supported_exts = LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS | LegalDocumentProcessor.SUPPORTED_DOC_FORMATS
+        if file_ext not in supported_exts:
+            raise HTTPException(
+                400,
+                f"Formato no soportado: {file_ext}. "
+                f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
+            )
 
         raw_directory = RAW_PDFS_DIR.resolve()
         raw_directory.mkdir(parents=True, exist_ok=True)
-        server_name = f"{uuid.uuid4().hex}.pdf"
+        server_name = f"{uuid.uuid4().hex}{file_ext}"
         raw_path = (raw_directory / server_name).resolve()
         if raw_path.parent != raw_directory:
             raise HTTPException(400, "Invalid upload path")
 
         total_size = 0
-        first_chunk = True
         with raw_path.open("xb") as buffer:
             while chunk := await file.read(1024 * 1024):
                 total_size += len(chunk)
                 if total_size > settings.MAX_FILE_SIZE:
-                    raise HTTPException(413, "PDF exceeds maximum allowed size")
-                if first_chunk:
-                    if not chunk.startswith(b"%PDF-"):
-                        raise HTTPException(400, "Invalid PDF signature")
-                    first_chunk = False
+                    raise HTTPException(413, "File exceeds maximum allowed size")
                 buffer.write(chunk)
-        if first_chunk:
-            raise HTTPException(400, "Empty PDF file")
 
-        pdf_processor = _get_pdf_processor(app)
-        processed_content = await pdf_processor.process_pdf(
+        if total_size == 0:
+            raise HTTPException(400, "Empty file")
+
+        document_processor = _get_document_processor(app)
+        processed_content = await document_processor.process_document(
             str(raw_path), write_output=False
         )
 
@@ -546,6 +683,9 @@ async def upload_pdf(
         with processed_path.open("x", encoding="utf-8", newline="") as f:
             processed_created = True
             f.write(processed_content)
+
+        # Determinar tipo de documento
+        document_type = "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document"
 
         # Publish before RAG; upload cleanup below does not delete published evidence.
         evidence = persist_source_evidence(
@@ -561,8 +701,8 @@ async def upload_pdf(
                 "filename": server_name,
                 "original_filename": original_name,
                 "title": original_name,
-                "document_type": "legal_pdf",
-                "source": "upload-pdf",
+                "document_type": document_type,
+                "source": "upload-document",
             },
             server_name,
         )
@@ -577,9 +717,10 @@ async def upload_pdf(
             "success": True,
             "filename": server_name,
             "original_filename": original_name,
+            "file_type": document_type,
             "evidence_id": evidence.evidence_id,
             "graph_write_state": "unverified",
-            "message": "PDF procesado correctamente con Docling",
+            "message": f"{document_type.capitalize()} procesado correctamente con Docling",
         }
     except HTTPException:
         if raw_path:
@@ -592,10 +733,22 @@ async def upload_pdf(
             raw_path.unlink(missing_ok=True)
         if processed_created and processed_path:
             processed_path.unlink(missing_ok=True)
-        _log_failure("pdf_upload_failed", error, request)
-        raise HTTPException(500, "PDF processing failed")
+        _log_failure("document_upload_failed", error, request)
+        raise HTTPException(500, "Document processing failed")
     finally:
         await file.close()
+
+
+# Mantener el endpoint antiguo por compatibilidad
+@app.post("/upload-pdf")
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def upload_pdf(
+    request: Request,
+    file: UploadFile = File(...),
+    _auth: bool = Depends(verify_admin_api_key),
+):
+    """Sube y procesa un PDF legal con Docling (endpoint deprecado, usar /upload-document)."""
+    return await upload_document(request, file, _auth)
 
 
 @app.post("/batch-process")

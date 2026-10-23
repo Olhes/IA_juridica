@@ -2,6 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Dict, Any
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Cargar explícitamente el archivo .env antes de pydantic_settings
+load_dotenv(override=True)
 
 class Settings(BaseSettings):
     """Configuración centralizada del sistema IA Jurídica"""
@@ -42,6 +46,13 @@ class Settings(BaseSettings):
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
     REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD", None)
+
+    # Configuración de JWT
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "CLAVE_SECRETA_DESAROLLO_IA_JURIDICA")
+    JWT_REFRESH_SECRET_KEY: str = os.getenv("JWT_REFRESH_SECRET_KEY", "CLAVE_REFRESH_DESAROLLO_IA_JURIDICA")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # Configuración de SQLAlchemy
     SQLALCHEMY_ECHO: bool = False
@@ -59,8 +70,8 @@ class Settings(BaseSettings):
     COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
     COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
     COHERE_LLM_MODEL: str = "command-r7b-12-2024"
-    COHERE_MAX_TOKENS: int = 512
-    COHERE_TEMPERATURE: float = 0.3
+    COHERE_MAX_TOKENS: int = 2048
+    COHERE_TEMPERATURE: float = 0.2
     
     # Configuración de Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -141,7 +152,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID"]
+    CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID", "Authorization", "Cookie"]
     
     # Configuración de Archivos
     MAX_FILE_SIZE: int = 50 * 1024 * 1024

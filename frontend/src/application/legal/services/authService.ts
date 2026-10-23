@@ -43,16 +43,54 @@ export interface AuthState {
 const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'auth_user';
+const USER_CACHE_KEY = 'auth_user_cache';
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
 export class AuthService {
   private token: string | null = null;
   private refreshToken: string | null = null;
   private user: User | null = null;
   private listeners: Set<(state: AuthState) => void> = new Set();
+  private userCacheExpiry: number = 0;
 
   constructor() {
-    // Ya no cargamos desde localStorage por seguridad
-    // Verificamos autenticación con el backend
+    // Cargar usuario desde cache local si existe y es válido
+    this.loadUserFromCache();
+  }
+
+  // ── Cache local de usuario ────────────────────────────────────────────────────────
+
+  private loadUserFromCache() {
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      if (cached) {
+        const { user, expiry } = JSON.parse(cached);
+        if (expiry > Date.now()) {
+          this.user = user;
+          this.token = 'from_cache';
+          this.userCacheExpiry = expiry;
+        } else {
+          localStorage.removeItem(USER_CACHE_KEY);
+        }
+      }
+    } catch {
+      // Ignorar errores de cache
+    }
+  }
+
+  private saveUserToCache(user: User) {
+    try {
+      const expiry = Date.now() + CACHE_TTL;
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify({ user, expiry }));
+      this.userCacheExpiry = expiry;
+    } catch {
+      // Ignorar errores de cache
+    }
+  }
+
+  private clearUserCache() {
+    localStorage.removeItem(USER_CACHE_KEY);
+    this.userCacheExpiry = 0;
   }
 
   // ── Almacenamiento ────────────────────────────────────────────────────────
@@ -64,10 +102,12 @@ export class AuthService {
 
   private saveToStorage() {
     // Deshabilitado por seguridad - usamos httpOnly cookies
+    // Las cookies se manejan automáticamente por el navegador
   }
 
   private clearStorage() {
     // Deshabilitado por seguridad - usamos httpOnly cookies
+    // Las cookies se manejan automáticamente por el navegador
   }
 
   // ── Gestión del estado ────────────────────────────────────────────────────
@@ -176,6 +216,7 @@ export class AuthService {
       this.token = null;
       this.refreshToken = null;
       this.user = null;
+      this.clearUserCache(); // Limpiar cache local
       this.notifyListeners();
     }
   }
@@ -217,10 +258,18 @@ export class AuthService {
     }
 
     this.user = await response.json();
+    // Guardar en cache local si el usuario existe
+    if (this.user) {
+      this.saveUserToCache(this.user);
+    }
   }
 
   async getCurrentUser(): Promise<User | null> {
-    if (this.user) return this.user;
+    // Retornar usuario en cache si existe y no ha expirado
+    if (this.user && this.userCacheExpiry > Date.now()) {
+      return this.user;
+    }
+
     // OAuth usa cookies httpOnly: restaurar el usuario sin exigir un token JS.
     try {
       await this.fetchCurrentUser();
@@ -229,6 +278,7 @@ export class AuthService {
     } catch {
       this.token = null;
       this.user = null;
+      this.clearUserCache();
       return null;
     }
 

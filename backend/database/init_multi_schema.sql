@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS auth_schema.users (
 -- Tabla de Conversaciones
 CREATE TABLE IF NOT EXISTS conversations_schema.conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth_schema.users(id),
+    user_id UUID REFERENCES auth_schema.users(id) ON DELETE SET NULL,
     title VARCHAR(255) NOT NULL,
     language VARCHAR(10) DEFAULT 'spanish',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

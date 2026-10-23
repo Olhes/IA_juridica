@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import { X, Send, Loader2, Bot, User, Sparkles, FileText, Image as ImageIcon, X as XIcon } from 'lucide-react';
 
 interface TerminalMessage {
   id: string;
@@ -16,6 +16,8 @@ interface TerminalModalProps {
   messages: TerminalMessage[];
   isLoading?: boolean;
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
+  attachedFile?: File | null;
+  onRemoveAttachment?: () => void;
 }
 
 export function TerminalModal({
@@ -25,6 +27,8 @@ export function TerminalModal({
   messages,
   isLoading = false,
   returnFocusRef,
+  attachedFile,
+  onRemoveAttachment,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -166,26 +170,49 @@ export function TerminalModal({
         <div className="p-4 sm:p-6 border-t border-zinc-800/80 bg-zinc-950">
           <form
             onSubmit={handleSubmit}
-            className="max-w-5xl mx-auto relative flex items-center"
+            className="max-w-5xl mx-auto"
           >
-            <input
-              ref={inputRef}
-              aria-label="Consulta legal"
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe tu consulta legal aquí..."
-              className="w-full bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              aria-label="Enviar consulta"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            {/* Archivo adjunto */}
+            {attachedFile && (
+              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                {attachedFile.type.startsWith('image/') ? (
+                  <ImageIcon className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <FileText className="w-4 h-4 text-indigo-400" />
+                )}
+                <span className="text-sm text-indigo-300 truncate max-w-[300px]">
+                  {attachedFile.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={onRemoveAttachment}
+                  className="p-1 rounded hover:bg-indigo-500/20 transition-colors"
+                >
+                  <XIcon className="w-3.5 h-3.5 text-indigo-400" />
+                </button>
+              </div>
+            )}
+
+            <div className="relative flex items-center">
+              <input
+                ref={inputRef}
+                aria-label="Consulta legal"
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Escribe tu consulta legal aquí..."
+                className="w-full bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                aria-label="Enviar consulta"
+                disabled={!input.trim() && !attachedFile || isLoading}
+                className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </form>
         </div>
       </div>
