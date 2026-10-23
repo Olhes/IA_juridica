@@ -8,8 +8,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parents[2]
-REPO = ROOT.parent
+REPO = Path(__file__).resolve().parents[2]  # backend/services/quality_reports.py -> raíz del repositorio
 PUBLISHED_PATH = REPO / "docs" / "quality" / "published.json"
 RESULTS_DIR = REPO / "temp" / "harness"
 MAX_BLOCKS = 20

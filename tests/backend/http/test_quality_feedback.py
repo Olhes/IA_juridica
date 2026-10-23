@@ -167,6 +167,37 @@ def test_admin_overview_gathers_comparison_gold_queue_and_stream_without_secrets
     assert "n" in overview["stream"] and "offline-admin-key" not in json.dumps(overview)
 
 
+async def test_session_roles_are_read_from_a_real_access_token(monkeypatch):
+    """Sin simular ``roles_from_session``: firma un JWT de verdad y solo sustituye la base de datos."""
+    import database.postgres_adapter_final as adapter_module
+    from modules.auth.services.security import AuthService as SecurityService
+
+    closed = []
+
+    class FakeDatabase:
+        async def initialize(self):
+            return None
+
+        async def get_user_by_id(self, user_id):
+            return {"id": user_id, "is_active": True} if user_id == "u-admin" else None
+
+        async def get_user_roles(self, user_id):
+            return [{"name": "admin"}]
+
+        async def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(adapter_module, "PostgreSQLAdapter", FakeDatabase)
+    token = SecurityService.create_access_token({"user_id": "u-admin", "email": "admin@example.test"})
+    assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": token})) == ["admin"]
+    assert await quality_access.require_quality_admin(SimpleNamespace(cookies={"access_token": token}), None) == "role"
+    stranger = SecurityService.create_access_token({"user_id": "otro", "email": "x@example.test"})
+    assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": stranger})) is None
+    refresh = SecurityService().create_refresh_token({"user_id": "u-admin"})
+    assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": refresh})) is None
+    assert len(closed) == 3  # cada consulta cierra su conexión
+
+
 async def test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not(monkeypatch):
     request = SimpleNamespace(cookies={"access_token": "token"})
     monkeypatch.setattr(quality_access, "roles_from_session", AsyncMock(return_value=["user", "admin"]))
@@ -182,3 +213,16 @@ async def test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not(
     monkeypatch.setattr(quality_access, "roles_from_session", AsyncMock(return_value=None))
     with pytest.raises(Exception):
         await quality_access.require_quality_admin(request, "clave-incorrecta")
+
+
+def test_published_metrics_are_read_from_the_repository_docs():
+    """Sin rutas parcheadas: el endpoint público lee `docs/quality/published.json` del propio repositorio."""
+    from pathlib import Path
+
+    from services import quality_reports
+
+    repo = Path(__file__).resolve().parents[3]
+    assert quality_reports.PUBLISHED_PATH == repo / "docs" / "quality" / "published.json"
+    assert quality_reports.PUBLISHED_PATH.exists()
+    assert quality_reports.RESULTS_DIR == repo / "temp" / "harness"
+    assert quality_reports.load_published()["status"] != "sin_publicar"

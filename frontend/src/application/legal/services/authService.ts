@@ -208,15 +208,36 @@ export class AuthService {
   }
 
   private async fetchCurrentUser(): Promise<void> {
-    const response = await fetch(`${API_BASE}/auth/me`, {
+    let response = await fetch(`${API_BASE}/auth/me`, {
       credentials: 'include',  // Importante: incluir cookies httpOnly
     });
+
+    // La cookie de acceso dura 15 minutos; la de refresco, 7 días. Al volver a la app después de
+    // ese plazo se renueva una sola vez con la cookie de refresco antes de dar la sesión por cerrada.
+    if (response.status === 401 && (await this.refreshCookieSession())) {
+      response = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+    }
 
     if (!response.ok) {
       throw new Error('Error al obtener usuario');
     }
 
     this.user = await response.json();
+  }
+
+  /** Renueva la cookie de acceso con la cookie httpOnly de refresco (sin tokens en JavaScript). */
+  private async refreshCookieSession(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: 'from_cookie' }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   async getCurrentUser(): Promise<User | null> {
@@ -257,23 +278,9 @@ export class AuthService {
         throw new Error('Sesión expirada');
       }
       // Intentar refrescar token usando cookies
-      try {
-        const refreshResponse = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: 'from_cookie' }),
-        });
-        
-        if (refreshResponse.ok) {
-          // Reintentar la solicitud
-          return this.authenticatedRequest<T>(endpoint, options, false);
-        }
-      } catch {
-        await this.logout();
-        throw new Error('Sesión expirada');
+      if (await this.refreshCookieSession()) {
+        // Reintentar la solicitud
+        return this.authenticatedRequest<T>(endpoint, options, false);
       }
       await this.logout();
       throw new Error('Sesión expirada');

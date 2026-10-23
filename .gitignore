@@ -84,3 +84,6 @@ models/
 
 # Cassette de recuperación del harness real (~40 MB): se publica como artefacto de CI, no se versiona.
 /tests/backend/fixtures/gold/cassettes/retrieval.cassette.json
+
+# Datos locales del backend (feedback de usuarios): nunca se versionan.
+/data/

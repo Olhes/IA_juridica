@@ -25,6 +25,24 @@ test('usuario se recupera desde cookies tras nueva instancia sin token JS', asyn
   expect(listener).toHaveBeenLastCalledWith({ isAuthenticated: true, token: 'from_cookie', user });
   off();
 });
+test('sesión con la cookie de acceso vencida se renueva una vez con la de refresco', async () => {
+  let me = 0; let refreshes = 0;
+  server.use(http.get(`${API}/auth/me`, () => (++me === 1 ? new HttpResponse(null, { status: 401 }) : HttpResponse.json(user))),
+    http.post(`${API}/auth/refresh`, ({ request }) => {
+      refreshes++; expect(request.credentials).toBe('include'); return HttpResponse.json({ access_token: 'synthetic' });
+    }));
+  const api = new AuthService();
+  expect(await api.getCurrentUser()).toEqual(user);
+  expect(api.isAuthenticated).toBe(true); expect(refreshes).toBe(1); expect(me).toBe(2);
+});
+test('sin cookie de refresco válida la sesión queda cerrada sin bucles', async () => {
+  let refreshes = 0;
+  server.use(http.get(`${API}/auth/me`, () => new HttpResponse(null, { status: 401 })),
+    http.post(`${API}/auth/refresh`, () => { refreshes++; return new HttpResponse(null, { status: 401 }); }));
+  const api = new AuthService();
+  expect(await api.getCurrentUser()).toBeNull();
+  expect(api.isAuthenticated).toBe(false); expect(refreshes).toBe(1);
+});
 test('login inválido no autentica y conserva mensaje de error', async () => {
   server.use(http.post(`${API}/auth/login`, () => HttpResponse.json({ detail: 'Inválido' }, { status: 401 })));
   const api = new AuthService(); await expect(api.login({ username: 'x', password: 'x' })).rejects.toThrow('Inválido');
