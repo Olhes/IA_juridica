@@ -16,7 +16,9 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
-  User,
+    User,
+  Volume2,
+  VolumeX,
   XCircle,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -27,7 +29,7 @@ import type {
   ValidationReport,
 } from '../../../domain/legal/types';
 import { MarkdownRenderer } from './MarkdownRenderer';
-
+import { useTextToSpeech } from '../../../application/legal/use-cases/useSpeech';
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
 function BotIcon() {
@@ -252,7 +254,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language }: ChatMessageProps) {
   const isUser = message.role === 'user';
-
+  const { supported: ttsSupported, speaking, speak, stop: stopSpeaking } = useTextToSpeech(); 
   if (!isUser && message.isStreaming === false && message.isLoadingFull && !message.content && !message.streamingContent) {
     return <ThinkingBubble />;
   }
@@ -340,7 +342,18 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
           />
         )}
 
-        {/* Footer: cache badge + timestamp */}
+                {/* Escuchar respuesta (solo español) */}
+        {ttsSupported && language === 'spanish' && respText && !message.isStreaming && (
+          <button
+            type="button"
+            onClick={() => (speaking ? stopSpeaking() : speak(respText))}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200 dark:border-gray-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all"
+            title={speaking ? 'Detener' : 'Escuchar respuesta'}
+          >
+            {speaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            {speaking ? 'Detener' : 'Escuchar'}
+          </button>
+        )}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-2">
             {apiResp?.cached && (
