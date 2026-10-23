@@ -1,0 +1,73 @@
+# Evaluación REAL del harness: llama a proveedores (red y coste).
+# Solo corre cada noche, con la etiqueta `eval` en un PR del propio repositorio o a mano.
+# Los PR de forks nunca la reciben: GitHub no les entrega secretos.
+name: Harness real
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Ref contra el que comparar (por defecto origin/main)"
+        required: false
+        default: "origin/main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-real
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: harness-real + compare
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.label.name == 'eval' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+      BASE_REF: ${{ github.event.inputs.base || github.base_ref && format('origin/{0}', github.base_ref) || 'origin/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Dependencias
+        run: |
+          uv sync --frozen --extra dev
+          pnpm install --frozen-lockfile
+      - name: Evaluación real (temperatura 0, sin caché, 3 muestras)
+        run: pnpm test:harness:real --run-model-evals
+      - name: Comparar con la base (A/B ciego con orden invertido)
+        id: compare
+        run: pnpm test:harness:compare --base "$BASE_REF" --head HEAD --run-missing --run-model-evals --ab --judge deepeval
+      - name: Resumen
+        if: always()
+        run: |
+          for report in temp/harness/compare/*/report.md; do
+            [ -f "$report" ] && cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-real
+          path: temp/harness
+          if-no-files-found: ignore

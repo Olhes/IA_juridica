@@ -167,7 +167,7 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | F3 | Hecha | 319 pares es→qu **candidatos** con su origen verificado (manuales cusco-collao y chanka, Ley 30364), chrF++/BLEU/TER y señales de contrato propios, `translation_qe` (calidad alta/media/baja), aviso fuera del texto y UI de calidad, aviso de revisión y "Ver original en español". El sistema real (Google) solo con `--run-model-evals` o cassette (no grabado). Pendiente de humanos: revisión de hablantes nativos. |
 | F4 | Hecha | `StreamGuard` (servidor), `ndjsonParser.ts` puro integrado en `useChat`, `POST /telemetry/stream` y resumen admin, 15 streams rotos reproducibles con fuzzing en pytest y vitest, suite `stream` (p50/p95 por etapa) y Playwright con streams rotos (12 pruebas pasan con Edge). |
 | F5 | Hecha | `harness.compare` (bootstrap pareado, A/B ciego, bloqueos, informe md/json, `git worktree` temporal con el harness actual), `pnpm test:harness:compare`, 👍/👎 → `POST /feedback` → cola de candidatos, `/calidad` y `/calidad/admin`. Verificado contra la historia real (`feature/harness-v8` → HEAD) con las suites offline. |
-| F6 | Pendiente | |
+| F6 | Hecha | Skills `harness-run`, `gold-curate`, `regression-compare`; agentes `legal-judge`, `quechua-reviewer`, `retrieval-auditor`, `stream-contract-auditor`; `ci.yml` y `harness-real.yml`. Los workflows no se pudieron ejecutar localmente: se validan con un test de contrato. |
 
 Hallazgos que condicionan el resto del plan:
 

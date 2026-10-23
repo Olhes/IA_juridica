@@ -135,6 +135,7 @@ tests/
     bdd/                     # Comportamiento y limitaciones explícitas
     benchmark/               # Recuperación local
     quality/                 # Evaluador offline y casos reales opt-in
+    harness/                 # Harness de evaluación offline: gold, métricas, cassettes (ver fases F0-F6)
     manual/                  # Diagnósticos heredados, fuera del discovery
   frontend/
     unit/                    # Mapeos y clientes API/auth con Vitest
@@ -2000,3 +2001,21 @@ página pública `/calidad` y `/calidad/admin` (solo rol admin).
 **Límites:** la comparación `legal_qa` necesita resultados de `harness-real` (o un cassette) en ambos refs; sin ellos el
 informe lo declara faltante y no inventa un veredicto. Los candidatos del feedback no entran al gold: los redactan y
 revisan abogados. El almacén de feedback es un archivo local (`FEEDBACK_DIR`); con disco efímero se pierde al reiniciar.
+
+### F6 — CI
+
+- **GitHub Actions** (`.github/workflows/`): `ci.yml` corre en cada pull request `pnpm test`, `pnpm test:harness` y los E2E
+  con API simulada, sin secretos ni proveedores; `harness-real.yml` corre `pnpm test:harness:real --run-model-evals` y
+  `pnpm test:harness:compare ... --ab` cada noche, con la etiqueta `eval` en un PR del propio repositorio o a mano.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`scripts/unit/test_harness_automation_contract.py`](scripts/unit/test_harness_automation_contract.py) | Los workflows cumplen las reglas del plan: sin proveedores en los PR y evaluación real con puerta explícita. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_pull_request_ci_runs_the_offline_suites_and_never_touches_providers` | El CI de los PR ejecuta las suites offline y no usa secretos ni `--run-model-evals`. |
+| `test_real_evaluation_is_gated_by_schedule_label_or_manual_dispatch_and_always_confirms_cost` | La evaluación real solo corre por cron, etiqueta `eval` de un PR propio o a mano, siempre con `--run-model-evals`. |
+
+**Estado del CI:** `pnpm test` incluye hoy 4 pruebas de `test_google_oauth.py` y `dev-full.test.mjs` que fallan en la base
+(v8) por causas ajenas al harness; el CI las mostrará en rojo hasta que se corrijan.
