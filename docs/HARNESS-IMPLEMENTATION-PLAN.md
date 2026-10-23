@@ -195,3 +195,28 @@ Hallazgos que condicionan el resto del plan:
 - Comparación real `feature/harness-v8` → `HEAD` (suites offline): `retrieval` y `translation` salen `IGUAL`
   (los cambios de F2 en el motor son solo instrumentación) y `stream` no existe en la base (sin contrato). El
   veredicto de `legal_qa` y los demás modelos reales requiere resultados de `harness-real`.
+
+## Primera corrida real (23/10/2026)
+
+Se ejecutó `harness-real` contra los proveedores con la clave de Cohere del proyecto. Resultado:
+
+| Suite | Estado | Detalle |
+| --- | --- | --- |
+| `translation` | **Medida** (publicada en `docs/quality/published.json`; cassette en `tests/backend/fixtures/gold/cassettes/translation.cassette.json`, reproducible sin costo) | Google Translate es→qu sobre 319 pares candidatos: chrF++ macro 0,245 (la línea base "copiar el español" da 0,09), BLEU 0,078, TER 1,33, glosario 0,5 (n = 10), referencias protegidas 1,0, salida reconocida como quechua 17,6 %, palabras copiadas del español ~50 %, round-trip 0,96. Lectura: el traductor deja buena parte del texto en español; el round-trip alto se explica por esa copia, no por calidad. |
+| `retrieval` | **No publicada** | La corrida coincidió con otra y la clave alcanzó su límite: 59 consultas de embeddings rechazadas (`TooManyRequests`). Los números quedan descartados. |
+| `legal_qa` | **No medida** | La clave es de prueba (*Trial*, 1000 llamadas/mes) y agotó los embeddings: sin ellos la recuperación por grafo falla y el baseline estaría sesgado. |
+| `stream` | **No medida** | Depende del mismo pipeline (embeddings). |
+
+Para completarla hace falta una clave de producción de Cohere (o esperar a que se renueve la cuota mensual)
+y correr las suites **una por vez**: `pnpm test:harness:real --run-model-evals`. El juez (DeepEval y RAGAS con
+`command-a-03-2025`) y RAGAS se probaron contra la API real antes de la corrida.
+
+Hallazgos de esta etapa:
+
+- El detector de idioma por reglas no reconoce 12 de las 27 consultas en quechua del gold (se recuperan sin
+  traducir) y clasifica como quechua una consulta en español; lo mide `query_language_detected`.
+- RAGAS 0.4.3 necesita `langchain-community<0.4` y, con la API compatible de Cohere, el modo JSON de
+  Instructor (el modo de herramientas devuelve 422). Sus prompts están en inglés: el juez traduce las
+  afirmaciones y puede perder matices jurídicos ("embargo por alimentos"); por eso es una lectura
+  diagnóstica junto a DeepEval, no un criterio de lanzamiento.
+- El recall propio de evidencia coincide exactamente con `IDBasedContextRecall` de RAGAS (diferencia 0,0).
