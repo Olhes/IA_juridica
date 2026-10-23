@@ -1141,6 +1141,8 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 |---|---|
 | `login por cookie actualiza estado sin persistir tokens` | Login por formulario seguido de /auth/me marca autenticación sin escribir tokens en localStorage. |
 | `usuario se recupera desde cookies tras nueva instancia sin token JS` | Una instancia sin token JavaScript restaura al usuario mediante cookies en /auth/me y notifica una vez a sus suscriptores. |
+| `sesión con la cookie de acceso vencida se renueva una vez con la de refresco` | Si /auth/me responde 401 (la cookie de acceso dura 15 minutos), se renueva con la cookie de refresco y se reintenta una vez. |
+| `sin cookie de refresco válida la sesión queda cerrada sin bucles` | Si la renovación también falla, la sesión queda cerrada tras un solo intento. |
 | `login inválido no autentica y conserva mensaje de error` | 401 conserva el mensaje y deja al usuario no autenticado. |
 | `logout limpia estado y notifica aunque la red falle` | Logout limpia usuario/tokens incluso sin red; desuscribir impide notificaciones posteriores. |
 | `401 refresca cookie una vez y reintenta conservando opciones` | Tras 401 hace exactamente un refresh y reenvía método/cuerpo de la solicitud. |
@@ -1535,6 +1537,7 @@ backend completo, toca tu cuenta, lee cookies de tu navegador ni requiere red.
 | `test_google_callback_database_failures_do_not_issue_session` | Fallos en inicialización, búsqueda, creación o actualización terminan con error genérico sin JWT ni cookies; los primeros fallos tampoco escriben usuarios. |
 | `test_google_callback_preserves_explicit_http_exception` | Un HTTPException 503 conserva código y detalle, en vez de convertirse en 500; no emite sesión. |
 | `test_google_callback_cannot_issue_session_without_created_user` | Si la creación devuelve None, no firma tokens ni emite cookies. |
+| `test_google_refresh_token_renews_the_access_session` | Un token de refresco de Google (con `email`/`user_id`, sin `sub`) renueva la sesión con los roles actuales y cierra su conexión; un token de acceso no sirve para refrescar. |
 | `test_google_session_can_read_profile_and_logout` | Callback exitoso, cookies aceptadas por `/auth/me`, perfil/avatar/roles correctos, logout elimina ambas cookies y la siguiente consulta devuelve 401; no vuelve a llamar a Google. |
 
 ### Por qué los logs de los tests no describen tu cuenta
@@ -1702,6 +1705,9 @@ el idioma de la consulta. Se regenera con `uv run python -m evaluation.harness.s
 | `test_degraded_answers_lower_factuality_and_expose_missing_facts` | Respuestas degradadas bajan la factualidad, exponen los hechos faltantes y la calibración lo refleja. |
 | `test_forbidden_claim_in_an_otherwise_correct_answer_is_reported` | Una afirmación prohibida se informa por caso aunque el hecho correcto esté presente. |
 | `test_errors_are_counted_not_converted_into_zeros` | Un error al responder se cuenta como error, sin texto de la excepción y sin ceros falsos. |
+| `test_judge_json_block_strips_fences_and_surrounding_text` | El juez extrae el objeto JSON de la respuesta aunque venga con cercas de código o texto alrededor. |
+| `test_a_judge_failure_leaves_the_case_na_instead_of_crashing` | Si el juez falla en un caso (p. ej. salida que no es JSON), ese caso queda `n/a` y se cuenta en `judge_failures`; la suite no se cae. |
+| `test_pipeline_errors_keep_their_stable_code_but_never_the_message` | Un `PipelineError` conserva su código estable (`GENERATION_UNAVAILABLE`, etc.) para saber en qué etapa falló, nunca su mensaje. |
 | `test_samples_are_merged_per_case` | Con N muestras cada caso promedia sus muestras y se conservan todas las respuestas. |
 | `test_judge_metrics_are_na_without_a_judge_and_present_with_one` | Sin juez las métricas del juez (DeepEval y RAGAS) son `n/a`; con juez se registran nombre, modelo y disponibilidad, y el juez lee el texto de los fragmentos recuperados, no los nombres de archivo. |
 | `test_judge_factory_registers_availability_without_calling_models` | El juez `deepeval` usa Cohere por defecto (u OpenAI si se configura) e informa si está disponible sin llamar a ningún modelo ni revelar claves. |
@@ -1986,6 +1992,8 @@ página pública `/calidad` y `/calidad/admin` (solo rol admin).
 | `test_the_store_survives_a_restart_and_summarises_reasons` | El almacén sobrevive a un reinicio y resume los motivos. |
 | `test_published_metrics_are_public_and_default_to_unpublished` | Las métricas publicadas son públicas y por defecto indican que no hay publicación. |
 | `test_admin_overview_gathers_comparison_gold_queue_and_stream_without_secrets` | El panel reúne comparación, gold, cola y stream sin secretos. |
+| `test_published_metrics_are_read_from_the_repository_docs` | Sin rutas parcheadas, `/quality/published` lee `docs/quality/published.json` del repositorio y los resultados de `temp/harness`. |
+| `test_session_roles_are_read_from_a_real_access_token` | Con un JWT de acceso firmado de verdad (solo la base de datos es simulada) se leen los roles y se concede `/calidad/admin`; un usuario desconocido o un token de refresco no entran y cada consulta cierra su conexión. |
 | `test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not` | Una persona con rol admin entra sin la clave; el resto no y un fallo nunca concede acceso. |
 | un pulgar arriba se envía de inmediato con el contexto numérico y sin motivo | El 👍 se envía de inmediato. |
 | un pulgar abajo exige un motivo y por defecto no comparte el texto de la consulta | El 👎 exige motivo y no comparte texto por defecto. |

@@ -74,6 +74,18 @@ async def test_errors_are_counted_not_converted_into_zeros(gold, corpus):
     assert report["metrics"]["legal_factuality"]["macro"]["value"] == 1.0
 
 
+async def test_pipeline_errors_keep_their_stable_code_but_never_the_message(cases, corpus):
+    from services.legal_queries import PipelineError
+
+    def failing(case, _):
+        raise PipelineError(502, "PRIVADO: detalle interno", "GENERATION_UNAVAILABLE")
+
+    report = await run([cases["pension-contenido-alimentos"]], corpus, failing)
+    assert report["errors"] == [{"case_id": "pension-contenido-alimentos", "sample": 0, "error": "PipelineError",
+                                 "code": "GENERATION_UNAVAILABLE"}]
+    assert "PRIVADO" not in json.dumps(report)
+
+
 async def test_samples_are_merged_per_case(cases, corpus):
     case = cases["visitas-requisitos-conciliacion"]
     good, bad = oracle_answer(case), Answer(text="No sé.", evidence_status="retrieved")
@@ -241,3 +253,32 @@ async def test_ragas_id_crosscheck_is_na_without_ragas_installed(monkeypatch, co
     monkeypatch.setattr(builtins, "__import__", no_ragas)
     report = await retrieval_eval.ragas_id_crosscheck([], {}, None)
     assert report == {"available": False, "reason": "RAGAS no está instalado (lo instala `pnpm test:harness:real`)"}
+
+
+def test_judge_json_block_strips_fences_and_surrounding_text():
+    from evaluation.harness.judges import _json_block
+
+    assert _json_block('```json\n{"verdicts": []}\n```') == '{"verdicts": []}'
+    assert _json_block('Respuesta: {"a": {"b": 1}} fin') == '{"a": {"b": 1}}'
+    assert _json_block("# Language:#") == "# Language:#"  # sin objeto: se devuelve tal cual y la validación falla
+
+
+async def test_a_judge_failure_leaves_the_case_na_instead_of_crashing(monkeypatch):
+    import deepeval.metrics
+
+    class Broken:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def a_measure(self, *_args, **_kwargs):
+            raise ValueError("salida del juez que no es JSON")
+
+    monkeypatch.setenv("COHERE_API_KEY", "clave-ficticia")
+    monkeypatch.delenv("EVAL_JUDGE_PROVIDER", raising=False)
+    monkeypatch.setattr(deepeval.metrics, "FaithfulnessMetric", Broken)
+    monkeypatch.setattr(deepeval.metrics, "GEval", Broken)
+    judge = DeepEvalJudge()
+    monkeypatch.setattr(judge, "_llm", lambda: None)
+    assert await judge.faithfulness("q", "respuesta", ["contexto"]) is None
+    assert await judge.fact_present("respuesta", "hecho") is None
+    assert judge.info()["judge_failures"] == 2

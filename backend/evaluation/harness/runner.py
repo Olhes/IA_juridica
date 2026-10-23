@@ -250,7 +250,9 @@ async def run_stream_suite(*, source="offline", results_dir=RESULTS_DIR, splits=
     from evaluation.harness import stream_eval  # commits anteriores a F0 no tienen el contrato: solo falla esta suite
 
     corpus = Corpus.load()
-    cases = load_gold(corpus=corpus, splits=splits)[:limit]
+    cases = load_gold(corpus=corpus, splits=splits)
+    if limit:  # muestra repartida entre temas e idiomas (los ids van ordenados), no los primeros N
+        cases = cases[:: max(1, len(cases) // limit)][:limit]
     live = None
     if source == "live":
         import main  # noqa: PLC0415
@@ -358,6 +360,7 @@ def main(argv=None):
     parser.add_argument("--retrieval-cassette", default=str(DEFAULT_RETRIEVAL_CASSETTE))
     parser.add_argument("--translation-cassette", default=str(DEFAULT_TRANSLATION_CASSETTE))
     parser.add_argument("--results-dir", default=str(RESULTS_DIR), help="carpeta base de temp/harness/<sha>/")
+    parser.add_argument("--limit", type=int, default=None, help="stream: mide solo los primeros N casos (coste acotado)")
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
     if args.run_model_evals:
@@ -369,7 +372,8 @@ def main(argv=None):
     eval_mode =os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
     if args.suite == "stream":
-        path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline", results_dir=args.results_dir))
+        path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline", results_dir=args.results_dir,
+                                                       splits=args.split, limit=args.limit))
         print(f"stream ({report['source']}) -> {path}")
         print(f"validos: {report['valid_stream_rate']}  ttfb p95: {report['ttfb_ms']['p95']}")
         return 0 if report["valid_stream_rate"] == 1.0 else 1

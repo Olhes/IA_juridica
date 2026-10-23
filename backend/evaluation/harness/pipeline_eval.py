@@ -115,7 +115,10 @@ async def evaluate_gold(cases, answer_fn, *, corpus, judge=None, samples=1) -> d
             try:
                 answer = await answer_fn(case, sample)
             except Exception as error:  # noqa: BLE001 - se informa el tipo, nunca el mensaje
-                errors.append({"case_id": case.id, "sample": sample, "error": type(error).__name__})
+                entry = {"case_id": case.id, "sample": sample, "error": type(error).__name__}
+                if isinstance(getattr(error, "code", None), str):  # código estable del pipeline, nunca el mensaje
+                    entry["code"] = error.code
+                errors.append(entry)
                 continue
             case_answers.append(answer)
             answers.append({"case_id": case.id, "sample": sample, "answer": answer.to_json()})

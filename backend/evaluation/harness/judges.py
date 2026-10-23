@@ -13,6 +13,7 @@ Nunca corre en CI de pull request.
 """
 
 import asyncio
+import json
 import os
 from typing import Optional
 
@@ -42,6 +43,7 @@ class Judge:
             "ragas_available": self.available and self.ragas_unavailable_reason is None,
             "ragas_unavailable_reason": self.ragas_unavailable_reason,
             "ragas_failures": getattr(self, "ragas_failures", 0),
+            "judge_failures": getattr(self, "judge_failures", 0),
         }
 
     async def faithfulness(self, query, answer, contexts) -> Optional[float]:
@@ -88,6 +90,12 @@ class CallableJudge(Judge):
         return self._fact_present(answer, fact_text) if self._fact_present else None
 
 
+def _json_block(text: str) -> str:
+    """El objeto JSON de una respuesta, sin cercas de código ni texto alrededor."""
+    start, end = text.find("{"), text.rfind("}")
+    return text[start : end + 1] if start != -1 and end > start else text
+
+
 def _cohere_llm_class():
     """Adaptador de Cohere para DeepEval (se define al usarse: DeepEval es pesado)."""
     from deepeval.models import DeepEvalBaseLLM
@@ -115,17 +123,20 @@ def _cohere_llm_class():
         async def a_generate(self, prompt, schema=None, **_):
             if schema is None:
                 return await self._chat(prompt)
-            try:
-                text = await self._chat(
-                    prompt, {"type": "json_object", "json_schema": schema.model_json_schema()}
-                )
-            except Exception:  # noqa: BLE001 - esquemas con $defs: se pide JSON libre y se valida igual
-                text = await self._chat(
-                    prompt + "\n\nResponde solo con un objeto JSON válido que cumpla este esquema:\n"
-                    + str(schema.model_json_schema()),
-                    {"type": "json_object"},
-                )
-            return schema.model_validate_json(text)
+            json_schema = schema.model_json_schema()
+            attempts = (
+                (prompt, {"type": "json_object", "json_schema": json_schema}),
+                # Esquemas que la API no acepta, o salidas que no son JSON: JSON libre con el esquema en el prompt.
+                (prompt + "\n\nResponde solo con un objeto JSON válido que cumpla este esquema:\n" + json.dumps(json_schema),
+                 {"type": "json_object"}),
+            )
+            last_error = None
+            for text_prompt, response_format in attempts:
+                try:
+                    return schema.model_validate_json(_json_block(await self._chat(text_prompt, response_format)))
+                except Exception as error:  # noqa: BLE001 - se prueba el siguiente formato
+                    last_error = error
+            raise last_error
 
         def generate(self, prompt, schema=None, **kwargs):
             return asyncio.run(self.a_generate(prompt, schema=schema, **kwargs))
@@ -150,6 +161,7 @@ class DeepEvalJudge(Judge):
             self.unavailable_reason = None
         self._ragas_metric = None
         self.ragas_failures = 0
+        self.judge_failures = 0
         self.ragas_unavailable_reason = self.unavailable_reason or self._ragas_import_problem()
 
     @staticmethod
@@ -196,9 +208,13 @@ class DeepEvalJudge(Judge):
         from deepeval.test_case import LLMTestCase
 
         metric = FaithfulnessMetric(model=self._llm(), include_reason=False)
-        await metric.a_measure(
-            LLMTestCase(input=query, actual_output=answer, retrieval_context=list(contexts))
-        )
+        try:
+            await metric.a_measure(
+                LLMTestCase(input=query, actual_output=answer, retrieval_context=list(contexts))
+            )
+        except Exception:  # noqa: BLE001 - el caso queda n/a; nunca un 0 inventado
+            self.judge_failures += 1
+            return None
         return float(metric.score)
 
     async def ragas_faithfulness(self, query, answer, contexts):
@@ -232,7 +248,11 @@ class DeepEvalJudge(Judge):
             model=self._llm(),
             threshold=0.5,
         )
-        await metric.a_measure(LLMTestCase(input="", actual_output=answer, expected_output=fact_text))
+        try:
+            await metric.a_measure(LLMTestCase(input="", actual_output=answer, expected_output=fact_text))
+        except Exception:  # noqa: BLE001 - sin veredicto fiable no se inventa uno
+            self.judge_failures += 1
+            return None
         return bool(metric.success)
 
     async def prefer(self, query, answer_a, answer_b):
