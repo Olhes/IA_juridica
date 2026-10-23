@@ -4,6 +4,8 @@ import {
   ArrowUp,
   HelpCircle,
   Landmark,
+  Mic,
+  MicOff,
   Scale,
   Shield,
   Square,
@@ -12,6 +14,7 @@ import {
 } from 'lucide-react';
 import { type KeyboardEvent, useRef, useState } from 'react';
 import type { SupportedLanguage } from '../../../domain/legal/types';
+import { useSpeechToText } from '../../../application/legal/use-cases/useSpeech';
 
 interface ChatInputProps {
   onSend: (query: string) => void;
@@ -69,6 +72,10 @@ export function ChatInput({
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const { supported, listening, interim, start, stop } = useSpeechToText(
+    (spoken) =>
+      setText((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, MAX_CHARS)),
+  );
   const t = i18n[language];
 
   const trimmed = text.trim();
@@ -164,7 +171,7 @@ export function ChatInput({
             onChange={(e) => { if (e.target.value.length <= MAX_CHARS) setText(e.target.value); }}
             onKeyDown={handleKey}
             onInput={handleInput}
-            placeholder={placeholder}
+            placeholder={listening ? (interim || 'Escuchando…') : placeholder}
             rows={1}
             disabled={isLoading}
             className="flex-1 resize-none bg-transparent
@@ -183,7 +190,23 @@ export function ChatInput({
               </span>
             )}
 
-            {/* Abort / Send */}
+                        {/* Micrófono */}
+            {supported && (
+              <button
+                id="chat-mic-btn"
+                type="button"
+                onClick={listening ? stop : start}
+                disabled={isLoading}
+                title={listening ? 'Detener' : 'Hablar'}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${
+                  listening
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-slate-200 dark:bg-gray-700 text-slate-600 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                }`}
+              >
+                {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
             {isLoading && onAbort ? (
               <button
                 id="chat-abort-btn"
