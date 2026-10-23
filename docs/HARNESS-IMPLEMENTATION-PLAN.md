@@ -164,7 +164,8 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | F0 | Hecha | Contrato NDJSON v1, tiempos por etapa y UI de etapas, errores y tiempos. |
 | F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 37 casos **candidatos** y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
 | F2 | Hecha | Evaluación por sistema (`retrieval_eval.py`), regla de solapamiento (`overlap.py`), `retrieval.v1.jsonl`, `trace` en `query_with_rerank` y UI de jurisprudencia relacionada. Los sistemas con LightRAG o Cohere solo se miden con `--run-model-evals` o desde un cassette (no grabado). |
-| F3–F6 | Pendientes | |
+| F3 | Hecha | 319 pares es→qu **candidatos** con su origen verificado (manuales cusco-collao y chanka, Ley 30364), chrF++/BLEU/TER y señales de contrato propios, `translation_qe` (calidad alta/media/baja), aviso fuera del texto y UI de calidad, aviso de revisión y "Ver original en español". El sistema real (Google) solo con `--run-model-evals` o cassette (no grabado). Pendiente de humanos: revisión de hablantes nativos. |
+| F4–F6 | Pendientes | |
 
 Hallazgos que condicionan el resto del plan:
 
@@ -179,3 +180,8 @@ Hallazgos que condicionan el resto del plan:
 - El índice de LightRAG está desfasado respecto del corpus procesado: 10 de los 50 segmentos del gold no
   los cubre ningún fragmento indexado (ningún modo puede recuperarlos), 210 de 759 fragmentos indexados no
   corresponden a ningún segmento y todos tienen `file_path: unknown_source` (la fuente se pierde).
+- La heurística de idioma del resultado acierta en ~91 % de las referencias quechua y ~97 % de los
+  originales en español del propio gold (frases de ≥ 4 palabras). La línea base "copiar el español"
+  obtiene chrF++ macro ~0,09 y la estimación de calidad la marca `baja` en el 100 % de los pares.
+- Los hablantes de la edición de la Ley 30364 no declaran la variante: el gold la marca
+  `sureno-sin-confirmar`.

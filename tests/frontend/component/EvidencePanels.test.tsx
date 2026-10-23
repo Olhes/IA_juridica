@@ -5,6 +5,7 @@ import {
   AssistantEvidence,
   CitationChips,
   RelatedJurisprudence,
+  TranslationNotice,
   InsufficientEvidenceCard,
   TrustPanel,
 } from '../../../frontend/src/presentation/components/chat/EvidencePanels';
@@ -113,5 +114,43 @@ test('jurisprudencia relacionada tolera relevancia ausente, método desconocido 
   expect(screen.getByRole('region', { name: 'Kikin hina jurisprudencia' })).toBeVisible();
   expect(screen.getByText('Mana tupusqachu')).toBeVisible();
   rerender(<RelatedJurisprudence language="spanish" apiResponse={withMetadata({ evidence: [jurisprudence[1]] })} />);
+  expect(container).toBeEmptyDOMElement();
+});
+
+const translated = (translation: object, extra: object = {}) =>
+  withMetadata({ translation: { success: true, complete: true, warning: 'x', review_required: true, ...translation } }, extra);
+const bilingual = (apiResponse: any) => ({
+  ...apiResponse,
+  response: { ...apiResponse.response, respuesta_espanol: 'Texto original en español', respuesta_quechua: 'Kutichiy' },
+});
+
+test('aviso de traducción muestra la calidad estimada, el aviso de revisión y alterna el original', async () => {
+  const user = userEvent.setup();
+  render(<TranslationNotice language="spanish" apiResponse={bilingual(translated({ quality: 'media' }))} />);
+  expect(screen.getByText('Calidad del quechua: media')).toHaveAttribute('data-quality', 'media');
+  expect(screen.getByRole('note')).toHaveTextContent('requiere revisión de un hablante nativo');
+  expect(screen.queryByText('Texto original en español')).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Ver original en español' }));
+  expect(screen.getByText('Texto original en español')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Ocultar original en español' }));
+  expect(screen.queryByText('Texto original en español')).toBeNull();
+});
+
+test('aviso de traducción informa cuando se muestra el español por falla y no promete calidad', () => {
+  render(
+    <TranslationNotice
+      language="spanish"
+      apiResponse={bilingual(translated({ success: false, fallback_to_spanish: true, quality: 'baja' }))}
+    />,
+  );
+  expect(screen.getByRole('note')).toHaveTextContent('se muestra el original en español');
+  expect(screen.queryByText(/Calidad del quechua/)).toBeNull();
+});
+
+test('aviso de traducción existe en quechua y no aparece sin traducción', () => {
+  const { rerender, container } = render(<TranslationNotice language="quechua" apiResponse={bilingual(translated({ quality: 'alta' }))} />);
+  expect(screen.getByText('Runasimi allin kaynin: allin')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Castellano kaqta qhaway' })).toBeVisible();
+  rerender(<TranslationNotice language="spanish" apiResponse={withMetadata({})} />);
   expect(container).toBeEmptyDOMElement();
 });

@@ -1777,3 +1777,60 @@ recuperación `retrieval.v1.jsonl` se deriva de `legal_qa` y hereda su estado `c
 | jurisprudencia relacionada muestra relevancia y camino de recuperación solo de fragmentos con Casación | La UI lista solo fragmentos con Casación, con relevancia y camino. |
 | jurisprudencia relacionada tolera relevancia ausente, método desconocido y quechua | Relevancia ausente, método desconocido y versión en quechua. |
 
+### F3 — Traducción es→qu
+
+`tests/backend/fixtures/gold/translation.v1.jsonl` reúne 319 pares **candidatos** extraídos de textos
+impresos: los manuales del Ministerio de Cultura (quechua cusco-collao y chanka) y la edición
+quechua-castellano de la Ley 30364 (por artículo; la variante exacta no consta y se marca
+`sureno-sin-confirmar`). Cada par guarda su origen y el cargador comprueba que el español y el quechua
+aparecen en ese archivo. Todos esperan a dos hablantes nativos (`reviewers: []`); no son verdad
+lingüística. Se regeneran con `uv run python -m evaluation.harness.translation_seed` (desde `backend/`).
+
+Métricas (`metrics/translation.py`): chrF++ (principal), BLEU y TER sin desplazamientos, adherencia al
+glosario, referencias legales conservadas, marcadores `ZXQREF` filtrados, idioma del resultado,
+tasa de copia, cobertura y round-trip con embeddings (precalculado al grabar el cassette). El sistema
+real (Google Translate) solo se mide con `--run-model-evals` o desde un cassette; sin ellos la suite
+mide la línea base "copiar el español".
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_translation.py`](backend/harness/test_translation.py) | Gold paralelo y su procedencia, chrF++/BLEU/TER, señales de contrato, glosario, round-trip y la suite con cassette. |
+| [`backend/unit/test_translation_qe.py`](backend/unit/test_translation_qe.py) | Estimación de calidad sin referencia y `metadata.translation` (aviso fuera del texto, calidad, fallback al español). |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_seed_pairs_are_candidates_with_native_review_pending` | Los pares son `candidate`, sin revisores, de tres variantes y cuatro tipos. |
+| `test_every_pair_is_found_in_its_printed_source` | El español y el quechua de cada par aparecen en su archivo de origen. |
+| `test_verification_rejects_invented_text_and_missing_sources` | Un quechua inventado, un español ausente o un origen inexistente se rechazan. |
+| `test_pairs_need_two_blind_native_reviewers_to_be_adjudicated` | `adjudicated` exige dos hablantes nativos distintos, ciegos y que aprueban; el resto de combinaciones inválidas falla. |
+| `test_loader_reports_broken_lines_and_duplicates` | Una línea rota y un `id` repetido se informan juntos. |
+| `test_loader_filters_kinds_splits_and_adjudicated` | El cargador filtra por tipo, split y adjudicación. |
+| `test_page_noise_is_removed_from_sources` | Se quitan los marcadores de página de la maquetación. |
+| `test_chrf_matches_hand_computed_values_and_ignores_whitespace_in_characters` | chrF++ coincide con valores calculados a mano; los espacios no cuentan en los n-gramas de caracteres. |
+| `test_chrf_rewards_recall_more_than_precision` | Con β = 2 el recall pesa más que la precisión. |
+| `test_bleu_and_ter_follow_their_definitions` | BLEU de 4-gramas con suavizado y TER por edición de palabras con la mejor referencia. |
+| `test_corpus_bleu_sums_statistics_instead_of_averaging_sentences` | BLEU de corpus suma estadísticas, no promedia oraciones. |
+| `test_contract_signals_references_placeholders_language_copy_and_coverage` | Referencias legales conservadas, marcadores filtrados, idioma, copia y cobertura. |
+| `test_glossary_adherence_counts_only_terms_present_in_the_source` | Solo cuentan los términos del glosario presentes en el original. |
+| `test_round_trip_is_a_cosine_over_injected_embeddings` | Round-trip es un coseno sobre embeddings inyectados (sin red). |
+| `test_the_identity_baseline_is_the_floor_and_is_flagged_as_low_quality` | Copiar el español da el piso de las métricas y la estimación de calidad lo marca `baja`. |
+| `test_references_used_as_output_score_perfectly_and_qe_separates_good_from_bad` | Las referencias como salida puntúan perfecto; la estimación separa originales largos y cortos. |
+| `test_missing_and_failed_outputs_are_errors_not_zeros` | Una salida ausente o fallida es un error, no un 0. |
+| `test_precomputed_round_trip_enters_the_report` | El coseno precalculado entra en el informe. |
+| `test_language_id_heuristic_is_measured_on_the_gold_itself` | La heurística de idioma se mide sobre el propio gold. |
+| `test_translation_suite_writes_offline_baseline_and_replays_a_recorded_cassette` | La suite escribe la línea base offline y reproduce un cassette grabado sin llamar al proveedor. |
+| `test_language_heuristic_separates_quechua_spanish_and_short_text` | La heurística distingue quechua, español y textos demasiado cortos. |
+| `test_copy_rate_length_and_references` | Tasa de copia, razón de longitud y referencias protegidas. |
+| `test_quality_is_high_only_when_every_automatic_check_passes` | `alta` solo si pasan todas las comprobaciones automáticas. |
+| `test_quality_is_low_for_untranslated_lost_references_failures_and_absurd_length` | `baja` ante español sin traducir, referencias perdidas, fallos o longitud absurda. |
+| `test_quality_is_medium_when_the_language_cannot_be_confirmed` | `media` si no se puede confirmar que sea quechua. |
+| `test_quechua_answer_keeps_the_notice_out_of_the_text_and_adds_quality` | El aviso ya no se pega al texto; vive en `metadata.translation` con la calidad. |
+| `test_failed_translation_falls_back_to_spanish_without_a_pasted_notice` | Si falla la traducción se conserva el español, sin aviso pegado y sin guardar en caché. |
+| aviso de traducción muestra la calidad estimada, el aviso de revisión y alterna el original | Badge de calidad, aviso de revisión y "Ver original en español". |
+| aviso de traducción informa cuando se muestra el español por falla y no promete calidad | Si se muestra el español por una falla no se anuncia calidad. |
+| aviso de traducción existe en quechua y no aparece sin traducción | Existe en quechua y no se dibuja sin traducción. |
+
+**Limitaciones:** la estimación de calidad exige las referencias legales *literales* (como las produce el
+servicio); una traducción humana que las reescribe obtendría `baja`. En frases de menos de cuatro palabras
+no puede confirmar el idioma y devuelve `media`.
+

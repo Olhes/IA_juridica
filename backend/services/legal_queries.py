@@ -10,6 +10,7 @@ from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
 from services.citation_verifier import jurisprudence_keys, verify_citations
 from services.pipeline_telemetry import PipelineTimer
+from services.translation_qe import estimate_quality
 
 
 class PipelineError(HTTPException):
@@ -179,20 +180,22 @@ async def answer_query(
         original = response_text(final)
         async with timer.stage("translate_out"):
             result = await translator.translate(original, "es", "qu")
+        translated = bool(result.get("success"))
+        translated_text = result.get("translated_text", original) if translated else original
+        # El aviso vive solo en `metadata.translation`; el texto no lleva avisos pegados.
         translation = {
-            k: result.get(k)
-            for k in ("success", "complete", "warning", "review_required")
+            "success": result.get("success"),
+            "complete": result.get("complete"),
+            "warning": result.get("warning")
+            or "Traducción no disponible; se conserva el español.",
+            "review_required": result.get("review_required", True),
+            "fallback_to_spanish": not translated,
+            **{
+                key: value
+                for key, value in estimate_quality(original, translated_text, success=translated).items()
+                if key in {"quality", "reasons", "basis"}
+            },
         }
-        translated_text = (
-            result.get("translated_text", original)
-            if result.get("success")
-            else original
-        )
-        translated_text += (
-            "\n\n[Aviso: "
-            + result.get("warning", "Traducción no disponible; se conserva el español.")
-            + "]"
-        )
         if isinstance(final, dict):
             final["respuesta_quechua"] = translated_text
             final["answer"] = translated_text

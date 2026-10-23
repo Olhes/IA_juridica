@@ -24,6 +24,15 @@ from .language_config import LanguageConfig, LanguageCode
 from .language_detector import LanguageDetector
 
 
+# Estructura (saltos de línea, viñetas) y referencias (URL, [n], artículo/ley/decreto, números) que la
+# traducción protege con marcadores ZXQREF y restituye tal cual. El harness reutiliza REFERENCE_PATTERN.
+STRUCTURE_PATTERN = r"\r?\n[ \t]*(?:\r?\n)*|^[ \t]*(?:[-*]|\d+[.)])[ \t]+"
+REFERENCE_PATTERN = (
+    r"https?://[^\s]+|\[\d+(?:[,–-]\d+)*\]|(?:artículo|art\.|ley|decreto)\s+[\w.°º-]*\d[\w.°º-]*|\d+(?:[./:-]\d+)*"
+)
+PROTECTED_PATTERN = STRUCTURE_PATTERN + "|" + REFERENCE_PATTERN
+
+
 class TranslationService:
     """Servicio de traducción bilingüe especializado (Singleton)"""
 
@@ -129,7 +138,7 @@ class TranslationService:
             return f"ZXQREF{len(protected)-1}QXZ"
 
         prepared = re.sub(
-            r"\r?\n[ \t]*(?:\r?\n)*|^[ \t]*(?:[-*]|\d+[.)])[ \t]+|https?://[^\s]+|\[\d+(?:[,–-]\d+)*\]|(?:artículo|art\.|ley|decreto)\s+[\w.°º-]*\d[\w.°º-]*|\d+(?:[./:-]\d+)*",
+            PROTECTED_PATTERN,
             protect,
             text,
             flags=re.I | re.M,

@@ -104,6 +104,22 @@ export interface EvidenceItem {
 
 export type EvidenceStatus = 'retrieved' | 'insufficient_evidence';
 
+export type TranslationQuality = 'alta' | 'media' | 'baja';
+
+/** Estado de la traducción al quechua (`metadata.translation`). El aviso vive aquí, no en el texto. */
+export interface TranslationInfo {
+  success: boolean | null;
+  complete: boolean | null;
+  warning: string;
+  review_required: boolean;
+  /** `true` si no se pudo traducir y se muestra el español original. */
+  fallback_to_spanish?: boolean;
+  /** Estimación automática sin referencia; no sustituye la revisión de un hablante nativo. */
+  quality?: TranslationQuality;
+  reasons?: string[];
+  basis?: string;
+}
+
 export interface ValidationReport {
   status: ValidationStatus;
   confidence: ConfidenceLevel;
@@ -133,6 +149,7 @@ export interface LegalQueryApiResponse {
     timings?: ResponseTimings;
     evidence_status?: EvidenceStatus;
     citations?: CitationCheck[];
+    translation?: TranslationInfo | null;
     evidence?: EvidenceItem[];
     rerank_scores: number[];
     retrieval_method: string;

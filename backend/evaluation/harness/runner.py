@@ -25,7 +25,7 @@ from evaluation.harness.cassettes import RECORD_MISSING, REPLAY, Cassette
 from evaluation.harness.corpus import DEFAULT_CORPUS_DIR, Corpus
 from evaluation.harness.gold import LEGAL_QA_PATH, gold_hash, load_gold
 from evaluation.harness.judges import make_judge
-from evaluation.harness import retrieval_eval, retrieval_gold
+from evaluation.harness import retrieval_eval, retrieval_gold, translation_eval, translation_gold
 from evaluation.harness.overlap import SegmentMatcher
 from evaluation.harness.pipeline_eval import evaluate_gold
 
@@ -215,19 +215,96 @@ async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CAS
     return write_result(report, meta, "retrieval", results_dir), report
 
 
+DEFAULT_TRANSLATION_CASSETTE = ROOT / "tests" / "backend" / "fixtures" / "gold" / "cassettes" / "translation.cassette.json"
+
+
+async def _embed_cosine(first, second):
+    """Coseno entre embeddings de Cohere (red); ``None`` si no se puede calcular."""
+    try:
+        import cohere
+
+        from config.settings import settings
+        from evaluation.harness.metrics.translation import cosine
+
+        client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
+        response = await client.embed(texts=[first, second], model=settings.COHERE_EMBED_MODEL,
+                                      input_type="search_document", embedding_types=["float"])
+        vectors = response.embeddings.float_
+        return cosine(vectors[0], vectors[1])
+    except Exception:  # noqa: BLE001 - la métrica queda n/a, no se inventa un valor
+        return None
+
+
+async def live_translation(pair) -> dict:
+    """Google Translate (vía ``TranslationService``) más retrotraducción y coseno: red y coste."""
+    from modules.language.services.translation_service import TranslationService
+
+    service = TranslationService()
+    result = await service.translate(pair.source_es, "es", "qu")
+    output = translation_eval.Output(
+        text=result.get("translated_text", "") if result.get("success") else "",
+        success=bool(result.get("success")), complete=bool(result.get("complete")), error=result.get("error"),
+    )
+    if output.success:
+        back = await service.translate(output.text, "qu", "es")
+        if back.get("success"):
+            output.back_translation = back.get("translated_text")
+            output.round_trip = await _embed_cosine(pair.source_es, output.back_translation)
+    return output.to_json()
+
+
+async def run_translation(*, source="offline", cassette_path=DEFAULT_TRANSLATION_CASSETTE, results_dir=RESULTS_DIR, splits=None):
+    """``source``: ``offline`` (solo la línea base «copiar el español»), ``cassette`` o ``live``."""
+    corpus = Corpus.load()
+    pairs = translation_gold.load_pairs(splits=splits)
+    cassette = Cassette(cassette_path, RECORD_MISSING if source == "live" else REPLAY) if source != "offline" else None
+    outputs: dict = {}
+    for pair in pairs:
+        if cassette is None:
+            outputs[pair.id] = translation_eval.Output(pair.source_es)
+            continue
+        material = {"suite": "translation", "pair": pair.id, "version": pair.version, "provider": "google_translate",
+                    "direction": "es>qu"}
+
+        async def produce(pair=pair):
+            return await live_translation(pair)
+
+        try:
+            outputs[pair.id] = translation_eval.Output.from_json(await cassette.call(material, produce))
+        except Exception as error:  # noqa: BLE001 - un par sin grabar es un error del par, no un 0
+            outputs[pair.id] = translation_eval.Output("", success=False, error=type(error).__name__)
+    if cassette is not None:
+        cassette.save()
+    system = "identity" if cassette is None else "google_translate"
+    report = translation_eval.evaluate_translation(pairs, outputs, system=system)
+    report["source"] = source
+    judge = make_judge("none")
+    meta = collect_metadata(corpus=corpus, judge=judge, samples=1, eval_mode=source == "live",
+                            gold_path=translation_gold.TRANSLATION_PATH, cassette=cassette)
+    meta["answer_source"] = {"offline": "identity_baseline", "cassette": "cassette", "live": "google_translate"}[source]
+    return write_result(report, meta, "translation", results_dir), report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("suite", choices=["legal_qa", "retrieval"])
+    parser.add_argument("suite", choices=["legal_qa", "retrieval", "translation"])
     parser.add_argument("--split", action="append", choices=["dev", "holdout"])
     parser.add_argument("--samples", type=int, default=None)
     parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
     parser.add_argument("--cassette", default=str(DEFAULT_CASSETTE))
     parser.add_argument("--source", default="offline", choices=["offline", "cassette"], help="retrieval: motor local o cassette")
     parser.add_argument("--retrieval-cassette", default=str(DEFAULT_RETRIEVAL_CASSETTE))
+    parser.add_argument("--translation-cassette", default=str(DEFAULT_TRANSLATION_CASSETTE))
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
     eval_mode = os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
+    if args.suite == "translation":
+        source = "live" if args.run_model_evals else args.source
+        path, report = asyncio.run(run_translation(source=source, cassette_path=args.translation_cassette))
+        print(f"translation ({report['system']}) -> {path}")
+        print(f"chrF++ macro: {report['metrics']['chrf++']['macro']['value']}")
+        return 0
     if args.suite == "retrieval":
         source = "live" if args.run_model_evals else args.source
         path, report = asyncio.run(run_retrieval(source=source, cassette_path=args.retrieval_cassette))

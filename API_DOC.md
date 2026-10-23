@@ -60,6 +60,12 @@ Sin documentos recuperados: abstención, sin fuentes y sin fiabilidad positiva.
 | `citations` | `[{key, text, status, source, excerpt}]`: cada norma citada (Ley, artículo, Casación, D.S.) y si aparece (`verified`) o no (`unverified`) en las fuentes recuperadas; `excerpt` es texto del corpus, nunca del modelo |
 | `evidence` | `[{source, relevance, excerpt}]`: fuentes recuperadas con un extracto de hasta 240 caracteres |
 | `timings` | `total_ms`, `stages` y `cache_hit` (ver NDJSON) |
+| `translation` | Solo con `language=quechua`: `success`, `complete`, `warning`, `review_required` (siempre `true`), `fallback_to_spanish`, `quality` (`alta` \| `media` \| `baja`), `reasons` y `basis` |
+
+El aviso de revisión de la traducción **no** va pegado al texto: vive solo en `metadata.translation.warning`.
+Con `fallback_to_spanish=true` la respuesta conserva el español. `quality` es una estimación automática sin
+referencia (idioma del resultado, texto sin traducir, referencias legales conservadas y longitud); `alta` no
+significa que un hablante nativo la haya revisado.
 
 Que una cita sea `verified` solo significa que aparece en el texto recuperado: no acredita
 vigencia ni que la norma diga lo que la respuesta le atribuye.

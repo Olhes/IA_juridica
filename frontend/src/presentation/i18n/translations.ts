@@ -87,6 +87,20 @@ export const chatTranslations = {
         unknown: 'método no informado',
       },
     },
+    translation: {
+      qualityLabel: (quality: string) => `Calidad del quechua: ${quality}`,
+      qualities: { alta: 'alta', media: 'media', baja: 'baja' },
+      qualityHints: {
+        alta: 'Pasó las comprobaciones automáticas.',
+        media: 'Alguna comprobación automática dio aviso.',
+        baja: 'Las comprobaciones automáticas detectaron problemas.',
+      },
+      reviewNotice: 'Traducción automática: requiere revisión de un hablante nativo y de un profesional del derecho.',
+      fallback: 'No pudimos traducir la respuesta; se muestra el original en español.',
+      showOriginal: 'Ver original en español',
+      hideOriginal: 'Ocultar original en español',
+      originalLabel: 'Original en español',
+    },
   },
   quechua: {
     stageLabels: {
@@ -157,6 +171,20 @@ export const chatTranslations = {
         fallback_keyword_rerank: 'simikuna tupachiywan kutichisqa (mana rerankerwan)',
         unknown: 'mana willasqachu',
       },
+    },
+    translation: {
+      qualityLabel: (quality: string) => `Runasimi allin kaynin: ${quality}`,
+      qualities: { alta: 'allin', media: 'chawpi', baja: 'pisi' },
+      qualityHints: {
+        alta: 'Kikinmanta qhawariykunata hunt’arqan.',
+        media: 'Huk kikinmanta qhawariyqa willarqan.',
+        baja: 'Kikinmanta qhawariykunam pantaykunata tarirqan.',
+      },
+      reviewNotice: 'Kikinmanta tikray: runasimi rimaq runawan hinallataq derecho yachaqwan qhawarichikunan.',
+      fallback: 'Manam kutichiyta tikrayta atirqanchu; castellano kaqllam rikuchisqa.',
+      showOriginal: 'Castellano kaqta qhaway',
+      hideOriginal: 'Castellano kaqta pakay',
+      originalLabel: 'Castellano kaq',
     },
   },
 } as const;

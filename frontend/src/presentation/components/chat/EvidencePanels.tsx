@@ -1,6 +1,7 @@
 'use client';
 
-import { BadgeCheck, Phone, Scale, ShieldQuestion, TriangleAlert } from 'lucide-react';
+import { BadgeCheck, Languages, Phone, Scale, ShieldQuestion, TriangleAlert } from 'lucide-react';
+import { useState } from 'react';
 import type { LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
 import { chatTranslations } from '../../i18n/translations';
 
@@ -89,6 +90,44 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
   );
 }
 
+/** Calidad estimada del quechua, aviso de revisión y acceso al original en español. */
+export function TranslationNotice({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const translation = apiResponse.metadata?.translation;
+  if (!translation) return null;
+  const t = chatTranslations[language].translation;
+  const quality = translation.quality;
+  const original = apiResponse.response?.respuesta_espanol;
+  const failed = translation.fallback_to_spanish || translation.success === false;
+  const tone = quality === 'alta' ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+    : quality === 'media' ? 'border-amber-800 bg-amber-950/40 text-amber-300'
+    : 'border-red-900 bg-red-950/40 text-red-300';
+  return (
+    <section aria-label={t.reviewNotice} className="mt-3 text-xs text-zinc-300">
+      <div className="flex flex-wrap items-center gap-2">
+        {quality && !failed && (
+          <span data-quality={quality} title={t.qualityHints[quality]} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium ${tone}`}>
+            <Languages className="w-3 h-3" aria-hidden="true" />
+            {t.qualityLabel(t.qualities[quality])}
+          </span>
+        )}
+        {original && (
+          <button type="button" aria-expanded={showOriginal} onClick={() => setShowOriginal((v) => !v)} className="rounded-md border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800">
+            {showOriginal ? t.hideOriginal : t.showOriginal}
+          </button>
+        )}
+      </div>
+      <p role="note" className="mt-2 text-zinc-400">{failed ? t.fallback : t.reviewNotice}</p>
+      {showOriginal && original && (
+        <blockquote className="mt-2 rounded-md bg-zinc-900 p-2 text-zinc-300">
+          <span className="block font-semibold text-zinc-200">{t.originalLabel}</span>
+          {original}
+        </blockquote>
+      )}
+    </section>
+  );
+}
+
 /** Jurisprudencia relacionada: fragmentos recuperados que citan una Casación, con su relevancia y camino. */
 export function RelatedJurisprudence({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
   const t = chatTranslations[language].related;
@@ -167,6 +206,7 @@ export function AssistantEvidence({ language, apiResponse }: { language: Support
   }
   return (
     <>
+      <TranslationNotice language={language} apiResponse={apiResponse} />
       <CitationChips language={language} apiResponse={apiResponse} />
       <RelatedJurisprudence language={language} apiResponse={apiResponse} />
       <TrustPanel language={language} apiResponse={apiResponse} />
