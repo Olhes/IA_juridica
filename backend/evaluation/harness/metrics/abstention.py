@@ -20,7 +20,7 @@ def unnecessary_abstention(case, answer) -> Score:
     sí cubre algún hecho no cuenta: solo una no-respuesta (o el estado formal)."""
     if case.must_abstain:
         return Score.na("el caso exige abstención")
-    answered_something = any(covered_facts(case, answer.text).values())
+    answered_something = any(covered_facts(case, answer.fact_text).values())
     return Score.flag(answer.abstained_formal or (answer.abstained_semantic and not answered_something))
 
 

@@ -81,3 +81,6 @@ models/
 
 # Cola de feedback local (puede contener texto autorizado por las personas)
 /backend/data/
+
+# Cassette de recuperación del harness real (~40 MB): se publica como artefacto de CI, no se versiona.
+/tests/backend/fixtures/gold/cassettes/retrieval.cassette.json

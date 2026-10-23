@@ -34,6 +34,16 @@ class Answer:
     citations: Optional[list] = None  # metadata.citations del runtime, si existe
     timings: Optional[dict] = None
     error: Optional[str] = None
+    # Respuesta validada en español (antes de traducir). En consultas en quechua los hechos y
+    # citas se comprueban sobre ella; ``text`` conserva lo que vio el usuario.
+    text_es: Optional[str] = None
+    # Texto completo de los fragmentos recuperados (contexto de la fidelidad); ``sources`` solo
+    # trae nombres de archivo.
+    contexts: Optional[list] = None
+
+    @property
+    def fact_text(self) -> str:
+        return self.text_es or self.text
 
     @property
     def abstained_formal(self) -> bool:
@@ -41,7 +51,7 @@ class Answer:
 
     @property
     def abstained_semantic(self) -> bool:
-        return bool(_MARKERS.search(normalize(self.text)))
+        return bool(_MARKERS.search(normalize(self.text)) or _MARKERS.search(normalize(self.fact_text)))
 
     @property
     def abstained(self) -> bool:
@@ -70,6 +80,7 @@ def answer_from_payload(payload: dict, language="spanish") -> Answer:
         cross_check_overlap=cross.get("overlap_score") if isinstance(cross, dict) else None,
         citations=metadata.get("citations"),
         timings=metadata.get("timings"),
+        text_es=_text_of(payload.get("response"), "spanish") or None,
     )
 
 

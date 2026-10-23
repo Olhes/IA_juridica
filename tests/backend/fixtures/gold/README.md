@@ -6,7 +6,8 @@ revisión humana.
 
 | Archivo | Contenido | Estado |
 |---|---|---|
-| `legal_qa.v1.jsonl` | 37 preguntas con hechos exigidos, afirmaciones prohibidas y citas aceptables | todos `candidate`, `reviewers: []` |
+| `legal_qa.v1.jsonl` | 107 preguntas (80 en español y 27 gemelos en quechua sureño enlazados por `parallel_id`) con hechos exigidos, afirmaciones prohibidas y citas aceptables | todos `candidate`, `reviewers: []`; el quechua espera revisión de un hablante nativo |
+| `retrieval.v1.jsonl` | 80 casos de recuperación derivados de los casos en español | heredan el estado de `legal_qa` |
 | `thresholds.v1.json` | Umbrales prerregistrados | `unregistered`: no se fija ningún número hasta medir un baseline |
 
 ## Cómo se construyó la semilla

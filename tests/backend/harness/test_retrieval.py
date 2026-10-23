@@ -94,7 +94,8 @@ def test_threshold_loss_counts_relevant_evidence_scored_under_the_minimum():
 
 
 def test_retrieval_gold_is_derived_from_legal_qa_and_matches_the_checked_in_file(gold, corpus, retrieval_cases):
-    assert [c.id for c in retrieval_cases] == sorted(c.id for c in gold)
+    # Solo español: la consulta en quechua se traduce antes de recuperar (recupera como su gemelo).
+    assert [c.id for c in retrieval_cases] == sorted(c.id for c in gold if c.language == "spanish")
     assert retrieval_gold.load() == retrieval_cases
     by_id = {c.id: c for c in retrieval_cases}
     assert by_id["fuera-cts-renuncia"].relevant == [] and by_id["fuera-cts-renuncia"].must_abstain

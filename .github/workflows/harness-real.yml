@@ -33,7 +33,8 @@ jobs:
     timeout-minutes: 120
     env:
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Juez de DeepEval y RAGAS: Cohere command-a por defecto (EVAL_JUDGE_MODEL lo cambia).
+      EVAL_JUDGE_PROVIDER: cohere
       EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
       DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
       BASE_REF: ${{ github.event.inputs.base || github.base_ref && format('origin/{0}', github.base_ref) || 'origin/main' }}
@@ -53,7 +54,7 @@ jobs:
         run: |
           uv sync --frozen --extra dev
           pnpm install --frozen-lockfile
-      - name: Evaluación real (temperatura 0, sin caché, 3 muestras)
+      - name: Evaluación real (4 suites; temperatura 0, sin caché, 3 muestras; juez Cohere + RAGAS)
         run: pnpm test:harness:real --run-model-evals
       - name: Comparar con la base (A/B ciego con orden invertido)
         id: compare
@@ -69,5 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: harness-real
-          path: temp/harness
+          path: |
+            temp/harness
+            tests/backend/fixtures/gold/cassettes
           if-no-files-found: ignore

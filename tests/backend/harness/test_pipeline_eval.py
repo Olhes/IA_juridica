@@ -88,23 +88,42 @@ async def test_judge_metrics_are_na_without_a_judge_and_present_with_one(cases, 
     assert plain["judge"]["available"] is False and plain["judge"]["name"] == "none"
     assert plain["metrics"]["faithfulness_judge"]["macro"]["value"] is None
     assert "juez no disponible" in plain["metrics"]["fact_recall_judge"]["macro"]["na_reason"]
-    judge = CallableJudge(faithfulness=lambda *_: 0.75, fact_present=lambda _answer, _fact: True)
+    assert "RAGAS" in plain["metrics"]["ragas_faithfulness"]["macro"]["na_reason"]
+    seen = []
+    judge = CallableJudge(faithfulness=lambda q, a, ctx: seen.append(ctx) or 0.75, fact_present=lambda _answer, _fact: True,
+                          ragas_faithfulness=lambda *_: 0.5)
     judged = await run([case], corpus, lambda c, _: oracle_answer(c), judge=judge)
-    assert judged["judge"] == {"name": "callable", "model": "test-judge", "available": True, "unavailable_reason": None}
+    info = judged["judge"]
+    assert (info["name"], info["model"], info["available"], info["ragas_available"]) == ("callable", "test-judge", True, True)
     assert judged["metrics"]["faithfulness_judge"]["macro"]["value"] == 0.75
+    assert judged["metrics"]["ragas_faithfulness"]["macro"]["value"] == 0.5
     assert judged["metrics"]["fact_recall_judge"]["macro"]["value"] == 1.0
+    # El juez lee el texto de los fragmentos recuperados, no los nombres de archivo de ``sources``.
+    assert seen == [[fact.source.quote for fact in case.required_facts]]
+    no_context = await run([case], corpus, lambda c, _: oracle_answer(c, contexts=[]), judge=judge)
+    assert no_context["metrics"]["faithfulness_judge"]["macro"]["value"] is None
+    assert no_context["metrics"]["fact_recall_judge"]["macro"]["value"] == 1.0
 
 
 def test_judge_factory_registers_availability_without_calling_models(monkeypatch):
-    monkeypatch.delenv("EVAL_JUDGE_MODEL", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    for name in ("EVAL_JUDGE_MODEL", "EVAL_JUDGE_PROVIDER", "OPENAI_API_KEY", "COHERE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
     assert make_judge("none").info()["available"] is False
     deep = make_judge("deepeval")
-    assert isinstance(deep, DeepEvalJudge) and not deep.available and "EVAL_JUDGE_MODEL" in deep.unavailable_reason
+    assert isinstance(deep, DeepEvalJudge) and not deep.available and "COHERE_API_KEY" in deep.unavailable_reason
+    monkeypatch.setenv("COHERE_API_KEY", "clave-ficticia")
+    cohere = make_judge("deepeval").info()  # por defecto: Cohere command-a, sin clave de OpenAI
+    assert (cohere["available"], cohere["provider"], cohere["model"]) == (True, "cohere", "command-a-03-2025")
+    assert "clave" not in json.dumps(cohere)
+    monkeypatch.setenv("EVAL_JUDGE_PROVIDER", "openai")
+    assert not make_judge("deepeval").available  # OpenAI exige su clave y un modelo explícito
     monkeypatch.setenv("EVAL_JUDGE_MODEL", "modelo-juez")
     monkeypatch.setenv("OPENAI_API_KEY", "clave-ficticia")
     configured = make_judge("deepeval").info()
     assert configured["available"] is True and configured["model"] == "modelo-juez" and "clave" not in json.dumps(configured)
+    monkeypatch.setenv("EVAL_JUDGE_PROVIDER", "otro")
+    with pytest.raises(ValueError):
+        make_judge("deepeval")
     with pytest.raises(ValueError):
         make_judge("desconocido")
     assert isinstance(NoJudge(), NoJudge)
@@ -191,3 +210,34 @@ def test_registered_thresholds_pass_fail_and_go_stale_with_the_gold(tmp_path):
     assert thresholds.check({**ok, "meta": {"gold_hash": "otro"}}, loaded)["status"] == "stale"
     provisional = thresholds.register(baseline_file(tmp_path), {"legal_factuality": {"min": 0.1}}, tmp_path / "p.json", allow_unadjudicated=True)
     assert provisional["provisional"] is True
+
+
+async def test_quechua_cases_check_facts_on_the_validated_spanish_and_measure_the_translation(cases, corpus):
+    case = cases["pension-contenido-alimentos-qu"]
+    spanish = oracle_answer(case).text
+    translated = oracle_answer(case, text="Wawaykipa mikhunanpaq, wasinpaq, p'achanpaq, yachakunanpaq qullqi.", text_es=spanish)
+    copied = oracle_answer(case, text=spanish, text_es=spanish)
+    good = await run([case], corpus, lambda c, _: translated)
+    assert good["metrics"]["legal_factuality"]["macro"]["value"] == 1.0  # hechos sobre el español validado
+    assert good["metrics"]["quechua_delivered"]["macro"]["value"] == 1.0
+    bad = await run([case], corpus, lambda c, _: copied)
+    assert bad["metrics"]["quechua_delivered"]["macro"]["value"] == 0.0  # se entregó el español sin traducir
+    twin = await run([cases["pension-contenido-alimentos"]], corpus, lambda c, _: oracle_answer(c))
+    assert twin["metrics"]["quechua_delivered"]["macro"]["value"] is None
+
+
+async def test_ragas_id_crosscheck_is_na_without_ragas_installed(monkeypatch, corpus):
+    import builtins
+
+    from evaluation.harness import retrieval_eval
+
+    real_import = builtins.__import__
+
+    def no_ragas(name, *args, **kwargs):
+        if name.startswith("ragas"):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_ragas)
+    report = await retrieval_eval.ragas_id_crosscheck([], {}, None)
+    assert report == {"available": False, "reason": "RAGAS no está instalado (lo instala `pnpm test:harness:real`)"}

@@ -162,12 +162,12 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | Fase | Estado | Notas |
 | --- | --- | --- |
 | F0 | Hecha | Contrato NDJSON v1, tiempos por etapa y UI de etapas, errores y tiempos. |
-| F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 37 casos **candidatos** y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
+| F1 | Hecha | Núcleo `backend/evaluation/harness/` (gold, métricas, jueces, cassettes, runner, umbrales), `citation_verifier`, 107 casos **candidatos** bilingües (80 es + 27 qu) y UI de evidencia insuficiente, panel de confianza y chips de citas. Pendiente de humanos: revisión ciega de abogados; baseline real (requiere autorización de red/coste). |
 | F2 | Hecha | Evaluación por sistema (`retrieval_eval.py`), regla de solapamiento (`overlap.py`), `retrieval.v1.jsonl`, `trace` en `query_with_rerank` y UI de jurisprudencia relacionada. Los sistemas con LightRAG o Cohere solo se miden con `--run-model-evals` o desde un cassette (no grabado). |
 | F3 | Hecha | 319 pares es→qu **candidatos** con su origen verificado (manuales cusco-collao y chanka, Ley 30364), chrF++/BLEU/TER y señales de contrato propios, `translation_qe` (calidad alta/media/baja), aviso fuera del texto y UI de calidad, aviso de revisión y "Ver original en español". El sistema real (Google) solo con `--run-model-evals` o cassette (no grabado). Pendiente de humanos: revisión de hablantes nativos. |
 | F4 | Hecha | `StreamGuard` (servidor), `ndjsonParser.ts` puro integrado en `useChat`, `POST /telemetry/stream` y resumen admin, 15 streams rotos reproducibles con fuzzing en pytest y vitest, suite `stream` (p50/p95 por etapa) y Playwright con streams rotos (12 pruebas pasan con Edge). |
 | F5 | Hecha | `harness.compare` (bootstrap pareado, A/B ciego, bloqueos, informe md/json, `git worktree` temporal con el harness actual), `pnpm test:harness:compare`, 👍/👎 → `POST /feedback` → cola de candidatos, `/calidad` y `/calidad/admin`. Verificado contra la historia real (`feature/harness-v8` → HEAD) con las suites offline. |
-| F6 | Hecha | Skills `harness-run`, `gold-curate`, `regression-compare`; agentes `legal-judge`, `quechua-reviewer`, `retrieval-auditor`, `stream-contract-auditor`; `ci.yml` y `harness-real.yml`. Los workflows no se pudieron ejecutar localmente: se validan con un test de contrato. |
+| F6 | Hecha | `ci.yml` y `harness-real.yml` (cuatro suites reales con juez Cohere: DeepEval y RAGAS). Los workflows no se pudieron ejecutar localmente: se validan con un test de contrato. |
 
 Hallazgos que condicionan el resto del plan:
 

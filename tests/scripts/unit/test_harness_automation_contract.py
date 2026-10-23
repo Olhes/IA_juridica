@@ -47,7 +47,8 @@ def test_real_evaluation_is_gated_by_schedule_label_or_manual_dispatch_and_alway
     assert "pnpm test:harness:compare" in run and "--ab" in run
     assert flow["permissions"] == {"contents": "read"} and flow["concurrency"]["cancel-in-progress"] is False
     secrets = set(re.findall(r"secrets\.(\w+)", (WORKFLOWS / "harness-real.yml").read_text(encoding="utf-8")))
-    assert secrets == {"COHERE_API_KEY", "OPENAI_API_KEY"}
+    assert secrets == {"COHERE_API_KEY"}  # el juez usa Cohere: sin claves de otros proveedores
+    assert flow["jobs"]["evaluate"]["env"]["EVAL_JUDGE_PROVIDER"] == "cohere"
     checkout = next(s for s in steps(flow) if str(s.get("uses", "")).startswith("actions/checkout"))
     assert checkout["with"]["fetch-depth"] == 0  # la comparación necesita la historia
 

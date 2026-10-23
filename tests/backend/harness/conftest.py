@@ -31,6 +31,7 @@ def oracle_answer(case, **overrides) -> Answer:
         base = dict(text=ABSTENTION_TEXT, evidence_status="insufficient_evidence", confidence_score=0.2)
     else:
         text = " ".join(fact.text for fact in case.required_facts)
-        base = dict(text=text, evidence_status="retrieved", confidence_score=0.9, sources=["fixture"])
+        base = dict(text=text, evidence_status="retrieved", confidence_score=0.9, sources=["fixture"],
+                    contexts=[fact.source.quote for fact in case.required_facts])
     base.update(overrides)
     return Answer(**base)

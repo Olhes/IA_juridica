@@ -80,6 +80,24 @@ def write_result(report: dict, meta: dict, suite: str, results_dir=None) -> Path
     return path
 
 
+async def enter_app(main):
+    """Arranca la aplicación y espera a que el corpus termine de cargar.
+
+    El ``lifespan`` carga el corpus en segundo plano y ``answer_query`` rechaza consultas mientras
+    está en ``loading``; fuera del servidor nadie espera esa tarea, así que la esperamos aquí.
+    """
+    context = main.lifespan(main.app)
+    await context.__aenter__()
+    task = getattr(main.app.state, "corpus_task", None)
+    if task is not None:
+        await task
+    state = getattr(main.app.state, "corpus_state", None)
+    if state in {"loading", "failed", "stopped"}:
+        await context.__aexit__(None, None, None)
+        raise RuntimeError(f"El corpus no quedó disponible (estado: {state})")
+    return context
+
+
 def cassette_answer_fn(cassette: Cassette, live_fn=None):
     """Respuesta desde el cassette; con modo de grabación, completa con ``live_fn``."""
 
@@ -99,14 +117,25 @@ async def build_live_answer_fn():
     """Pipeline real con el estado de la aplicación (red y coste: solo tras la autorización)."""
     import main  # noqa: PLC0415 - importa FastAPI y los proveedores solo si hace falta
 
-    context = main.lifespan(main.app)
-    await context.__aenter__()
+    context = await enter_app(main)
+    engine = main.app.state.rag_engine
+    retrieve, captured = engine.query_with_rerank, {}
+
+    async def capturing_retrieval(*args, **kwargs):
+        result = await retrieve(*args, **kwargs)
+        captured["contexts"] = [d.get("content") or "" for d in result.get("documents", [])]
+        return result
+
+    engine.query_with_rerank = capturing_retrieval
 
     async def answer(case, sample) -> Answer:
         from services.legal_queries import answer_query
 
+        captured.clear()
         payload = await answer_query(main.app.state, case.query, case.language, cache_key=None)
-        return answer_from_payload(payload, case.language)
+        result = answer_from_payload(payload, case.language)
+        result.contexts = captured.get("contexts") or []
+        return result
 
     answer.close = lambda: context.__aexit__(None, None, None)
     return answer
@@ -183,8 +212,7 @@ async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CAS
     elif source == "live":
         import main  # noqa: PLC0415
 
-        live = main.lifespan(main.app)
-        await live.__aenter__()
+        live = await enter_app(main)
         engine = main.app.state.rag_engine
     try:
         for case in cases:
@@ -203,6 +231,7 @@ async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CAS
         if live is not None:
             await live.__aexit__(None, None, None)
     report = retrieval_eval.evaluate_retrieval(cases, bundles, matcher)
+    report["ragas"] = await retrieval_eval.ragas_id_crosscheck(cases, bundles, matcher)
     relevant = {c.id: c.relevant for c in cases}
     report["corpus_quality"] = retrieval_eval.corpus_quality(corpus, relevant)
     if Path(kg_chunks).exists():
@@ -226,8 +255,7 @@ async def run_stream_suite(*, source="offline", results_dir=RESULTS_DIR, splits=
     if source == "live":
         import main  # noqa: PLC0415
 
-        live = main.lifespan(main.app)
-        await live.__aenter__()
+        live = await enter_app(main)
     records = []
     try:
         for case in cases:
@@ -332,7 +360,13 @@ def main(argv=None):
     parser.add_argument("--results-dir", default=str(RESULTS_DIR), help="carpeta base de temp/harness/<sha>/")
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
-    eval_mode = os.getenv("EVAL_MODE") == "1" or args.run_model_evals
+    if args.run_model_evals:
+        # `config.settings` lee `.env` relativo al directorio actual; run-tests.mjs corre desde la raíz.
+        # Las variables ya definidas (p. ej. secretos de CI) tienen prioridad.
+        from dotenv import load_dotenv
+
+        load_dotenv(ROOT / "backend" / ".env", override=False)
+    eval_mode =os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
     if args.suite == "stream":
         path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline", results_dir=args.results_dir))

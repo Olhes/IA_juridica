@@ -40,7 +40,7 @@ se muestran como **skipped**; los 2 escenarios temporales conocidos son
 | Solo calidad real | `pnpm test:quality --run-model-evals` | Tres casos sintéticos; red/coste |
 | Solo evaluador offline | `pnpm test:quality:offline` | Sin proveedor |
 | Harness de evaluación offline | `pnpm test:harness` | Gold, métricas, cassettes y umbrales; sin proveedor |
-| Harness real | `pnpm test:harness:real --run-model-evals` | Pipeline real con `EVAL_MODE=1` (temperatura 0, sin caché, 3 muestras); red/coste |
+| Harness real | `pnpm test:harness:real --run-model-evals` | Las cuatro suites (`legal_qa`, `retrieval`, `translation`, `stream`) contra el pipeline real con `EVAL_MODE=1` (temperatura 0, sin caché, 3 muestras). Juez de DeepEval y RAGAS: Cohere `command-a-03-2025` con `COHERE_API_KEY` (`EVAL_JUDGE_PROVIDER=openai` + `OPENAI_API_KEY` + `EVAL_JUDGE_MODEL` para usar OpenAI). RAGAS se instala solo para esa corrida (capa temporal de `uv`); red/coste |
 | Cobertura Python + frontend | `pnpm test:coverage` | Cobertura/xUnit Python y LCOV frontend |
 | Lo anterior + scanner y Quality Gate | `pnpm sonar` | Token desde backend/.env; solo tras éxito de todas las suites |
 | Navegador con API simulada | `pnpm test:e2e` | Arranca Next en localhost:3100; sin backend ni modelos |
@@ -1629,16 +1629,20 @@ documenta ese caso.
 
 ### F1 — Gold y métricas contra alucinaciones
 
-El gold (`tests/backend/fixtures/gold/legal_qa.v1.jsonl`) contiene 37 casos **candidatos**
-(`status: "candidate"`, `reviewers: []`) extraídos de `backend/docs/processed/`; cada hecho
-cita un fragmento textual de su segmento y el cargador lo comprueba contra el corpus. Lo que
-el gold llama "hecho" es lo que el corpus afirma, no verdad jurídica verificada. Se regenera
-con `uv run python -m evaluation.harness.seed_legal_qa` (desde `backend/`). Los tests no llaman a
-Cohere, Google ni OpenAI.
+El gold (`tests/backend/fixtures/gold/legal_qa.v1.jsonl`) contiene 107 casos **candidatos**
+(`status: "candidate"`, `reviewers: []`) extraídos de `backend/docs/processed/`: 80 en español y
+27 gemelos en quechua sureño (`parallel_id`), con los mismos hechos que su par en español. Cada
+hecho cita un fragmento textual de su segmento y el cargador lo comprueba contra el corpus. Lo que
+el gold llama "hecho" es lo que el corpus afirma, no verdad jurídica verificada; las consultas en
+quechua esperan revisión de un hablante nativo. En los casos en quechua los hechos y citas se
+comprueban sobre la respuesta validada en español (antes de traducir) y la entrega en quechua se
+mide con `quechua_delivered`; `query_language_detected` mide si el detector del pipeline reconoce
+el idioma de la consulta. Se regenera con `uv run python -m evaluation.harness.seed_legal_qa`
+(desde `backend/`). Los tests no llaman a Cohere, Google ni OpenAI.
 
 | Archivo | Qué verifica |
 |---|---|
-| [`backend/harness/test_gold.py`](backend/harness/test_gold.py) | Esquema estricto del gold, procedencia de los 37 casos semilla (`candidate`), citas textuales verificadas contra el corpus y rechazo de casos incoherentes. |
+| [`backend/harness/test_gold.py`](backend/harness/test_gold.py) | Esquema estricto del gold, procedencia de los 107 casos semilla bilingües (`candidate`), gemelos coherentes entre idiomas, citas textuales verificadas contra el corpus y rechazo de casos incoherentes. |
 | [`backend/harness/test_metrics.py`](backend/harness/test_metrics.py) | Regla `n/a`, agregación macro/micro, legal factuality, precisión de citas, abstención, calibración y faithfulness como diagnóstico. |
 | [`backend/harness/test_pipeline_eval.py`](backend/harness/test_pipeline_eval.py) | Evaluación del gold con respuestas sintéticas, errores sin ceros falsos, jueces, cassettes, umbrales prerregistrados y metadatos del resultado. |
 | [`backend/unit/test_citation_verifier.py`](backend/unit/test_citation_verifier.py) | Extracción de Ley/artículo/Casación/D.S. con su código, coincidencia por número y verificación contra evidencia, también con OCR espaciado. |
@@ -1651,6 +1655,9 @@ Cohere, Google ni OpenAI.
 | `test_segmenter_is_deterministic_and_drops_page_noise` | El segmentador produce los mismos segmentos con LF o CRLF y descarta imágenes, URLs, contadores de página y sellos de fecha. |
 | `test_document_ids_are_unique_and_stable` | Los `doc_id` salen del nombre de archivo, son únicos y la revisión del corpus es estable entre cargas. |
 | `test_seed_cases_are_candidates_without_reviewers` | Los casos semilla son `candidate`, sin revisores: ninguno se presenta como verdad. |
+| `test_gold_has_100_bilingual_cases_with_consistent_twins` | Hay 100 o más casos, con al menos 25 gemelos en quechua que comparten hechos y partición con su par y cubren todos los temas y estratos. |
+| `test_query_language_detection_is_measured_not_assumed` | Las consultas no se ajustan al detector del pipeline: `query_language_detected` refleja sus aciertos y sus errores conocidos. |
+| `test_parallel_pairs_that_drift_apart_are_rejected` | Un gemelo con otra partición o que apunta a un caso inexistente se rechaza. |
 | `test_seed_covers_all_strata_splits_and_topics` | La semilla cubre positivo/límite/negativo, dev/holdout y los cinco temas más `fuera_de_corpus`. |
 | `test_every_fact_and_contradiction_quotes_the_corpus` | Cada hecho y cada contradicción cita un fragmento que existe en su segmento de origen. |
 | `test_checked_in_jsonl_matches_the_seed_definition` | El JSONL versionado coincide con lo que genera `seed_legal_qa`; no se edita a mano. |
@@ -1696,13 +1703,15 @@ Cohere, Google ni OpenAI.
 | `test_forbidden_claim_in_an_otherwise_correct_answer_is_reported` | Una afirmación prohibida se informa por caso aunque el hecho correcto esté presente. |
 | `test_errors_are_counted_not_converted_into_zeros` | Un error al responder se cuenta como error, sin texto de la excepción y sin ceros falsos. |
 | `test_samples_are_merged_per_case` | Con N muestras cada caso promedia sus muestras y se conservan todas las respuestas. |
-| `test_judge_metrics_are_na_without_a_judge_and_present_with_one` | Sin juez las métricas del juez son `n/a`; con juez se registran su nombre, modelo y disponibilidad. |
-| `test_judge_factory_registers_availability_without_calling_models` | El juez `deepeval` informa si está disponible sin llamar a ningún modelo ni revelar claves. |
+| `test_judge_metrics_are_na_without_a_judge_and_present_with_one` | Sin juez las métricas del juez (DeepEval y RAGAS) son `n/a`; con juez se registran nombre, modelo y disponibilidad, y el juez lee el texto de los fragmentos recuperados, no los nombres de archivo. |
+| `test_judge_factory_registers_availability_without_calling_models` | El juez `deepeval` usa Cohere por defecto (u OpenAI si se configura) e informa si está disponible sin llamar a ningún modelo ni revelar claves. |
 | `test_cassette_replays_records_and_refuses_unrecorded_requests` | El cassette reproduce, graba solo en modo de grabación y falla ante una solicitud no grabada. |
 | `test_result_file_carries_reproducibility_metadata` | El resultado en disco lleva sha, `prompt_digest`, corpus, hash del gold, modelos, juez y su disponibilidad. |
 | `test_thresholds_are_unregistered_by_default_and_never_pass_silently` | Sin umbrales prerregistrados el veredicto es `unregistered`, nunca `pass`. |
 | `test_registration_requires_a_baseline_measurement_and_adjudicated_gold` | Registrar umbrales exige un baseline medido, métricas aplicables y gold adjudicado (o marcarlo provisional). |
 | `test_registered_thresholds_pass_fail_and_go_stale_with_the_gold` | Umbrales registrados: pass, fail, n/a como fallo y `stale` si cambia el gold. |
+| `test_quechua_cases_check_facts_on_the_validated_spanish_and_measure_the_translation` | En un caso en quechua los hechos se comprueban sobre el español validado y `quechua_delivered` distingue quechua entregado de español sin traducir. |
+| `test_ragas_id_crosscheck_is_na_without_ragas_installed` | Sin RAGAS instalado el control cruzado de recuperación es `n/a` con su motivo, no un número. |
 
 **`backend/unit/test_citation_verifier.py`**
 
@@ -1763,7 +1772,7 @@ recuperación `retrieval.v1.jsonl` se deriva de `legal_qa` y hereda su estado `c
 | `test_every_retrieval_metric_is_na_without_a_denominator` | Sin evidencia exigida, sin resultados o sin método la métrica es `n/a`, no 0 ni 1. |
 | `test_empty_result_and_jurisprudence_flags` | Resultado vacío (indebido o deseable), acierto de jurisprudencia y uso de fallback. |
 | `test_threshold_loss_counts_relevant_evidence_scored_under_the_minimum` | Fracción de evidencia relevante del reranker que el umbral mínimo descarta. |
-| `test_retrieval_gold_is_derived_from_legal_qa_and_matches_the_checked_in_file` | El gold de recuperación sale de `legal_qa` y el JSONL coincide con la derivación. |
+| `test_retrieval_gold_is_derived_from_legal_qa_and_matches_the_checked_in_file` | El gold de recuperación sale de los casos en español de `legal_qa` (una consulta en quechua se traduce antes de recuperar) y el JSONL coincide con la derivación. |
 | `test_jurisprudence_is_detected_by_casacion_citations_and_casacion_documents` | La jurisprudencia se detecta por citas de Casación o por documentos sobre una Casación. |
 | `test_oracle_retrieval_is_perfect_and_unavailable_systems_are_na_with_reason` | Un recuperador ideal puntúa 1; un sistema no disponible es `n/a` con su razón. |
 | `test_irrelevant_results_score_zero_recall_but_are_not_empty` | Resultados irrelevantes dan recall 0 sin contarse como vacíos. |

@@ -182,6 +182,49 @@ def evaluate_retrieval(cases, bundles, matcher, *, systems=SYSTEMS, ks=KS, main_
     }
 
 
+async def ragas_id_crosscheck(cases, bundles, matcher, *, system="current_reranked", k=MAIN_K) -> dict:
+    """Control cruzado con RAGAS (``IDBasedContextRecall``/``Precision``, sin LLM).
+
+    Los IDs recuperados son los segmentos del gold presentes en los ``k`` primeros fragmentos
+    del sistema. El recall de RAGAS debe coincidir con ``evidence_recall@k``; la precisión de
+    RAGAS cuenta segmentos, no fragmentos, y se reporta aparte. Sin RAGAS instalado: ``n/a``.
+    """
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            from ragas.dataset_schema import SingleTurnSample
+            from ragas.metrics import IDBasedContextPrecision, IDBasedContextRecall
+    except ImportError:
+        return {"available": False, "reason": "RAGAS no está instalado (lo instala `pnpm test:harness:real`)"}
+    recall_metric, precision_metric = IDBasedContextRecall(), IDBasedContextPrecision()
+    recalls, precisions, gaps = [], [], []
+    for case in cases:
+        bundle = bundles.get(case.id)
+        retrieved = (bundle[0] if isinstance(bundle, list) else bundle or {}).get(system)
+        if not case.relevant or retrieved is None or retrieved.unavailable:
+            continue
+        ids = []
+        for chunk in retrieved.chunks[:k]:
+            ids.extend(i for i in matcher.ids(chunk["content"]) if not i.startswith("unmapped:") and i not in ids)
+        sample = SingleTurnSample(retrieved_context_ids=ids or ["(vacío)"], reference_context_ids=list(case.relevant))
+        recall = float(await recall_metric.single_turn_ascore(sample))
+        recalls.append(Score(recall, recall, 1.0))
+        precisions.append(Score(float(await precision_metric.single_turn_ascore(sample)), 0.0, 0.0))
+        own = m.evidence_recall([matcher.ids(c["content"]) for c in retrieved.chunks], case.relevant, k)
+        if own.applicable:
+            gaps.append(abs(own.value - recall))
+    return {
+        "available": True,
+        "system": system,
+        "k": k,
+        f"ragas_id_context_recall@{k}": aggregate(recalls),
+        f"ragas_id_context_precision@{k}": aggregate([Score(p.value, p.value, 1.0) for p in precisions]),
+        "max_gap_vs_evidence_recall": max(gaps) if gaps else None,
+    }
+
+
 def index_audit(corpus, chunk_texts, matcher, relevant_by_case=None) -> dict:
     """Qué parte del corpus alcanzan los fragmentos indexados (cota superior de recall).
 

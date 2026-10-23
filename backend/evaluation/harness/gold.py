@@ -101,6 +101,8 @@ class GoldCase(_Model):
     acceptable_citations: list[str]
     absent_terms: list[str] = Field(default_factory=list)
     notes: str = ""
+    # Gemelo en el otro idioma (mismos hechos y segmentos); ``None`` si el caso no es bilingüe.
+    parallel_id: Optional[str] = None
 
     @model_validator(mode="after")
     def _consistency(self):
@@ -202,6 +204,24 @@ def verify_case(case: GoldCase, corpus: Corpus) -> list:
     return problems
 
 
+def check_parallel_pairs(cases) -> list:
+    """Cada caso bilingüe apunta a un gemelo en el otro idioma con los mismos hechos y segmentos."""
+    by_id, problems = {c.id: c for c in cases}, []
+    same = ("topic", "stratum", "split", "must_abstain", "reference_segments", "required_facts",
+            "forbidden_claims", "acceptable_citations", "absent_terms")
+    for case in cases:
+        if case.parallel_id is None:
+            continue
+        twin = by_id.get(case.parallel_id)
+        if twin is None:
+            problems.append(f"{case.id}: el gemelo {case.parallel_id} no existe")
+        elif twin.parallel_id != case.id or twin.language == case.language:
+            problems.append(f"{case.id}: {twin.id} no es su gemelo en el otro idioma")
+        elif any(getattr(case, name) != getattr(twin, name) for name in same):
+            problems.append(f"{case.id}: difiere de su gemelo {twin.id} en hechos, segmentos o partición")
+    return problems
+
+
 def parse_case(line: str) -> GoldCase:
     return GoldCase.model_validate_json(line)
 
@@ -219,6 +239,7 @@ def load_gold(path=LEGAL_QA_PATH, *, corpus: Optional[Corpus] = None, verify=Tru
     ids = [c.id for c in cases]
     if len(ids) != len(set(ids)):
         problems.append("hay `id` repetidos")
+    problems.extend(check_parallel_pairs(cases))
     if verify:
         corpus = corpus or Corpus.load()
         for case in cases:

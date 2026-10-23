@@ -52,8 +52,10 @@ def is_jurisprudence(segment, corpus: Corpus) -> bool:
 
 
 def derive(cases, corpus: Corpus) -> list:
+    """Solo casos en español: una consulta en quechua se traduce antes de recuperar, así que su
+    recuperación es la del gemelo en español (la traducción de la consulta se mide aparte)."""
     out = []
-    for case in sorted(cases, key=lambda c: c.id):
+    for case in sorted((c for c in cases if c.language == "spanish"), key=lambda c: c.id):
         relevant = sorted({f.source.segment_id for f in case.required_facts})
         supporting = sorted({r.segment_id for r in case.reference_segments} - set(relevant))
         jurisprudence = [sid for sid in relevant + supporting if is_jurisprudence(corpus.segments[sid], corpus)]

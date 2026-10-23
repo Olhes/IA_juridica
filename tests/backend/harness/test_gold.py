@@ -45,6 +45,46 @@ def test_seed_cases_are_candidates_without_reviewers(gold):
     assert all(c.version == 1 for c in gold)
 
 
+def test_gold_has_100_bilingual_cases_with_consistent_twins(gold):
+    assert len(gold) >= 100
+    by_language = Counter(c.language for c in gold)
+    assert by_language["spanish"] >= 75 and by_language["quechua"] >= 25
+    by_id = {c.id: c for c in gold}
+    quechua = [c for c in gold if c.language == "quechua"]
+    assert all(c.parallel_id in by_id and by_id[c.parallel_id].parallel_id == c.id for c in quechua)
+    assert all(c.required_facts == by_id[c.parallel_id].required_facts and c.split == by_id[c.parallel_id].split
+               for c in quechua)
+    # Los gemelos cubren todos los temas y estratos, no solo preguntas fáciles.
+    assert {c.topic for c in quechua} == {c.topic for c in gold}
+    assert {c.stratum for c in quechua} == {"positivo", "limite", "negativo"}
+    assert all("hablante nativo" in c.notes for c in quechua)
+
+
+def test_query_language_detection_is_measured_not_assumed(gold):
+    """Las consultas son realistas (el quechua lleva préstamos del español) y no se ajustan al
+    detector del pipeline: sus aciertos y errores los informa ``query_language_detected``."""
+    from evaluation.harness.pipeline_eval import query_language_detected
+
+    scores = {c.id: query_language_detected(c) for c in gold}
+    assert all(s.applicable for s in scores.values())
+    assert scores["pension-contenido-alimentos"].value == 1.0
+    assert scores["tenencia-provisional-quien-solicita-qu"].value == 1.0
+    # Errores conocidos del detector por reglas, que la métrica debe reflejar (no ocultar).
+    assert scores["visitas-concepto-qu"].value == 0.0 and scores["fuera-despido-arbitrario"].value == 0.0
+
+
+def test_parallel_pairs_that_drift_apart_are_rejected(gold):
+    from evaluation.harness.gold import check_parallel_pairs
+
+    twin = next(c for c in gold if c.language == "quechua")
+    drifted = twin.model_copy(update={"split": "dev" if twin.split == "holdout" else "holdout"})
+    others = [c for c in gold if c.id != twin.id]
+    assert check_parallel_pairs(others + [drifted])
+    orphan = twin.model_copy(update={"parallel_id": "no-existe"})
+    assert check_parallel_pairs(others + [orphan])
+    assert check_parallel_pairs(gold) == []
+
+
 def test_seed_covers_all_strata_splits_and_topics(gold):
     assert {c.stratum for c in gold} == {"positivo", "limite", "negativo"}
     assert {c.split for c in gold} == {"dev", "holdout"}

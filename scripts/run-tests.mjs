@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// ragas 0.4.3 importa un módulo que langchain-community retiró en 0.4.
+export const RAGAS_OVERLAY = ['--with', 'ragas==0.4.3', '--with', 'langchain-community<0.4'];
 
 export function testPlan(mode, extra = []) {
   const real = extra.includes('--run-model-evals');
@@ -26,14 +28,20 @@ export function testPlan(mode, extra = []) {
   }
   if (mode === 'harness-real') {
     // Evaluación real del harness: temperatura 0, sin caché de respuestas y N=3 muestras (EVAL_MODE=1).
-    return [{ name: 'Harness / evaluación real (red/coste)', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
-      args: ['run', '--frozen', '--extra', 'dev', '--inexact', 'python', '-m', 'evaluation.harness.runner', 'legal_qa', ...extra],
-      env: { EVAL_MODE: '1', PYTHONPATH: 'backend' } }];
+    // RAGAS solo se instala para esta corrida (capa temporal de uv), sin tocar uv.lock ni producción.
+    const suites = [['legal_qa', 'gold jurídico con juez DeepEval + RAGAS', ['--judge', 'deepeval']],
+      ['retrieval', 'recuperación', []], ['translation', 'traducción es→qu', []], ['stream', 'stream NDJSON', []]];
+    return suites.map(([suite, label, flags]) => ({ name: `Harness / ${label} (red/coste)`,
+      command: process.platform === 'win32' ? 'uv.exe' : 'uv',
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', ...RAGAS_OVERLAY, 'python', '-m', 'evaluation.harness.runner',
+        suite, ...flags, ...extra],
+      env: { EVAL_MODE: '1', PYTHONPATH: 'backend', DEEPEVAL_TELEMETRY_OPT_OUT: 'YES' } }));
   }
   if (mode === 'harness-compare') {
     // Compara los resultados del harness de dos commits (`--base <ref> --head <ref>`); offline salvo --run-model-evals.
     return [{ name: 'Harness / comparación entre commits', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
-      args: ['run', '--frozen', '--extra', 'dev', '--inexact', 'python', '-m', 'evaluation.harness.compare', ...extra],
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', ...(real ? RAGAS_OVERLAY : []), 'python', '-m',
+        'evaluation.harness.compare', ...extra],
       env: { PYTHONPATH: 'backend' } }];
   }
   const flags = {
