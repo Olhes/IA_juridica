@@ -30,6 +30,12 @@ export function testPlan(mode, extra = []) {
       args: ['run', '--frozen', '--extra', 'dev', '--inexact', 'python', '-m', 'evaluation.harness.runner', 'legal_qa', ...extra],
       env: { EVAL_MODE: '1', PYTHONPATH: 'backend' } }];
   }
+  if (mode === 'harness-compare') {
+    // Compara los resultados del harness de dos commits (`--base <ref> --head <ref>`); offline salvo --run-model-evals.
+    return [{ name: 'Harness / comparación entre commits', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', 'python', '-m', 'evaluation.harness.compare', ...extra],
+      env: { PYTHONPATH: 'backend' } }];
+  }
   const flags = {
     python: [],
     backend: ['tests/backend'],

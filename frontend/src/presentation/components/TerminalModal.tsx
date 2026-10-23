@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import type { FeedbackPayload } from '../../domain/legal/quality';
 import type {
   LegalQueryApiResponse,
   PipelineStage,
@@ -10,6 +11,7 @@ import type {
   SupportedLanguage,
 } from '../../domain/legal/types';
 import { AssistantEvidence } from './chat/EvidencePanels';
+import { FeedbackBar } from './chat/FeedbackBar';
 import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
 export interface TerminalMessage {
@@ -23,6 +25,7 @@ export interface TerminalMessage {
   errorInfo?: StreamErrorInfo;
   timings?: ResponseTimings;
   apiResponse?: LegalQueryApiResponse;
+  requestId?: string;
 }
 
 interface TerminalModalProps {
@@ -33,6 +36,8 @@ interface TerminalModalProps {
   isLoading?: boolean;
   language?: SupportedLanguage;
   onRetry?: (messageId: string) => void;
+  /** Envía 👍/👎 de una respuesta; si falta, no se muestra la barra de opinión. */
+  onFeedback?: (payload: Omit<FeedbackPayload, 'conversation_id' | 'language'>) => Promise<{ ok: boolean; queued: boolean }>;
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -44,6 +49,7 @@ export function TerminalModal({
   isLoading = false,
   language = 'spanish',
   onRetry,
+  onFeedback,
   returnFocusRef,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
@@ -116,7 +122,10 @@ export function TerminalModal({
                   Online
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">Modelo neural de consulta de leyes y regulaciones</p>
+              <p className="text-xs text-zinc-400">
+                Modelo neural de consulta de leyes y regulaciones ·{' '}
+                <a href="/calidad" className="underline hover:text-zinc-200">{language === 'quechua' ? 'Allin kayninta qhaway' : 'Ver calidad del sistema'}</a>
+              </p>
             </div>
           </div>
 
@@ -181,6 +190,17 @@ export function TerminalModal({
                 )}
                 {!msg.isUser && msg.apiResponse && !msg.isStreaming && (
                   <AssistantEvidence language={language} apiResponse={msg.apiResponse} />
+                )}
+                {!msg.isUser && msg.apiResponse && msg.requestId && !msg.isStreaming && onFeedback && (
+                  <FeedbackBar
+                    language={language}
+                    requestId={msg.requestId}
+                    context={{
+                      evidence_status: msg.apiResponse.metadata?.evidence_status,
+                      translation_quality: msg.apiResponse.metadata?.translation?.quality,
+                    }}
+                    onSubmit={(rating) => onFeedback({ request_id: msg.requestId as string, ...rating })}
+                  />
                 )}
                 {!msg.isUser && msg.timings && <ResponseTiming language={language} timings={msg.timings} />}
               </div>

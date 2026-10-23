@@ -25,7 +25,7 @@ from evaluation.harness.cassettes import RECORD_MISSING, REPLAY, Cassette
 from evaluation.harness.corpus import DEFAULT_CORPUS_DIR, Corpus
 from evaluation.harness.gold import LEGAL_QA_PATH, gold_hash, load_gold
 from evaluation.harness.judges import make_judge
-from evaluation.harness import retrieval_eval, retrieval_gold, stream_eval, translation_eval, translation_gold
+from evaluation.harness import retrieval_eval, retrieval_gold, translation_eval, translation_gold
 from evaluation.harness.overlap import SegmentMatcher
 from evaluation.harness.pipeline_eval import evaluate_gold
 
@@ -49,7 +49,7 @@ def git_identity() -> dict:
 
 def collect_metadata(*, corpus, judge, samples, eval_mode, gold_path=LEGAL_QA_PATH, cassette=None) -> dict:
     from config.settings import settings
-    from optimization.query_cache import pipeline_digest
+    from evaluation.harness.digest import pipeline_digest
 
     return {
         **git_identity(),
@@ -71,7 +71,8 @@ def collect_metadata(*, corpus, judge, samples, eval_mode, gold_path=LEGAL_QA_PA
     }
 
 
-def write_result(report: dict, meta: dict, suite: str, results_dir=RESULTS_DIR) -> Path:
+def write_result(report: dict, meta: dict, suite: str, results_dir=None) -> Path:
+    results_dir = results_dir or RESULTS_DIR
     folder = Path(results_dir) / meta["sha"]
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{suite}.json"
@@ -217,6 +218,8 @@ async def run_retrieval(*, source="offline", cassette_path=DEFAULT_RETRIEVAL_CAS
 
 async def run_stream_suite(*, source="offline", results_dir=RESULTS_DIR, splits=None, limit=None):
     """``offline``: pipeline simulado (mide el costo propio del stream). ``live``: pipeline real (red/coste)."""
+    from evaluation.harness import stream_eval  # commits anteriores a F0 no tienen el contrato: solo falla esta suite
+
     corpus = Corpus.load()
     cases = load_gold(corpus=corpus, splits=splits)[:limit]
     live = None
@@ -326,24 +329,25 @@ def main(argv=None):
     parser.add_argument("--source", default="offline", choices=["offline", "cassette"], help="retrieval: motor local o cassette")
     parser.add_argument("--retrieval-cassette", default=str(DEFAULT_RETRIEVAL_CASSETTE))
     parser.add_argument("--translation-cassette", default=str(DEFAULT_TRANSLATION_CASSETTE))
+    parser.add_argument("--results-dir", default=str(RESULTS_DIR), help="carpeta base de temp/harness/<sha>/")
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
     eval_mode = os.getenv("EVAL_MODE") == "1" or args.run_model_evals
     samples = args.samples or (3 if args.run_model_evals else 1)
     if args.suite == "stream":
-        path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline"))
+        path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline", results_dir=args.results_dir))
         print(f"stream ({report['source']}) -> {path}")
         print(f"validos: {report['valid_stream_rate']}  ttfb p95: {report['ttfb_ms']['p95']}")
         return 0 if report["valid_stream_rate"] == 1.0 else 1
     if args.suite == "translation":
         source = "live" if args.run_model_evals else args.source
-        path, report = asyncio.run(run_translation(source=source, cassette_path=args.translation_cassette))
+        path, report = asyncio.run(run_translation(source=source, cassette_path=args.translation_cassette, results_dir=args.results_dir))
         print(f"translation ({report['system']}) -> {path}")
         print(f"chrF++ macro: {report['metrics']['chrf++']['macro']['value']}")
         return 0
     if args.suite == "retrieval":
         source = "live" if args.run_model_evals else args.source
-        path, report = asyncio.run(run_retrieval(source=source, cassette_path=args.retrieval_cassette))
+        path, report = asyncio.run(run_retrieval(source=source, cassette_path=args.retrieval_cassette, results_dir=args.results_dir))
         main_metrics = report["main"].get("lexical", {})
         recall = {k: v["macro"]["value"] for k, v in main_metrics.items() if k.startswith("evidence_recall")}
         print(f"retrieval ({source}) -> {path}")
@@ -351,7 +355,7 @@ def main(argv=None):
         return 0
     path, report = asyncio.run(
         run_legal_qa(splits=args.split, samples=samples, judge_name=args.judge, cassette_path=args.cassette,
-                     real=args.run_model_evals, eval_mode=eval_mode)
+                     real=args.run_model_evals, eval_mode=eval_mode, results_dir=args.results_dir)
     )
     headline = {k: v["macro"]["value"] for k, v in report["metrics"].items() if k in ("legal_factuality", "abstention_recall")}
     print(f"legal_qa: {report['n_cases']} casos, {report['n_errors']} errores -> {path}\n{headline}")

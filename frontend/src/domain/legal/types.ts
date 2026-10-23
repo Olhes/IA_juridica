@@ -177,6 +177,8 @@ export interface ChatMessage {
   stage?: PipelineStage;
   /** Etapas ya terminadas, en orden de llegada. */
   completedStages?: PipelineStage[];
+  /** Identificador de la petición (`request_id` del stream); permite calificar la respuesta. */
+  requestId?: string;
   /** El servidor no envió el `final` (validación y fuentes): el texto es el del chunk. */
   degraded?: boolean;
   /** Error del stream con código; la UI lo traduce y ofrece reintentar. */

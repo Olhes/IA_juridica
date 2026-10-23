@@ -166,7 +166,8 @@ Se implementan junto a la fase correspondiente. Textos en `translations.ts` (esp
 | F2 | Hecha | Evaluación por sistema (`retrieval_eval.py`), regla de solapamiento (`overlap.py`), `retrieval.v1.jsonl`, `trace` en `query_with_rerank` y UI de jurisprudencia relacionada. Los sistemas con LightRAG o Cohere solo se miden con `--run-model-evals` o desde un cassette (no grabado). |
 | F3 | Hecha | 319 pares es→qu **candidatos** con su origen verificado (manuales cusco-collao y chanka, Ley 30364), chrF++/BLEU/TER y señales de contrato propios, `translation_qe` (calidad alta/media/baja), aviso fuera del texto y UI de calidad, aviso de revisión y "Ver original en español". El sistema real (Google) solo con `--run-model-evals` o cassette (no grabado). Pendiente de humanos: revisión de hablantes nativos. |
 | F4 | Hecha | `StreamGuard` (servidor), `ndjsonParser.ts` puro integrado en `useChat`, `POST /telemetry/stream` y resumen admin, 15 streams rotos reproducibles con fuzzing en pytest y vitest, suite `stream` (p50/p95 por etapa) y Playwright con streams rotos (12 pruebas pasan con Edge). |
-| F5–F6 | Pendientes | |
+| F5 | Hecha | `harness.compare` (bootstrap pareado, A/B ciego, bloqueos, informe md/json, `git worktree` temporal con el harness actual), `pnpm test:harness:compare`, 👍/👎 → `POST /feedback` → cola de candidatos, `/calidad` y `/calidad/admin`. Verificado contra la historia real (`feature/harness-v8` → HEAD) con las suites offline. |
+| F6 | Pendiente | |
 
 Hallazgos que condicionan el resto del plan:
 
@@ -191,3 +192,6 @@ Hallazgos que condicionan el resto del plan:
   Chromium que pide la versión instalada.
 - Cuatro pruebas de `test_google_oauth.py` fallan en la base (v8) por mensajes de error que filtran detalle de
   la base de datos en el callback de Google; no se tocó el código de autenticación.
+- Comparación real `feature/harness-v8` → `HEAD` (suites offline): `retrieval` y `translation` salen `IGUAL`
+  (los cambios de F2 en el motor son solo instrumentación) y `stream` no existe en la base (sin contrato). El
+  veredicto de `legal_qa` y los demás modelos reales requiere resultados de `harness-real`.

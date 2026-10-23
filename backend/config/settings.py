@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     CONVERSATION_CREATE_RATE_LIMIT: str = "20/hour"
     ADMIN_RATE_LIMIT: str = "5/hour"
     TELEMETRY_RATE_LIMIT: str = "120/minute"
+    FEEDBACK_RATE_LIMIT: str = "30/hour"
+    QUALITY_RATE_LIMIT: str = "60/minute"
+    # Cola de feedback (JSON local). Con disco efímero se pierde al reiniciar.
+    FEEDBACK_DIR: str = os.getenv("FEEDBACK_DIR", "./data/feedback")
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS

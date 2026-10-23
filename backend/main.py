@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 import json
 import logging
 import asyncio
@@ -55,6 +55,9 @@ from services.legal_queries import answer_query
 from services.legal_stream import stream_legal_query
 from services.stream_guard import guard_stream
 from services.stream_telemetry import StreamTelemetry, stream_metrics
+from services.feedback_store import FeedbackIn, FeedbackStore
+from services.quality_access import require_quality_admin
+from services.quality_reports import admin_overview, load_published
 from context.conversation_prompt import bounded_history, with_conversation
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
 from database.postgres_adapter_final import DatabaseUnavailableError
@@ -713,6 +716,75 @@ async def stream_telemetry(request: Request):
 async def stream_telemetry_summary(request: Request, _auth: bool = Depends(verify_admin_api_key)):
     """p50/p95 por etapa, resultados y líneas inválidas de los últimos streams (solo administración)."""
     return {"success": True, "summary": stream_metrics.summary()}
+
+
+def _feedback_store() -> FeedbackStore:
+    store = getattr(app.state, "feedback_store", None)
+    if store is None:
+        store = FeedbackStore(settings.FEEDBACK_DIR)
+        app.state.feedback_store = store
+    return store
+
+
+async def _rated_exchange(conversation_id: str, owner_id: str):
+    """Última consulta y respuesta de una conversación **propia**; ``(None, None)`` si no se pueden leer."""
+    try:
+        if not await chat_service.get_conversation(conversation_id, owner_id):
+            return None, None
+        messages = await chat_service.get_conversation_messages(conversation_id, owner_id, limit=12)
+    except (DatabaseUnavailableError, ValueError):
+        return None, None
+    role = lambda m: getattr(m.role, "value", m.role)  # noqa: E731
+    answer = next((m.content for m in reversed(messages) if role(m) == "assistant"), None)
+    query = next((m.content for m in reversed(messages) if role(m) == "user"), None)
+    return query, answer
+
+
+@app.post("/feedback", status_code=201)
+@limiter.limit(settings.FEEDBACK_RATE_LIMIT)
+async def submit_feedback(request: Request, payload: FeedbackIn, principal: Principal = Depends(require_principal)):
+    """👍/👎 con motivo. El texto solo se guarda con `share_text` y 👎 (cola de candidatos, pendiente de revisión)."""
+    query = answer = None
+    if payload.share_text and payload.rating == "down" and payload.conversation_id:
+        query, answer = await _rated_exchange(payload.conversation_id, principal.id)
+    record = _feedback_store().add(principal.id, payload, query=query, answer=answer)
+    return {"success": True, "id": record["id"], "queued": record["queue_status"] == "pending"}
+
+
+@app.get("/feedback/queue")
+@limiter.limit(settings.QUALITY_RATE_LIMIT)
+async def feedback_queue(request: Request, _admin: str = Depends(require_quality_admin)):
+    store = _feedback_store()
+    return {"success": True, "summary": store.summary(), "items": store.queue("pending")[:50]}
+
+
+class QueueDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["accept", "reject"]
+
+
+@app.post("/feedback/queue/{item_id}/decision")
+@limiter.limit(settings.QUALITY_RATE_LIMIT)
+async def decide_feedback(request: Request, item_id: str, payload: QueueDecision, _admin: str = Depends(require_quality_admin)):
+    """Acepta o descarta un candidato. Aceptar NO lo agrega al gold: lo deja listo para que abogados lo redacten."""
+    record = _feedback_store().decide(item_id, payload.decision)
+    if record is None:
+        raise HTTPException(404, "Queue item not found")
+    return {"success": True, "id": record["id"], "queue_status": record["queue_status"]}
+
+
+@app.get("/quality/published")
+@limiter.limit(settings.QUALITY_RATE_LIMIT)
+async def quality_published(request: Request):
+    """Métricas publicadas (agregados, sin texto de consultas ni respuestas)."""
+    return {"success": True, "published": load_published()}
+
+
+@app.get("/quality/admin/overview")
+@limiter.limit(settings.QUALITY_RATE_LIMIT)
+async def quality_admin_overview(request: Request, _admin: str = Depends(require_quality_admin)):
+    """Regresiones entre commits, colas de revisión, feedback y latencia del stream."""
+    return {"success": True, "overview": admin_overview(_feedback_store(), stream_metrics)}
 
 
 @app.post(

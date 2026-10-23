@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useChat } from '../../application/legal/use-cases/useChat';
 import { useChatSessions } from '../../application/legal/use-cases/useChatSessions';
 import { useAuth } from '../components/AuthProvider';
+import { sendFeedback } from '../../application/legal/services/qualityService';
 import { AuthModal } from '../components/AuthModal';
 import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
@@ -254,6 +255,7 @@ export function ChatPage() {
         errorInfo: m.errorInfo,
         timings: m.apiResponse?.metadata?.timings,
         apiResponse: m.apiResponse,
+        requestId: m.requestId,
       }));
       setTerminalMessages(formatted);
   }, [messages]);
@@ -436,6 +438,9 @@ export function ChatPage() {
         isLoading={isLoading}
         language={language}
         onRetry={retry}
+        onFeedback={(payload) =>
+          sendFeedback({ ...payload, language, conversation_id: activeSessionId ?? undefined })
+        }
       />
 
       {/* Historial */}

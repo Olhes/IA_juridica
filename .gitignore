@@ -78,3 +78,6 @@ models/
 # Pydantic request contracts are source code, not downloaded model weights.
 !/backend/models/
 !/backend/models/request_types.py
+
+# Cola de feedback local (puede contener texto autorizado por las personas)
+/backend/data/

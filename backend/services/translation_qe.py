@@ -9,7 +9,12 @@ sigue siendo verdadero siempre.
 
 import re
 
-from modules.language.services.translation_service import REFERENCE_PATTERN
+try:
+    from modules.language.services.translation_service import REFERENCE_PATTERN
+except ImportError:  # commits anteriores a F3 no exponen el patrón: copia literal
+    REFERENCE_PATTERN = (
+        r"https?://[^\s]+|\[\d+(?:[,–-]\d+)*\]|(?:artículo|art\.|ley|decreto)\s+[\w.°º-]*\d[\w.°º-]*|\d+(?:[./:-]\d+)*"
+    )
 from utils.text_match import fold
 
 BASIS = "Señales automáticas; no sustituyen la revisión de un hablante nativo."

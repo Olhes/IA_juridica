@@ -232,6 +232,11 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
             return;
           }
 
+          if (event.type === 'meta' && !event.legacy) {
+            updateMessage(assistantId, { requestId: event.request_id });
+            return;
+          }
+
           if (event.type === 'chunk') {
             if (!event.delta) return;
             streamedText += event.delta;

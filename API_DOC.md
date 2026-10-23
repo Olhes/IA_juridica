@@ -17,6 +17,10 @@ La documentación interactiva está deshabilitada por defecto en producción.
 | `POST /legal-query-stream` | Principal anónimo | Respuesta final transportada por NDJSON |
 | `POST /telemetry/stream` | Público, limitado por IP | Telemetría numérica del cliente (sin texto); 204 |
 | `GET /telemetry/stream/summary` | Admin | p50/p95 por etapa, resultados y líneas inválidas |
+| `POST /feedback` | Principal anónimo, limitado | 👍/👎 con motivo; el texto solo con `share_text` y 👎 |
+| `GET /feedback/queue`, `POST /feedback/queue/{item_id}/decision` | Admin (clave o rol `admin`) | Cola de candidatos al gold: aceptar o descartar |
+| `GET /quality/published` | Público | Métricas publicadas (agregados, sin texto de consultas) |
+| `GET /quality/admin/overview` | Admin (clave o rol `admin`) | Regresiones entre commits, colas de revisión, feedback y latencia |
 | `POST /generate-pdf-report` | Principal anónimo | PDF de consulta/respuesta suministradas por cliente |
 | `/chat/*` | Principal anónimo, excepto health | Conversaciones, mensajes y caché del propietario |
 | `POST /upload-pdf`, `POST /batch-process` | Admin | Ingesta documental |
@@ -124,6 +128,20 @@ El contrato se define en `backend/models/stream_events.py` y se exporta a
 `Content-Type: application/x-ndjson`, `Cache-Control: no-cache, no-transform`
 y `X-Accel-Buffering: no`. El cliente debe gestionar líneas partidas entre lecturas,
 UTF-8 incremental, cancelación y errores HTTP antes del primer evento.
+
+## Feedback y calidad
+
+`POST /feedback` recibe `{request_id, rating: up|down, reason?, comment?, conversation_id?, language,
+evidence_status?, translation_quality?, share_text}`. Un 👎 exige `reason` (`incorrecta`, `incompleta`, `sin_fuentes`,
+`mala_traduccion`, `confusa`, `otro`) y un 👍 no lleva motivo. Se guardan solo etiquetas, números y un hash del
+propietario; la consulta y la respuesta se guardan **únicamente** con 👎 y `share_text=true` (el servidor las lee de una
+conversación del propio propietario) y entran a la cola de candidatos, pendiente de revisión humana. Un candidato
+aceptado no se agrega al gold: se exporta como esqueleto para que abogados redacten los hechos y citas. Un voto por
+persona y petición (el último prevalece). Límite `FEEDBACK_RATE_LIMIT` (30/hora). `FEEDBACK_DIR` define dónde se guarda.
+
+`GET /quality/published` devuelve `docs/quality/published.json`: solo se publica lo medido con un sistema real; las
+líneas base sintéticas figuran como «no medido». Las vistas de administración aceptan `X-API-Key` o una sesión de
+persona con el rol `admin` (la clave nunca va al navegador). Límite `QUALITY_RATE_LIMIT` (60/minuto).
 
 ## Chat persistente
 

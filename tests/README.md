@@ -1919,3 +1919,84 @@ mide solo el costo propio del stream.
 **Mantenimiento de tests previos:** `ChatPage.test.tsx` y el mock de Playwright asumían que se podía chatear sin
 sesión, pero `ChatPage` exige autenticación desde antes de este harness; ahora simulan un usuario autenticado
 (`authenticated: true`).
+
+### F5 — Comparación entre commits, feedback y calidad
+
+`pnpm test:harness:compare --base v8 --head HEAD [--run-missing] [--ab]` compara los resultados del harness de dos
+refs (`temp/harness/<sha>/<suite>.json`). Con `--run-missing` crea un `git worktree` temporal por ref (en una ruta corta
+de `%TEMP%`), le superpone el harness **actual** —el código bajo prueba no cambia— y ejecuta solo las suites offline
+(`retrieval`, `translation`, `stream`); `legal_qa` y los modelos reales exigen `--run-model-evals`. El informe
+(`temp/harness/compare/<base>..<head>/report.{md,json}`) trae el delta macro y micro con IC por bootstrap pareado,
+los casos que empeoraron o mejoraron, qué cambió (`prompt_digest`, corpus, modelos, juez), el A/B ciego con orden
+invertido y el veredicto `MEJORÓ`/`IGUAL`/`EMPEORÓ`; una afirmación prohibida nueva o un caso fuera del corpus que
+deja de abstenerse bloquean aunque el promedio mejore. La interfaz suma 👍/👎 con motivo (`POST /feedback`), la
+página pública `/calidad` y `/calidad/admin` (solo rol admin).
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_compare.py`](backend/harness/test_compare.py) | Bootstrap pareado, veredicto, bloqueos, A/B ciego y orquestación con `git worktree`. |
+| [`backend/harness/test_publish.py`](backend/harness/test_publish.py) | Solo se publica lo medido con un sistema real, sin texto de casos. |
+| [`backend/http/test_quality_feedback.py`](backend/http/test_quality_feedback.py) | Feedback, cola de candidatos, métricas publicadas y panel de administración. |
+| [`frontend/component/FeedbackBar.test.tsx`](frontend/component/FeedbackBar.test.tsx) | Barra de opinión 👍/👎 con motivo y consentimiento explícito. |
+| [`frontend/component/QualityPages.test.tsx`](frontend/component/QualityPages.test.tsx) | Páginas `/calidad` y `/calidad/admin`. |
+| [`frontend/e2e/quality.spec.js`](frontend/e2e/quality.spec.js) | Navegador: calidad pública, administración y feedback. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_digest_matches_the_cache_key_digest` | La huella del código del harness coincide con la de la clave de caché. |
+| `test_paired_bootstrap_detects_a_consistent_improvement_and_a_consistent_regression` | El bootstrap pareado detecta una mejora y una regresión consistentes, respetando si menos es mejor. |
+| `test_noise_is_not_reported_as_a_change_and_small_samples_make_no_claim` | El ruido no se informa como cambio y con pocos casos no se afirma nada. |
+| `test_bootstrap_is_deterministic_for_a_seed_and_pairs_cases_by_id` | Con la misma semilla el IC es idéntico y solo se parean casos presentes en ambos. |
+| `test_micro_pools_numerators_and_denominators_while_macro_averages_cases` | Micro suma numeradores y denominadores; macro promedia casos. |
+| `test_case_changes_lists_the_cases_that_moved_most` | Lista los casos que más empeoraron y mejoraron. |
+| `test_a_new_unsupported_claim_blocks_even_if_everything_else_is_unchanged` | Una afirmación prohibida nueva bloquea aunque nada más cambie. |
+| `test_an_out_of_corpus_case_that_stops_abstaining_blocks` | Un caso fuera del corpus que deja de abstenerse bloquea. |
+| `test_verdict_rules` | Reglas del veredicto MEJORÓ/IGUAL/EMPEORÓ, bloqueos y errores nuevos. |
+| `test_meta_diff_reports_what_changed_and_flags_incomparable_measurements` | Se informan los cambios de digest, corpus y modelos; gold o juez distintos son no comparables. |
+| `test_stream_validity_drop_blocks_and_latency_is_reported` | Una caída de validez del stream bloquea y se informa la latencia p95. |
+| `test_end_to_end_one_hallucination_blocks_while_a_general_improvement_is_recognised` | Con informes reales del gold: una alucinación bloquea y una mejora general se reconoce. |
+| `test_trials_are_blinded_crossed_and_skip_identical_answers` | Los ensayos A/B son ciegos, cruzan el orden y omiten respuestas idénticas. |
+| `test_blind_ab_recognises_a_consistent_judge_and_exposes_position_bias` | El A/B distingue un juez consistente de uno con sesgo de posición. |
+| `test_sign_test_matches_exact_binomial_values` | La prueba del signo coincide con valores binomiales exactos. |
+| `test_results_are_reused_and_missing_ones_run_in_a_temporary_worktree_with_the_new_harness` | Los resultados se reutilizan y los faltantes se ejecutan en un worktree temporal con el harness actual. |
+| `test_a_failing_run_still_removes_the_worktree` | Si la ejecución falla el worktree se elimina igual. |
+| `test_unknown_refs_fail_with_a_clear_message` | Un ref inexistente falla con un mensaje claro. |
+| `test_synthetic_baselines_are_published_as_not_measured_never_as_quality` | Las líneas base sintéticas se publican como no medidas. |
+| `test_real_systems_publish_aggregates_without_any_case_text` | Los sistemas reales publican agregados sin texto de casos. |
+| `test_published_file_round_trips_and_a_missing_file_is_reported_as_unpublished` | El archivo publicado se lee y escribe sin pérdida; si falta se informa como sin publicar. |
+| `test_the_checked_in_published_file_is_honest_about_what_was_measured` | El archivo publicado en el repositorio solo declara medido lo medido con un sistema real. |
+| `test_latest_comparison_picks_the_newest_report_and_ignores_broken_files` | El panel toma la comparación más reciente e ignora archivos rotos. |
+| `test_feedback_requires_an_anonymous_session` | El feedback exige una sesión. |
+| `test_a_thumbs_up_stores_only_labels_and_numbers` | Un 👍 guarda solo etiquetas y números. |
+| `test_text_is_stored_only_when_the_person_shares_it_with_a_thumbs_down` | El texto solo se guarda con 👎 y autorización expresa. |
+| `test_a_foreign_or_unreadable_conversation_never_leaks_text` | Una conversación ajena o ilegible nunca filtra texto. |
+| `test_invalid_feedback_is_rejected` | Se rechaza feedback sin motivo, con campos extra o valores inválidos. |
+| `test_one_vote_per_person_and_request_the_latest_wins` | Un voto por persona y petición; el último prevalece. |
+| `test_the_queue_requires_admin_and_decisions_never_touch_the_gold` | La cola exige administración y aceptar no toca el gold. |
+| `test_the_store_survives_a_restart_and_summarises_reasons` | El almacén sobrevive a un reinicio y resume los motivos. |
+| `test_published_metrics_are_public_and_default_to_unpublished` | Las métricas publicadas son públicas y por defecto indican que no hay publicación. |
+| `test_admin_overview_gathers_comparison_gold_queue_and_stream_without_secrets` | El panel reúne comparación, gold, cola y stream sin secretos. |
+| `test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not` | Una persona con rol admin entra sin la clave; el resto no y un fallo nunca concede acceso. |
+| un pulgar arriba se envía de inmediato con el contexto numérico y sin motivo | El 👍 se envía de inmediato. |
+| un pulgar abajo exige un motivo y por defecto no comparte el texto de la consulta | El 👎 exige motivo y no comparte texto por defecto. |
+| compartir el texto es una casilla explícita y la cola de revisión se avisa | Compartir el texto es una casilla explícita y se avisa de la cola. |
+| si el envío falla se explica y se puede reintentar sin perder lo escrito | Si falla el envío se explica y se conserva lo escrito. |
+| cancelar cierra el formulario y la barra existe en quechua | Cancelar cierra el formulario; existe en quechua. |
+| la terminal muestra la opinión solo con respuesta final, request_id y manejador | La terminal muestra la opinión solo con respuesta final, request_id y manejador. |
+| la página pública muestra avisos, lo medido con sus valores y lo no medido con su razón | /calidad muestra avisos, lo medido y lo no medido. |
+| la página pública cambia a quechua y se recupera de un error con un reintento | /calidad cambia a quechua y reintenta tras un error. |
+| el panel de administración muestra regresiones, bloqueos, colas de revisión, feedback y latencia | /calidad/admin muestra regresiones, bloqueos, colas, feedback y latencia. |
+| aceptar un candidato llama a la decisión y recarga el panel | Aceptar un candidato llama a la decisión y recarga. |
+| sin sesión o sin rol admin el panel no pide datos y explica el acceso | Sin sesión o sin rol admin no se piden datos. |
+| si el servidor responde 403 aunque el rol local diga admin, se muestra acceso restringido | El 403 del servidor prevalece sobre el rol local. |
+| un fallo del servidor ofrece reintentar y el panel existe en quechua | Un fallo ofrece reintentar; el panel existe en quechua. |
+| el request_id del evento meta queda en el mensaje para poder calificar la respuesta | El `request_id` del evento `meta` queda en el mensaje. |
+| la página pública /calidad muestra avisos, lo medido y lo no medido, y cambia de idioma | Navegador: /calidad. |
+| /calidad/admin muestra regresiones y colas a un administrador | Navegador: /calidad/admin para un administrador. |
+| /calidad/admin niega el acceso a quien no es administrador | Navegador: acceso restringido. |
+| el 👎 con motivo viaja a /feedback sin el texto de la consulta salvo que se autorice | Navegador: el 👎 viaja sin texto privado. |
+| harness-compare pasa --base y --head al comparador sin activar modelos reales | `harness-compare` pasa `--base` y `--head` al comparador sin activar modelos reales. |
+
+**Límites:** la comparación `legal_qa` necesita resultados de `harness-real` (o un cassette) en ambos refs; sin ellos el
+informe lo declara faltante y no inventa un veredicto. Los candidatos del feedback no entran al gold: los redactan y
+revisan abogados. El almacén de feedback es un archivo local (`FEEDBACK_DIR`); con disco efímero se pierde al reiniciar.

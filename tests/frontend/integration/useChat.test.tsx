@@ -229,3 +229,12 @@ test('al terminar envía telemetría solo numérica con sendBeacon cuando el ser
     delete (navigator as unknown as Record<string, unknown>).sendBeacon;
   }
 });
+test('el request_id del evento meta queda en el mensaje para poder calificar la respuesta', async () => {
+  const { result } = await hook();
+  const id = '0123456789abcdef0123456789abcdef';
+  const text = [{ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }, { v: 1, seq: 1, request_id: id, type: 'final', data: payload },
+    { v: 1, seq: 2, request_id: id, type: 'done' }].map((event) => JSON.stringify(event)).join('\n') + '\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1].requestId).toBe(id);
+});

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Synthetic API scoped to one browser page; never proxies a real backend.
-export async function mockApi(page, { authenticated = true } = {}) {
-  const conversations = new Map(); const calls = []; const beacons = []; let sequence = 0;
+export async function mockApi(page, { authenticated = true, roles = ['user'], published = null, overview = null } = {}) {
+  const conversations = new Map(); const calls = []; const beacons = []; const feedback = []; let sequence = 0;
   await page.route('**/*', async route => {
     const request = route.request(); const url = new URL(request.url());
     if (url.port !== '8000') {
@@ -19,10 +19,16 @@ export async function mockApi(page, { authenticated = true } = {}) {
     if (url.pathname === '/session/bootstrap') return json({ principal_id: 'synthetic' });
     // El chat exige sesión: el usuario sintético es el predeterminado; `authenticated: false` simula un visitante.
     if (url.pathname === '/auth/me') {
-      return authenticated ? json({ id: 'synthetic-user', email: 'persona@example.test', username: 'persona', role: 'user', roles: ['user'], is_active: true })
+      return authenticated ? json({ id: 'synthetic-user', email: 'persona@example.test', username: 'persona', role: roles[0], roles, is_active: true })
         : json({ detail: 'Anónimo' }, 401);
     }
     if (url.pathname === '/health') return json({ status: 'healthy' });
+    if (url.pathname === '/quality/published') return json({ success: true, published: published ?? { schema: 1, status: 'sin_publicar', notices: ['Todavía no hay métricas publicadas.'], suites: {} } });
+    if (url.pathname === '/quality/admin/overview') return overview ? json({ success: true, overview }) : json({ detail: 'Admin credentials required' }, 403);
+    if (url.pathname === '/feedback' && request.method() === 'POST') {
+      feedback.push(request.postDataJSON());
+      return json({ success: true, id: `fb-${feedback.length}`, queued: Boolean(request.postDataJSON().share_text) }, 201);
+    }
     if (url.pathname === '/telemetry/stream') { beacons.push(request.postData() ?? ''); return route.fulfill({ status: 204, headers }); }
     if (url.pathname === '/chat/conversations') {
       if (request.method() === 'GET') return json({ conversations: [...conversations.values()], total_count: conversations.size });
@@ -58,5 +64,5 @@ export async function mockApi(page, { authenticated = true } = {}) {
     }
     throw new Error(`Endpoint sin mock: ${request.method()} ${url.pathname}`);
   });
-  return { conversations, calls, beacons };
+  return { conversations, calls, beacons, feedback };
 }

@@ -53,14 +53,20 @@ def _chunk(doc):
 
 async def retrieve_bundle(engine, query, *, budget, top_k, systems=SYSTEMS) -> dict:
     """Ejecuta los sistemas pedidos contra ``engine`` (red solo si hay LightRAG/Cohere)."""
+    import inspect
+
     from modules.rag.services import lightrag_engine as module
 
     out: dict = {}
-    graph_ready = module.LIGHTRAG_AVAILABLE and engine.rag is not None
+    # Commits anteriores a F2 no exponen `_graph_docs` ni `trace`: esos sistemas quedan n/a con su razón.
+    can_graph = hasattr(engine, "_graph_docs")
+    can_trace = "trace" in inspect.signature(engine.query_with_rerank).parameters
+    graph_ready = module.LIGHTRAG_AVAILABLE and engine.rag is not None and can_graph
     for system in systems:
         if system.startswith("lightrag_"):
             if not graph_ready:
-                out[system] = Retrieved(unavailable="LightRAG no está inicializado")
+                reason = "LightRAG no está inicializado" if can_graph else "este commit no expone `_graph_docs`"
+                out[system] = Retrieved(unavailable=reason)
                 continue
             docs = await engine._graph_docs(query, system.removeprefix("lightrag_"), budget)
             out[system] = Retrieved([_chunk(d) for d in docs], method="graph" if docs else "graph_empty")
@@ -68,11 +74,18 @@ async def retrieve_bundle(engine, query, *, budget, top_k, systems=SYSTEMS) -> d
             out[system] = Retrieved([_chunk(d) for d in engine._local_candidates(query, budget)], method="bm25")
     if {"current_mix", "current_reranked", "reranked_no_threshold"} & set(systems):
         trace: dict = {}
-        result = await engine.query_with_rerank(query, top_k=top_k, rerank_candidates=budget, trace=trace)
+        if can_trace:
+            result = await engine.query_with_rerank(query, top_k=top_k, rerank_candidates=budget, trace=trace)
+        else:
+            result = await engine.query_with_rerank(query, top_k=top_k, rerank_candidates=budget)
         candidates = trace.get("candidates", [])
         method = result.get("method")
         if "current_mix" in systems:
-            out["current_mix"] = Retrieved([_chunk(d) for d in candidates], method="mix")
+            out["current_mix"] = (
+                Retrieved([_chunk(d) for d in candidates], method="mix")
+                if can_trace
+                else Retrieved(unavailable="este commit no expone `trace`")
+            )
         if "current_reranked" in systems:
             out["current_reranked"] = Retrieved(
                 [_chunk(d) for d in result.get("documents", [])],

@@ -69,6 +69,14 @@ test('harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1'
   assert.ok(real[0].args.includes('--run-model-evals'));
 });
 
+test('harness-compare pasa --base y --head al comparador sin activar modelos reales', () => {
+  const plan = testPlan('harness-compare', ['--base', 'v8', '--head', 'HEAD', '--run-missing']);
+  assert.equal(plan.length, 1);
+  assert.ok(plan[0].args.includes('evaluation.harness.compare'));
+  assert.deepEqual(plan[0].args.slice(-5), ['--base', 'v8', '--head', 'HEAD', '--run-missing']);
+  assert.ok(!plan[0].args.includes('--run-model-evals'));
+});
+
 test('quality-offline y modos inválidos no activan facturación', () => {
   assert.ok(!testPlan('quality-offline')[0].args.includes('--run-model-evals'));
   assert.throws(() => testPlan('invalid'), /Modo desconocido/);

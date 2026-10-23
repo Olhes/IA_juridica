@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "status": "preliminar",
+  "generated_at": "2026-10-23T03:29:53.633103+00:00",
+  "sha": "1b3bf57923c4283d41565380a6d25440fd26e459",
+  "dirty": true,
+  "prompt_digest": "a10186329e41ca2733e8ba04570d81819b453562797f1e271b865a91644d355b",
+  "corpus_revision": "1cd3571035cf2504",
+  "notices": [
+    "Medición preliminar: los casos del gold son candidatos extraídos del corpus y aún no los revisaron abogados ni, en la traducción, hablantes nativos.",
+    "Las métricas describen el corpus y los casos medidos; no certifican verdad jurídica ni sustituyen asesoría profesional.",
+    "Un valor «no medido» significa que falta una evaluación real autorizada; no es un resultado."
+  ],
+  "suites": {
+    "legal_qa": {
+      "measured": false,
+      "reason": "Aún no se ejecutó esta evaluación."
+    },
+    "retrieval": {
+      "measured": true,
+      "answer_source": "offline_engine",
+      "created_at": "2026-10-23T03:29:37.731972+00:00",
+      "n_cases": 37,
+      "systems": {
+        "lexical": {
+          "evidence_recall@5": {
+            "macro": 0.6290322580645161,
+            "micro": 0.6538461538461539,
+            "n": 31
+          },
+          "chunk_precision@5": {
+            "macro": 0.1806451612903226,
+            "micro": 0.18064516129032257,
+            "n": 31
+          },
+          "ndcg@5": {
+            "macro": 0.46927522145300704,
+            "micro": 0.46927522145300704,
+            "n": 31
+          },
+          "mrr": {
+            "macro": 0.49124328192203776,
+            "micro": 0.49124328192203776,
+            "n": 31
+          },
+          "jurisprudence_hit@5": {
+            "macro": 0.8333333333333334,
+            "micro": 0.8333333333333334,
+            "n": 6
+          },
+          "empty_when_unanswerable": {
+            "macro": 0.0,
+            "micro": 0.0,
+            "n": 6
+          }
+        },
+        "current_mix": {
+          "evidence_recall@5": {
+            "macro": 0.6290322580645161,
+            "micro": 0.6538461538461539,
+            "n": 31
+          },
+          "chunk_precision@5": {
+            "macro": 0.1806451612903226,
+            "micro": 0.18064516129032257,
+            "n": 31
+          },
+          "ndcg@5": {
+            "macro": 0.46927522145300704,
+            "micro": 0.46927522145300704,
+            "n": 31
+          },
+          "mrr": {
+            "macro": 0.49124328192203776,
+            "micro": 0.49124328192203776,
+            "n": 31
+          },
+          "jurisprudence_hit@5": {
+            "macro": 0.8333333333333334,
+            "micro": 0.8333333333333334,
+            "n": 6
+          },
+          "empty_when_unanswerable": {
+            "macro": 0.0,
+            "micro": 0.0,
+            "n": 6
+          }
+        },
+        "current_reranked": {
+          "evidence_recall@5": {
+            "macro": 0.5806451612903226,
+            "micro": 0.6153846153846154,
+            "n": 31
+          },
+          "chunk_precision@5": {
+            "macro": 0.16774193548387098,
+            "micro": 0.16774193548387098,
+            "n": 31
+          },
+          "ndcg@5": {
+            "macro": 0.4492402129326231,
+            "micro": 0.4492402129326231,
+            "n": 31
+          },
+          "mrr": {
+            "macro": 0.47311827956989244,
+            "micro": 0.47311827956989244,
+            "n": 31
+          },
+          "jurisprudence_hit@5": {
+            "macro": 0.6666666666666666,
+            "micro": 0.6666666666666666,
+            "n": 6
+          },
+          "empty_when_unanswerable": {
+            "macro": 0.0,
+            "micro": 0.0,
+            "n": 6
+          }
+        }
+      },
+      "note": "Motor local sin LightRAG ni reranker de Cohere.",
+      "index_audit": {
+        "indexed_chunks": 759,
+        "segment_coverage": 0.8440816326530612,
+        "gold_segments": 50,
+        "gold_segments_covered": 40
+      },
+      "spaced_ocr_documents": 4
+    },
+    "translation": {
+      "measured": false,
+      "reason": "Solo se midió la línea base «copiar el español»; falta evaluar el traductor real."
+    },
+    "stream": {
+      "measured": false,
+      "reason": "Solo se midió el costo propio del stream con un pipeline simulado; falta medir latencia real."
+    }
+  }
+}
