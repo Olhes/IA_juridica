@@ -1,7 +1,7 @@
 # Deploy: backend en Azure VM + frontend en Vercel
 
 ```
-Navegador ──> https://<app>.vercel.app  (Next.js en Vercel)
+Navegador ──> https://ia-juridica-pe.vercel.app  (Next.js en Vercel)
                  └─ /api/*  ──rewrite──> https://api.68-211-120-105.sslip.io  (Caddy, HTTPS)
                                               └─> backend:8000 (FastAPI, 1 worker)
                                                    ├─ postgres (volumen postgres_data)
@@ -15,6 +15,7 @@ El navegador solo habla con el dominio de Vercel, así que las cookies de sesió
 | Qué | Valor |
 |---|---|
 | VM | `azureuser@68.211.120.105` (Ubuntu 22.04, 2 vCPU, 8 GB + 4 GB swap) |
+| Frontend | https://ia-juridica-pe.vercel.app (proyecto Vercel `bktmtjv-projects/ia-juridica-pe`) |
 | API pública | https://api.68-211-120-105.sslip.io (`/health`, `/ready`) |
 | Repo en la VM | `/opt/ia-juridica` (rama `v8`) |
 | Secretos | `/etc/ia-juridica/compose.env`, `/etc/ia-juridica/backend.env` (root:docker, 640) |
@@ -37,13 +38,14 @@ dominio propio, cambia `API_DOMAIN` en `compose.env` y `BACKEND_URL` en Vercel.
    | `BACKEND_URL` | `https://api.68-211-120-105.sslip.io` |
 
    `NEXT_PUBLIC_API_URL` se incrusta en el build: si la cambias, redeploy.
-4. Deploy. Anota la URL de producción (p. ej. `https://ia-juridica.vercel.app`).
+4. Deploy. URL de producción: `https://ia-juridica-pe.vercel.app`. Redeploy manual desde `frontend/`:
+   `vercel deploy --prod --yes --scope bktmtjv-projects`
 5. En la VM, apunta el backend a esa URL:
 
    ```bash
    ssh -i ~/.ssh/vm-ia-juridica.pem azureuser@68.211.120.105
    cd /opt/ia-juridica
-   sudo FRONTEND_URL=https://ia-juridica.vercel.app bash deploy/azure/set-frontend.sh
+   sudo FRONTEND_URL=https://ia-juridica-pe.vercel.app bash deploy/azure/set-frontend.sh
    ```
 
 A partir de ahí cada push a `v8` redeploya el frontend en Vercel automáticamente.
@@ -51,10 +53,10 @@ A partir de ahí cada push a `v8` redeploya el frontend en Vercel automáticamen
 ### Login con Google (opcional)
 
 1. Google Cloud Console → Credentials → tu OAuth client → **Authorized redirect URIs**:
-   `https://<app>.vercel.app/api/auth/google/callback`
+   `https://ia-juridica-pe.vercel.app/api/auth/google/callback`
 2. En la VM:
    ```bash
-   sudo FRONTEND_URL=https://<app>.vercel.app GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
+   sudo FRONTEND_URL=https://ia-juridica-pe.vercel.app GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
      bash deploy/azure/set-frontend.sh
    ```
 
@@ -96,8 +98,21 @@ $C ps
 $C logs -f --tail=100 backend
 $C restart backend
 docker stats --no-stream
-# Backup de Postgres (guárdalo fuera de la VM)
+# Backup manual de Postgres (guárdalo fuera de la VM)
 $C exec -T postgres pg_dump -U juridica_user juridica_db | gzip > backup-$(date +%F).sql.gz
+```
+
+Backup automático: `deploy/azure/backup.sh` corre a las 04:00 (cron de `azureuser`) y
+deja 7 días de dumps en `/srv/ia-juridica/backups`. Instalación:
+`(crontab -l 2>/dev/null; echo "0 4 * * * /opt/ia-juridica/deploy/azure/backup.sh") | crontab -`
+
+Rol admin (panel `/calidad/admin`) para una cuenta de Google:
+
+```bash
+$C exec -T postgres psql -U juridica_user -d juridica_db -c "
+INSERT INTO auth_schema.user_roles (user_id, role_id, assigned_by)
+SELECT u.id, r.id, u.id FROM auth_schema.users u, auth_schema.roles r
+WHERE u.email = 'tu@gmail.com' AND r.name = 'admin' ON CONFLICT DO NOTHING;"
 ```
 
 - Nunca `docker compose down -v`: borra la base de datos.
