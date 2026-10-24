@@ -5,6 +5,7 @@ Implementa traducción en cascada con modelos específicos
 
 from typing import Dict, List, Optional, Tuple, Any
 import asyncio
+import re
 from loguru import logger
 
 # Transformers para NLLB (modelo de traducción quechua-español)
@@ -40,6 +41,38 @@ except ImportError:
 
 from .language_config import LanguageConfig, LanguageCode
 from .language_detector import LanguageDetector
+
+
+def clean_quechua_artifacts(text: str) -> str:
+    """
+    Limpia artefactos de traducción en quechua como:
+    - (trg) = "5" >
+    - *[[...]]
+    - ^ Kënöpis niyanmi:
+    - Números repetidos
+    """
+    # Eliminar (trg) = "número" >
+    text = re.sub(r'\(trg\)\s*=\s*"\d+"\s*>', '', text)
+
+    # Eliminar referencias de Wikipedia *[[...]]
+    text = re.sub(r'\*\[\[.*?\]\]', '', text)
+
+    # Eliminar referencias simples [[...]]
+    text = re.sub(r'\[\[.*?\]\]', '', text)
+
+    # Eliminar líneas que empiezan con ^
+    text = re.sub(r'^\s*\^.*$', '', text, flags=re.MULTILINE)
+
+    # Eliminar líneas que contienen solo números y paréntesis
+    text = re.sub(r'^\s*\d+\.\d+\.\d+\).*$', '', text, flags=re.MULTILINE)
+
+    # Eliminar líneas vacías múltiples
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+
+    # Limpiar espacios extra
+    text = ' '.join(text.split())
+
+    return text.strip()
 
 
 # Estructura (saltos de línea, viñetas) y referencias (URL, [n], artículo/ley/decreto, números) que la
@@ -1060,6 +1093,9 @@ class TranslationService:
     ) -> Dict[str, Any]:
         source = self.detector.detect_language(response)
         if source == target_language:
+            # Aún limpiar artefactos si es quechua
+            if target_language == "quechua":
+                response = clean_quechua_artifacts(response)
             return {
                 "success": True,
                 "complete": True,
@@ -1067,7 +1103,11 @@ class TranslationService:
                 "translation_needed": False,
                 "method": "none",
             }
-        return await self.translate(response, source, target_language)
+        result = await self.translate(response, source, target_language)
+        # Limpiar artefactos si la traducción es a quechua
+        if target_language == "quechua" and result.get("success"):
+            result["translated_text"] = clean_quechua_artifacts(result["translated_text"])
+        return result
 
     def _split_legal_response(self, response: str) -> List[Dict[str, Any]]:
         """Divide respuesta legal en secciones estructuradas"""

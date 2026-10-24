@@ -15568,5 +15568,145 @@
     "create_time": 1792854965,
     "update_time": 1792854965,
     "_id": "mix:keywords:c31a463f9cbc3a38e6336d7f361cda67"
+  },
+  "mix:keywords:2c17573595c3769c745faf76b6177d9b": {
+    "return": "{\"high_level_keywords\": [\"solicitar\", \"pasos\"], \"low_level_keywords\": []}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cuáles son los pasos exactos para solicitar?\nContexto de preguntas anteriores:\nHola, me gustaría saber sobre violencia familiar.",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792855639,
+    "update_time": 1792855639,
+    "_id": "mix:keywords:2c17573595c3769c745faf76b6177d9b"
+  },
+  "mix:keywords:c9550e001eac4049b933c6433b781e86": {
+    "return": "{\"high_level_keywords\": [\"legal process\", \"protection order\", \"family violence\", \"court procedure\", \"document requirements\"], \"low_level_keywords\": [\"Lima\", \"judiciary\", \"family court\", \"violence\", \"steps\", \"protection\", \"documents\", \"approval\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Hola, me gustaría saber los pasos exactos para solicitar una medida de protección contra la violencia familiar en el juzgado de familia de Lima y qué documentos debo presentar para que la medida sea aprobada rápidamente?\nContexto de preguntas anteriores:\nHola, me gustaría saber sobre violencia familiar.\n¿Cuáles son los pasos exactos para solicitar?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792856103,
+    "update_time": 1792856103,
+    "_id": "mix:keywords:c9550e001eac4049b933c6433b781e86"
+  },
+  "mix:keywords:1817055e9057441890656c2e3ec71d63": {
+    "return": "{\"high_level_keywords\": [\"contact\", \"personal\", \"instructions\"], \"low_level_keywords\": [\"personal\", \"contact\", \"instructions\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me pongo en contacto con el personal y qué quieres que haga?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792857203,
+    "update_time": 1792857203,
+    "_id": "mix:keywords:1817055e9057441890656c2e3ec71d63"
+  },
+  "mix:keywords:e9257398287f3becb1498e897aa4ae69": {
+    "return": "{\"high_level_keywords\": [\"food\", \"diet\", \"nutrition\"], \"low_level_keywords\": [\"Imaynataq\", \"wawaykunapaq\", \"alimentosta\", \"ma\\u00f1akuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynataq wawaykunapaq alimentosta mañakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792859464,
+    "update_time": 1792859464,
+    "_id": "mix:keywords:e9257398287f3becb1498e897aa4ae69"
+  },
+  "mix:keywords:0762b9f0531edbf5f68be0c20a6439e9": {
+    "return": "{\"high_level_keywords\": [\"contact\", \"communication\", \"instructions\"], \"low_level_keywords\": [\"personal\", \"staff\", \"tasks\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me pongo en contacto con el personal y qué quieren que haga?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792859661,
+    "update_time": 1792859661,
+    "_id": "mix:keywords:0762b9f0531edbf5f68be0c20a6439e9"
+  },
+  "mix:keywords:2ee084d1a746f8eec50f5949749300e5": {
+    "return": "{\"high_level_keywords\": [\"ansiedad\", \"deshacer\", \"hacer\"], \"low_level_keywords\": [\"c\\u00f3mo\", \"qu\\u00e9\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me deshago de la ansiedad y qué hago al respecto?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792860013,
+    "update_time": 1792860013,
+    "_id": "mix:keywords:2ee084d1a746f8eec50f5949749300e5"
+  },
+  "mix:keywords:98b07ac5b7d800604c06c0d686991430": {
+    "return": "{\"high_level_keywords\": [\"anxiety management\", \"stress relief\"], \"low_level_keywords\": [\"how to\", \"get rid of\", \"ansiedad\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo puedo deshacerme de la ansiedad?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792860229,
+    "update_time": 1792860229,
+    "_id": "mix:keywords:98b07ac5b7d800604c06c0d686991430"
   }
 }
