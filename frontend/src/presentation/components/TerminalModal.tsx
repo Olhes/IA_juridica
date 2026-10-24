@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, Bot, User, Sparkles, FileText, Image as ImageIcon, X as XIcon } from 'lucide-react';
+import { X, Send, Loader2, Bot, User, Sparkles, FileText, Image as ImageIcon, X as XIcon, Volume2, VolumeX } from 'lucide-react';
 import type { FeedbackPayload } from '../../domain/legal/quality';
 import type {
   LegalQueryApiResponse,
@@ -13,6 +13,7 @@ import type {
 import { AssistantEvidence } from './chat/EvidencePanels';
 import { FeedbackBar } from './chat/FeedbackBar';
 import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
+import { useTextToSpeech, useQuechuaTextToSpeech } from '../../application/legal/use-cases/useSpeech';
 
 export interface TerminalMessage {
   id: string;
@@ -43,6 +44,7 @@ interface TerminalModalProps {
   onRemoveAttachment?: () => void;
   voiceInput?: string;
   onVoiceInputChange?: (text: string) => void;
+  autoPlayTTS?: boolean;
 }
 
 export function TerminalModal({
@@ -59,6 +61,7 @@ export function TerminalModal({
   onRemoveAttachment,
   voiceInput = '',
   onVoiceInputChange,
+  autoPlayTTS = false,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -66,6 +69,18 @@ export function TerminalModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  // TTS hooks for auto-play
+  const { speak: speakSpanish, speaking: spanishSpeaking, stop: stopSpanish } = useTextToSpeech();
+  const { speak: speakQuechua, speaking: quechuaSpeaking, loading: quechuaLoading, stop: stopQuechua } = useQuechuaTextToSpeech();
+  const lastPlayedMessageId = useRef<string | null>(null);
+
+  const ttsSpeaking = spanishSpeaking || quechuaSpeaking;
+
+  const stopTTS = () => {
+    stopSpanish();
+    stopQuechua();
+  };
 
   // Sync voice input from parent
   useEffect(() => {
@@ -83,6 +98,29 @@ export function TerminalModal({
       onVoiceInputChange('');
     }
   }, [voiceInput, onVoiceInputChange]);
+
+  // Auto-play TTS when using microphone and new assistant message arrives
+  useEffect(() => {
+    // For Spanish: only auto-play if using microphone
+    // For Quechua: always auto-play (to test TTS)
+    const shouldAutoPlay = language === 'quechua' ? true : autoPlayTTS;
+
+    if (!shouldAutoPlay || isLoading || ttsSpeaking || quechuaLoading) return;
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && !lastMessage.isUser && !lastMessage.isStreaming && lastMessage.content) {
+      // Only play if this is a new message
+      if (lastMessage.id !== lastPlayedMessageId.current) {
+        lastPlayedMessageId.current = lastMessage.id;
+        // Use Quechua TTS if language is quechua, otherwise Spanish TTS
+        if (language === 'quechua') {
+          speakQuechua(lastMessage.content);
+        } else {
+          speakSpanish(lastMessage.content);
+        }
+      }
+    }
+  }, [messages, isLoading, autoPlayTTS, ttsSpeaking, quechuaLoading, language, speakSpanish, speakQuechua]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -154,13 +192,25 @@ export function TerminalModal({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all"
-            aria-label="Cerrar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {ttsSpeaking && (
+              <button
+                onClick={stopTTS}
+                className="p-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                aria-label="Detener voz"
+                title="Detener voz"
+              >
+                <VolumeX className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all"
+              aria-label="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Área de Mensajes */}

@@ -76,6 +76,7 @@ export function ChatPage() {
   const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [voiceInput, setVoiceInput] = useState('');
+  const [autoPlayTTS, setAutoPlayTTS] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
@@ -84,6 +85,15 @@ export function ChatPage() {
   // Voice-to-text hook (solo español)
   const { supported: voiceSupported, listening: voiceListening, start: voiceStart, stop: voiceStop } = useSpeechToText(
     (spoken) => setVoiceInput((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, 800)),
+    () => {
+      // Auto-enviar cuando termina la grabación
+      if (voiceInput.trim()) {
+        const textToSend = voiceInput.trim();
+        setAutoPlayTTS(true);
+        setVoiceInput(''); // Limpiar antes de enviar
+        handleSendTerminalMessage(textToSend);
+      }
+    },
   );
 
   useEffect(() => {
@@ -349,7 +359,7 @@ export function ChatPage() {
     }
   };
 
-  const handleMicToggle = () => {
+  const handleMicStart = () => {
     if (!isAuthenticated) {
       setAuthModalOpen(true);
       return;
@@ -358,8 +368,13 @@ export function ChatPage() {
       alert('Voz solo disponible en español');
       return;
     }
-    if (voiceListening) voiceStop();
-    else voiceStart();
+    voiceStart();
+  };
+
+  const handleMicEnd = () => {
+    if (voiceListening) {
+      voiceStop();
+    }
   };
 
   const handleFileUpload = () => {
@@ -534,7 +549,9 @@ export function ChatPage() {
           onHistoryOpen={() => setHistoryOpen(true)}
           onFileUpload={handleFileUpload}
           onCameraOpen={handleCameraOpen}
-          onMicToggle={handleMicToggle}
+          onMicStart={handleMicStart}
+          onMicEnd={handleMicEnd}
+          voiceListening={voiceListening}
         />
       )}
 
@@ -555,6 +572,7 @@ export function ChatPage() {
         }
         voiceInput={voiceInput}
         onVoiceInputChange={setVoiceInput}
+        autoPlayTTS={autoPlayTTS}
       />
 
       {/* Historial */}
