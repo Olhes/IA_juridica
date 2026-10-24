@@ -15508,5 +15508,45 @@
     "create_time": 1792810687,
     "update_time": 1792810687,
     "_id": "mix:keywords:38c4cc3ef30a8d7189b2e78c5e210fcf"
+  },
+  "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9": {
+    "return": "{\"high_level_keywords\": [\"law\", \"Peru\"], \"low_level_keywords\": [\"30364\", \"Imaynatataq\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq Ley 30364?\nContexto de preguntas anteriores:\n¿Imaynatataq Perú suyupi wawa uyway yupasqa?\n¿Imataq wasipi maqanakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850068,
+    "update_time": 1792850068,
+    "_id": "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9"
+  },
+  "mix:keywords:f131457183e9bfebf10aa12d046066f3": {
+    "return": "{\"high_level_keywords\": [\"law\", \"regulation\"], \"low_level_keywords\": [\"Ley 30364\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué es la Ley 30364?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850945,
+    "update_time": 1792850945,
+    "_id": "mix:keywords:f131457183e9bfebf10aa12d046066f3"
   }
 }

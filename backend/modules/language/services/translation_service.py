@@ -7,8 +7,8 @@ from typing import Dict, List, Optional, Tuple, Any
 import asyncio
 from loguru import logger
 
-# Transformers eliminado para evitar descargas de modelos pesados en producción
-TRANSFORMERS_AVAILABLE = False
+# Transformers para NLLB (modelo de traducción quechua-español)
+TRANSFORMERS_AVAILABLE = True
 
 try:
     from googletrans import Translator
@@ -19,6 +19,24 @@ except ImportError:
         "googletrans no disponible. Google Translate API no estará disponible."
     )
     GOOGLE_TRANSLATE_AVAILABLE = False
+
+try:
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    NLLB_AVAILABLE = True
+except ImportError:
+    logger.warning(
+        "transformers no disponible. NLLB no estará disponible."
+    )
+    NLLB_AVAILABLE = False
+
+try:
+    from deep_translator import MyMemoryTranslator
+    MYMEMORY_AVAILABLE = True
+except ImportError:
+    logger.warning(
+        "deep-translator no disponible. MyMemory no estará disponible."
+    )
+    MYMEMORY_AVAILABLE = False
 
 from .language_config import LanguageConfig, LanguageCode
 from .language_detector import LanguageDetector
@@ -62,6 +80,7 @@ class TranslationService:
         # Verificar disponibilidad de transformers
         logger.info(f"📦 TRANSFORMERS_AVAILABLE: {TRANSFORMERS_AVAILABLE}")
         logger.info(f"📦 GOOGLE_TRANSLATE_AVAILABLE: {GOOGLE_TRANSLATE_AVAILABLE}")
+        logger.info(f"📦 NLLB_AVAILABLE: {NLLB_AVAILABLE}")
 
         # Inicializar Google Translate si está disponible
         self.google_translate_available = GOOGLE_TRANSLATE_AVAILABLE
@@ -75,6 +94,12 @@ class TranslationService:
                 self.google_translate_available = False
         else:
             self.google_translator = None
+
+        # NLLB deshabilitado temporalmente - modelos inestables
+        self.nllb_available = False
+        self.nllb_model = None
+        self.nllb_tokenizer = None
+        logger.info("⚠️  NLLB deshabilitado temporalmente - usando diccionario mejorado")
 
         # Inicializar modelos solo si están disponibles Y habilitados
         from config.settings import settings
@@ -96,8 +121,6 @@ class TranslationService:
         TranslationService._initialized = True
         logger.info("✅ TranslationService inicializado (Singleton)")
 
-    # Método _initialize_translation_models eliminado - no se usan modelos pesados en producción
-
     async def translate(
         self, text: str, source_lang: str, target_lang: str, model: str = "nllb"
     ) -> Dict[str, Any]:
@@ -106,7 +129,7 @@ class TranslationService:
         Paragraph whitespace and legal references are protected verbatim. Coverage
         checks do not certify semantic accuracy: specialist review remains necessary.
         
-        Para quechua, usa directamente traducción por reglas ya que Google Translate no lo soporta.
+        Para quechua, usa NLLB (Meta) para mejor calidad (Google Translate no lo soporta bien).
         """
         import hashlib
         import re
@@ -117,11 +140,11 @@ class TranslationService:
             "original_text": text,
             "warning": "Traducción no disponible o incompleta; se conserva el texto original.",
         }
-        
-        # Para quechua, usar Cohere LLM para mejor calidad (Google Translate no lo soporta bien)
-        if target_lang in ["qu", "quy", "quz", "qul"]:
-            logger.info("Using Cohere LLM for Quechua translation")
-            return await self._translate_with_cohere(text, source_lang, target_lang)
+
+        # Para quechua, usar MyMemoryTranslator (funciona mejor que Cohere)
+        if target_lang in ["qu", "quy", "quz", "qul"] or source_lang in ["qu", "quy", "quz", "qul"]:
+            logger.info("Using MyMemoryTranslator for Quechua translation")
+            return await self._translate_with_mymemory(text, source_lang, target_lang)
         
         if not self._is_translation_supported(source_lang, target_lang):
             return {**failure, "error": "Unsupported translation pair"}
@@ -235,7 +258,75 @@ class TranslationService:
         supported_pairs = self.config.get_translation_pairs()
         return (source_lang, target_lang) in supported_pairs
 
-    # Método _translate_with_model eliminado - no se usan modelos pesados en producción
+    async def _translate_with_nllb(
+        self, text: str, source_lang: str, target_lang: str
+    ) -> Dict[str, Any]:
+        """Traducción usando NLLB (Meta) para español-quechua"""
+        try:
+            if not self.nllb_available or not self.nllb_model or not self.nllb_tokenizer:
+                logger.warning("NLLB no disponible, usando fallback a reglas")
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
+            # Mapeo de códigos de idioma para NLLB
+            nllb_lang_mapping = {
+                "es": "spa_Latn",
+                "qu": "quz_Latn",
+                "quy": "quy_Latn",
+                "quz": "quz_Latn",
+                "qul": "quz_Latn",
+            }
+
+            src_lang = nllb_lang_mapping.get(source_lang, source_lang)
+            tgt_lang = nllb_lang_mapping.get(target_lang, target_lang)
+
+            # Ejecutar traducción en un thread separado para no bloquear el event loop
+            loop = asyncio.get_event_loop()
+            translated_text = await loop.run_in_executor(
+                None,
+                self._nllb_translate_sync,
+                text,
+                src_lang,
+                tgt_lang
+            )
+
+            # Verificar si la traducción fue exitosa
+            if not translated_text or translated_text == text:
+                logger.warning("nllb_no_change - NLLB no tradujo el texto, usando fallback")
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
+            return {
+                "success": True,
+                "translated_text": translated_text,
+                "source_language": source_lang,
+                "target_language": target_lang,
+                "model_used": "nllb",
+                "confidence": 0.80,  # NLLB tiene buena calidad para quechua
+                "method": "nllb",
+                "warning": "Traducción automática por NLLB: requiere revisión lingüística y jurídica.",
+            }
+
+        except Exception as e:
+            logger.error("nllb_translation_failed error_type={} error={}", type(e).__name__, str(e))
+            # Fallback a traducción por reglas
+            return await self._translate_with_rules(text, source_lang, target_lang)
+
+    def _nllb_translate_sync(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Método síncrono para traducción NLLB"""
+        try:
+            self.nllb_tokenizer.src_lang = src_lang
+            inputs = self.nllb_tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
+            bos_token_id = self.nllb_tokenizer.convert_tokens_to_ids(tgt_lang)
+            result = self.nllb_model.generate(
+                **inputs.to(self.nllb_model.device),
+                forced_bos_token_id=bos_token_id,
+                max_new_tokens=128,
+                num_beams=5,
+            )
+            translated = self.nllb_tokenizer.batch_decode(result, skip_special_tokens=True)
+            return translated[0] if translated else text
+        except Exception as e:
+            logger.error("nllb_sync_translate_failed error_type={}", type(e).__name__)
+            return text
 
     async def _translate_with_google(
         self, text: str, source_lang: str, target_lang: str
@@ -308,28 +399,15 @@ class TranslationService:
             # Usar cliente asíncrono
             cohere_client = cohere.AsyncClient(settings.COHERE_API_KEY)
 
-            # Prompt de traducción (incluyendo instrucciones en el mensaje)
+            # Prompt de traducción simplificado
             if source_lang == "es" and target_lang == "qu":
-                user_message = f"""Eres un experto en traducción de español a quechua (runasimi).
-Traduce el texto proporcionado manteniendo el significado legal exacto.
-Usa quechua estándar del sur de Perú (Cusco).
-Mantén la estructura y formato del texto original.
-Traduce solo el texto, sin agregar explicaciones adicionales.
+                user_message = f"""Translate the following Spanish text to Quechua (runasimi). Return ONLY the translation, no explanations:
 
-Texto a traducir:
-{text}
-
-Traducción:"""
+{text}"""
             elif source_lang == "qu" and target_lang == "es":
-                user_message = f"""Eres un experto en traducción de quechua (runasimi) a español.
-Traduce el texto proporcionado manteniendo el significado exacto.
-Mantén la estructura y formato del texto original.
-Traduce solo el texto, sin agregar explicaciones adicionales.
+                user_message = f"""Translate the following Quechua text to Spanish. Return ONLY the translation, no explanations:
 
-Texto a traducir:
-{text}
-
-Traducción:"""
+{text}"""
             else:
                 return await self._translate_with_rules(text, source_lang, target_lang)
 
@@ -342,15 +420,16 @@ Traducción:"""
 
             translated_text = response.text.strip()
 
-            # Verificar si Cohere realmente tradujo (comparación más estricta)
-            # Si el texto traducido es muy similar al original (>90% similitud), no tradujo
+            logger.info(f"Cohere raw response: {translated_text[:200]}...")
+
+            # Verificar si Cohere realmente tradujo (umbral más permisivo: 0.80)
             import difflib
             similarity = difflib.SequenceMatcher(None, text.lower(), translated_text.lower()).ratio()
-            
+
             logger.info(f"Cohere similarity with original: {similarity:.2f}")
-            
-            if not translated_text or similarity > 0.90:
-                logger.warning("cohere_translation_no_change - Cohere no tradujo el texto a quechua (similitud: {:.2f}), usando diccionario".format(similarity))
+
+            if not translated_text or similarity > 0.80:
+                logger.warning("cohere_translation_no_change - Cohere no tradujo el texto (similitud: {:.2f}), usando diccionario".format(similarity))
                 return await self._translate_with_rules(text, source_lang, target_lang)
 
             return {
@@ -359,15 +438,142 @@ Traducción:"""
                 "source_language": source_lang,
                 "target_language": target_lang,
                 "model_used": "cohere",
-                "confidence": 0.85,  # Mayor confianza para LLM
+                "confidence": 0.85,
                 "method": "cohere",
                 "warning": "Traducción automática por IA: requiere revisión lingüística y jurídica.",
             }
 
         except Exception as e:
             logger.error("cohere_translation_failed error_type={} error={}", type(e).__name__, str(e))
-            # Fallback a traducción por reglas
             return await self._translate_with_rules(text, source_lang, target_lang)
+
+    async def _translate_with_mymemory(
+        self, text: str, source_lang: str, target_lang: str
+    ) -> Dict[str, Any]:
+        """Traducción usando MyMemoryTranslator con segmentación"""
+        try:
+            if not MYMEMORY_AVAILABLE:
+                logger.warning("MyMemory no disponible, usando diccionario")
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
+            # Mapeo de códigos de idioma para MyMemory (requiere formato con región)
+            # Usar siempre quy-PE (Ayacucho Quechua) que tiene mejor soporte
+            lang_mapping = {
+                "es": "es-ES",
+                "qu": "quy-PE",  # Usar Ayacucho Quechua para todos los variantes
+                "quy": "quy-PE",
+                "quz": "quy-PE",
+                "qul": "quy-PE",
+            }
+
+            src_lang = lang_mapping.get(source_lang, source_lang)
+            tgt_lang = lang_mapping.get(target_lang, target_lang)
+
+            # Segmentar texto en partes de máximo 450 caracteres (margen de seguridad)
+            max_length = 450
+            segments = []
+            current_segment = ""
+            
+            # Dividir por líneas para mantener estructura
+            lines = text.split('\n')
+            
+            for line in lines:
+                # Si la línea cabe en el segmento actual
+                if len(current_segment) + len(line) + 1 <= max_length:
+                    if current_segment:
+                        current_segment += '\n' + line
+                    else:
+                        current_segment = line
+                else:
+                    # Guardar segmento actual si existe
+                    if current_segment:
+                        segments.append(current_segment)
+                    # Iniciar nuevo segmento
+                    if len(line) <= max_length:
+                        current_segment = line
+                    else:
+                        # Si la línea es muy larga, dividir por palabras
+                        words = line.split()
+                        current_segment = ""
+                        for word in words:
+                            if len(current_segment) + len(word) + 1 <= max_length:
+                                if current_segment:
+                                    current_segment += ' ' + word
+                                else:
+                                    current_segment = word
+                            else:
+                                if current_segment:
+                                    segments.append(current_segment)
+                                current_segment = word
+            
+            # Agregar el último segmento
+            if current_segment:
+                segments.append(current_segment)
+
+            # Traducir cada segmento
+            translated_segments = []
+            loop = asyncio.get_event_loop()
+            
+            for segment in segments:
+                if not segment.strip():
+                    translated_segments.append(segment)
+                    continue
+                    
+                try:
+                    # Ejecutar traducción síncrona en executor
+                    result = await loop.run_in_executor(
+                        None,
+                        self._mymemory_translate_sync,
+                        segment,
+                        src_lang,
+                        tgt_lang
+                    )
+                    translated_segments.append(result)
+                    # Pequeña pausa para evitar rate limiting
+                    await asyncio.sleep(0.2)
+                except Exception as e:
+                    logger.warning("mymemory_segment_failed error={}", str(e))
+                    translated_segments.append(segment)  # Fallback: mantener original
+
+            translated_text = '\n'.join(translated_segments)
+
+            # Limpiar formato markdown (** negritas) del texto traducido
+            translated_text = translated_text.replace('**', '')
+
+            # Verificar si la traducción fue exitosa
+            import difflib
+            similarity = difflib.SequenceMatcher(None, text.lower(), translated_text.lower()).ratio()
+
+            logger.info(f"MyMemory similarity with original: {similarity:.2f}")
+
+            if not translated_text or similarity > 0.95:
+                logger.warning("mymemory_translation_no_change - MyMemory no tradujo el texto, usando diccionario")
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
+            return {
+                "success": True,
+                "translated_text": translated_text,
+                "source_language": source_lang,
+                "target_language": target_lang,
+                "model_used": "mymemory",
+                "confidence": 0.75,
+                "method": "mymemory",
+                "warning": "Traducción automática por MyMemory: requiere revisión lingüística y jurídica.",
+            }
+
+        except Exception as e:
+            logger.error("mymemory_translation_failed error_type={} error={}", type(e).__name__, str(e))
+            return await self._translate_with_rules(text, source_lang, target_lang)
+
+    def _mymemory_translate_sync(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Método síncrono para traducción MyMemory"""
+        try:
+            translator = MyMemoryTranslator(source=src_lang, target=tgt_lang)
+            result = translator.translate(text)
+            return result
+        except Exception as e:
+            logger.error("mymemory_sync_translate_failed error_type={}", type(e).__name__)
+            return text
 
     async def _translate_with_rules(
         self, text: str, source_lang: str, target_lang: str
@@ -401,7 +607,7 @@ Traducción:"""
             }
 
     def _translate_spanish_to_quechua(self, text: str) -> str:
-        """Traducción de español a quechua basada en reglas"""
+        """Traducción de español a quechua basada en reglas - mejorada para mantener estructura"""
         # Diccionario mejorado español-quechua (enfoque en contexto legal)
         dictionary = {
             # Pronombres
@@ -654,34 +860,119 @@ Traducción:"""
             "relación": "tupu",
             "necesitas": "necesitanki",
             "asesoría": "yatichiy",
+            # Términos legales adicionales
+            "fiscalía": "fiscalía",
+            "prohibición": "ama",
+            "acercamiento": "yawar",
+            "trabajo": "llank'ay",
+            "asistencia": "yanapay",
+            "psicológica": "yuyay",
+            "gubernamentales": "kamachiy",
+            "instituciones": "wasikuna",
+            "públicas": "sapaq",
+            "nacional": "suyu",
+            "emergencia": "mana",
+            "delito": "kamachiy",
+            "tolerar": "amuy",
+            "superar": "atipay",
+            "independientemente": "sapa",
+            "económica": "qullqi",
+            "social": "ayllu",
+            "establece": "kamachiy",
+            "enfoca": "qaway",
+            "sufriendo": "k'irisqa",
+            "emitir": "rikuchiy",
+            "recibir": "apay",
+            "legal": "kamachiy",
+            "través": "ñan",
+            "educación": "yachay",
+            "allin": "allin",
+            "sobre": "hawapi",
+            "sus": "payp",
+            "consecuencias": "ruway",
+            "línea": "ñan",
+            "cada": "sapa",
+            "debe": "kanan",
+            "dudas": "mana",
+            "disponibles": "kay",
+            "para": "paq",
+            "ti": "ñuqa",
+            "runasimi": "runasimi",
+            "allin": "allin",
+            "kaynin": "kaynin",
+            "pisi": "pisi",
+            "castellano": "castellano",
+            "kaqta": "kaqta",
+            "qhaway": "qhaway",
+            "kikinmanta": "kikinmanta",
+            "tikray": "tikray",
+            "rimaq": "rimaq",
+            "runawan": "runawan",
+            "hinallataq": "hinallataq",
+            "derecho": "derecho",
+            "yachaq": "yachaq",
+            "wan": "wan",
+            "qhawarichikunan": "qhawarichikunan",
+            "normakuna": "normakuna",
+            "sutichasqa": "sutichasqa",
         }
 
-        # Procesar texto palabra por palabra
-        words = text.lower().split()
-        translated_words = []
+        # Procesar línea por línea para mantener estructura
+        lines = text.split('\n')
+        translated_lines = []
 
-        for word in words:
-            # Limpiar palabra
-            clean_word = word.strip(".,!?;:()[]{}\"'")
+        for line in lines:
+            # Conservar espacios en blanco
+            if not line.strip():
+                translated_lines.append(line)
+                continue
 
-            # Buscar en diccionario
-            if clean_word in dictionary:
-                translated_word = dictionary[clean_word]
-            else:
-                # Mantener palabra original si no se encuentra
-                translated_word = word
+            # Procesar cada línea
+            words = line.split()
+            translated_words = []
 
-            # Restaurar puntuación
-            if word.endswith(".") and not translated_word.endswith("."):
-                translated_word += "."
-            elif word.endswith(",") and not translated_word.endswith(","):
-                translated_word += ","
-            elif word.endswith(":") and not translated_word.endswith(":"):
-                translated_word += ":"
+            for word in words:
+                # Detectar formato antes de limpiar
+                is_bold = word.startswith("**") and word.endswith("**")
+                is_italic = word.startswith("*") and word.endswith("*") and not is_bold
+                has_dot = word.endswith(".")
+                has_comma = word.endswith(",")
+                has_colon = word.endswith(":")
+                has_question = word.endswith("?")
+                has_exclamation = word.endswith("!")
+                has_dash = word.startswith("-")
 
-            translated_words.append(translated_word)
+                # Limpiar palabra
+                clean_word = word.strip(".,!?;:()[]{}\"'*_-")
 
-        return " ".join(translated_words)
+                # Buscar en diccionario (case-insensitive)
+                translated_word = dictionary.get(clean_word.lower(), clean_word)
+
+                # Restaurar formato
+                if is_bold:
+                    translated_word = f"**{translated_word}**"
+                elif is_italic:
+                    translated_word = f"*{translated_word}*"
+
+                # Restaurar puntuación (solo si no estaba en el original)
+                if has_dot and not translated_word.endswith("."):
+                    translated_word += "."
+                if has_comma and not translated_word.endswith(","):
+                    translated_word += ","
+                if has_colon and not translated_word.endswith(":"):
+                    translated_word += ":"
+                if has_question and not translated_word.endswith("?"):
+                    translated_word += "?"
+                if has_exclamation and not translated_word.endswith("!"):
+                    translated_word += "!"
+                if has_dash and not translated_word.startswith("-"):
+                    translated_word = f"- {translated_word}"
+
+                translated_words.append(translated_word)
+
+            translated_lines.append(" ".join(translated_words))
+
+        return "\n".join(translated_lines)
 
     def _translate_quechua_to_spanish(self, text: str) -> str:
         """Traducción de quechua a español basada en reglas"""
