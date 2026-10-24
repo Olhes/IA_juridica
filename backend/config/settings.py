@@ -2,6 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Dict, Any
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Cargar explícitamente el archivo .env antes de pydantic_settings
+load_dotenv(override=True)
 
 class Settings(BaseSettings):
     """Configuración centralizada del sistema IA Jurídica"""
