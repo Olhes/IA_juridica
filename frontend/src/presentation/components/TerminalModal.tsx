@@ -41,6 +41,8 @@ interface TerminalModalProps {
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
   attachedFile?: File | null;
   onRemoveAttachment?: () => void;
+  voiceInput?: string;
+  onVoiceInputChange?: (text: string) => void;
 }
 
 export function TerminalModal({
@@ -55,6 +57,8 @@ export function TerminalModal({
   returnFocusRef,
   attachedFile,
   onRemoveAttachment,
+  voiceInput = '',
+  onVoiceInputChange,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -62,6 +66,23 @@ export function TerminalModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
+
+  // Sync voice input from parent
+  useEffect(() => {
+    if (voiceInput) {
+      setInput((prev) => {
+        const combined = prev ? prev + ' ' + voiceInput : voiceInput;
+        return combined.slice(0, 800);
+      });
+    }
+  }, [voiceInput]);
+
+  // Notify parent that voice input was consumed
+  useEffect(() => {
+    if (voiceInput && onVoiceInputChange) {
+      onVoiceInputChange('');
+    }
+  }, [voiceInput, onVoiceInputChange]);
 
   useEffect(() => {
     if (!isOpen) return;

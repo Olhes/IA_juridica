@@ -44,6 +44,7 @@ from database.redis_adapter import redis_adapter
 from modules.chat.services.chat_service import chat_service
 from modules.chat.routes.chat_routes import router as chat_router
 from modules.auth.routes.auth_routes import router as auth_router
+from modules.voice.services.tts_service import TTSService
 
 # ── Módulos de validación y optimización ──────────────────────────────
 from modules.validation.services.response_validator import (
@@ -984,6 +985,67 @@ async def get_knowledge_graph(_auth: bool = Depends(verify_admin_api_key)):
     except Exception as error:
         _log_failure("knowledge_graph_read_failed", error)
         raise HTTPException(500, "Failed to get knowledge graph")
+
+
+class TTSRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(..., min_length=1, max_length=5000)
+    language: SupportedLanguage = "spanish"
+
+
+@app.post("/tts/synthesize")
+@limiter.limit(settings.LLM_RATE_LIMIT)
+async def synthesize_speech(
+    request: Request,
+    payload: TTSRequest,
+    principal: Principal = Depends(require_principal),
+):
+    """
+    Sintetiza texto a voz.
+    - Para español: Retorna indicación de usar Web Speech API en el frontend
+    - Para quechua: Usa MMS-TTS para generar audio WAV
+    """
+    try:
+        language_code = "qu" if payload.language == "quechua" else "es"
+        
+        # Para español, usar Web Speech API en el frontend
+        if language_code == "es":
+            return {
+                "success": True,
+                "method": "web_speech_api",
+                "language": "es",
+                "message": "Use Web Speech API in the browser for Spanish",
+                "text": payload.text,
+            }
+        
+        # Para quechua, usar MMS-TTS
+        tts_service = TTSService()
+        
+        if not tts_service.is_available(language_code):
+            raise HTTPException(
+                503, 
+                f"TTS not available for language: {payload.language}"
+            )
+        
+        audio_bytes = await tts_service.synthesize_quechua(payload.text)
+        
+        if audio_bytes is None:
+            raise HTTPException(500, "Failed to synthesize audio")
+        
+        return Response(
+            content=audio_bytes,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": 'attachment; filename="quechua_audio.wav"',
+                "Cache-Control": "no-store",
+            },
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        _log_failure("tts_synthesis_failed", error, request)
+        raise HTTPException(500, "TTS synthesis failed")
 
 
 @app.post("/evaluate-system")
