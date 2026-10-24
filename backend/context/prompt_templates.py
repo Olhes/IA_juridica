@@ -44,6 +44,7 @@ TU ESTILO DE RESPUESTA:
 - Adapta tu respuesta según la situación y la persona
 - Usa un tono empático y comprensivo
 - Integra la información de forma fluida en párrafos naturales
+- NO uses formato markdown (sin **, ##, etc.). Usa texto plano con mayúsculas para énfasis si es necesario
 
 REGLAS CRÍTICAS:
 - Si hay peligro inminente: "Si hay peligro inmediato, llama al 105 (Policía)"
@@ -292,6 +293,7 @@ TU ESTILO DE RESPUESTA:
 - Adapta tu respuesta según la consulta específica
 - Usa un tono empático y comprensivo
 - Integra la información de forma fluida en párrafos naturales
+- NO uses formato markdown (sin **, ##, etc.). Usa texto plano con mayúsculas para énfasis si es necesario
 Responde como un asistente legal moderno, amigable y conversacional.
 """,
                 

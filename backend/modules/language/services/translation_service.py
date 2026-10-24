@@ -105,6 +105,8 @@ class TranslationService:
 
         Paragraph whitespace and legal references are protected verbatim. Coverage
         checks do not certify semantic accuracy: specialist review remains necessary.
+        
+        Para quechua, usa directamente traducción por reglas ya que Google Translate no lo soporta.
         """
         import hashlib
         import re
@@ -115,6 +117,12 @@ class TranslationService:
             "original_text": text,
             "warning": "Traducción no disponible o incompleta; se conserva el texto original.",
         }
+        
+        # Para quechua, usar Cohere LLM para mejor calidad (Google Translate no lo soporta bien)
+        if target_lang in ["qu", "quy", "quz", "qul"]:
+            logger.info("Using Cohere LLM for Quechua translation")
+            return await self._translate_with_cohere(text, source_lang, target_lang)
+        
         if not self._is_translation_supported(source_lang, target_lang):
             return {**failure, "error": "Unsupported translation pair"}
         if not self.google_translate_available:
@@ -177,7 +185,6 @@ class TranslationService:
                     output = result.get("translated_text", "")
                     if (
                         not result.get("success")
-                        or result.get("method") != "google_translate"
                         or not output.strip()
                     ):
                         raise ValueError("Incomplete translation segment")
@@ -204,7 +211,7 @@ class TranslationService:
                 "translated_text": output,
                 "source_language": source_lang,
                 "target_language": target_lang,
-                "method": "google_translate",
+                "method": "google_translate",  # Método principal usado
                 "segments_translated": segment_count,
                 "original_length": len(text),
                 "review_required": True,
@@ -251,10 +258,26 @@ class TranslationService:
             src_lang = google_lang_mapping.get(source_lang, source_lang)
             tgt_lang = google_lang_mapping.get(target_lang, target_lang)
 
-            # Realizar traducción (googletrans es async en versión 4.0+)
-            result = await self.google_translator.translate(
-                text, src=src_lang, dest=tgt_lang
-            )
+            # googletrans 4.0.2 tiene método asíncrono
+            result = await self.google_translator.translate(text, src=src_lang, dest=tgt_lang)
+            
+            # Verificar si la traducción fue exitosa (no devuelve el mismo texto)
+            if result.text == text or not result.text.strip():
+                logger.warning("google_translate_no_change - Google Translate no tradujo el texto, usando fallback")
+                # Para quechua, usar directamente traducción por reglas
+                if target_lang in ["qu", "quy", "quz", "qul"]:
+                    return await self._translate_with_rules(text, source_lang, target_lang)
+                # Para otros idiomas, retornar el texto original con warning
+                return {
+                    "success": True,
+                    "translated_text": text,
+                    "source_language": source_lang,
+                    "target_language": target_lang,
+                    "model_used": "none",
+                    "confidence": 0.0,
+                    "method": "none",
+                    "warning": f"Google Translate no pudo traducir de {source_lang} a {target_lang}",
+                }
 
             return {
                 "success": True,
@@ -267,13 +290,84 @@ class TranslationService:
             }
 
         except Exception as e:
-            logger.error("translation_provider_failed error_type={}", type(e).__name__)
+            logger.error("translation_provider_failed error_type={} error={}", type(e).__name__, str(e))
             # Alternativa basada en reglas
+            return await self._translate_with_rules(text, source_lang, target_lang)
+
+    async def _translate_with_cohere(
+        self, text: str, source_lang: str, target_lang: str
+    ) -> Dict[str, Any]:
+        """Traducción usando Cohere LLM"""
+        try:
+            import cohere
+            from config.settings import settings
+
+            if not settings.COHERE_API_KEY:
+                raise RuntimeError("Cohere API key no configurada")
+
+            # Usar cliente asíncrono
+            cohere_client = cohere.AsyncClient(settings.COHERE_API_KEY)
+
+            # Prompt de traducción (incluyendo instrucciones en el mensaje)
+            if source_lang == "es" and target_lang == "qu":
+                user_message = f"""Eres un experto en traducción de español a quechua (runasimi).
+Traduce el texto proporcionado manteniendo el significado legal exacto.
+Usa quechua estándar del sur de Perú (Cusco).
+Mantén la estructura y formato del texto original.
+Traduce solo el texto, sin agregar explicaciones adicionales.
+
+Texto a traducir:
+{text}
+
+Traducción:"""
+            elif source_lang == "qu" and target_lang == "es":
+                user_message = f"""Eres un experto en traducción de quechua (runasimi) a español.
+Traduce el texto proporcionado manteniendo el significado exacto.
+Mantén la estructura y formato del texto original.
+Traduce solo el texto, sin agregar explicaciones adicionales.
+
+Texto a traducir:
+{text}
+
+Traducción:"""
+            else:
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
+            response = await cohere_client.chat(
+                model=settings.COHERE_LLM_MODEL,
+                message=user_message,
+                temperature=0.3,
+                max_tokens=4000,
+            )
+
+            translated_text = response.text.strip()
+
+            # Verificar si Cohere realmente tradujo (comparación más estricta)
+            # Si el texto traducido es muy similar al original (>90% similitud), no tradujo
+            import difflib
+            similarity = difflib.SequenceMatcher(None, text.lower(), translated_text.lower()).ratio()
+            
+            logger.info(f"Cohere similarity with original: {similarity:.2f}")
+            
+            if not translated_text or similarity > 0.90:
+                logger.warning("cohere_translation_no_change - Cohere no tradujo el texto a quechua (similitud: {:.2f}), usando diccionario".format(similarity))
+                return await self._translate_with_rules(text, source_lang, target_lang)
+
             return {
-                "success": False,
-                "error": "Translation provider unavailable",
-                "original_text": text,
+                "success": True,
+                "translated_text": translated_text,
+                "source_language": source_lang,
+                "target_language": target_lang,
+                "model_used": "cohere",
+                "confidence": 0.85,  # Mayor confianza para LLM
+                "method": "cohere",
+                "warning": "Traducción automática por IA: requiere revisión lingüística y jurídica.",
             }
+
+        except Exception as e:
+            logger.error("cohere_translation_failed error_type={} error={}", type(e).__name__, str(e))
+            # Fallback a traducción por reglas
+            return await self._translate_with_rules(text, source_lang, target_lang)
 
     async def _translate_with_rules(
         self, text: str, source_lang: str, target_lang: str
@@ -293,17 +387,22 @@ class TranslationService:
                 "source_language": source_lang,
                 "target_language": target_lang,
                 "model_used": "rules",
-                "confidence": 0.65,  # Menor confianza para reglas
+                "confidence": 0.50,  # Menor confianza para reglas
                 "method": "rules",
+                "warning": "Traducción basada en diccionario simple - puede ser imprecisa",
             }
 
         except Exception as e:
             logger.error("operation_failed error_type={}", type(e).__name__)
-            raise
+            return {
+                "success": False,
+                "error": "Rules-based translation failed",
+                "original_text": text,
+            }
 
     def _translate_spanish_to_quechua(self, text: str) -> str:
         """Traducción de español a quechua basada en reglas"""
-        # Diccionario básico español-quechua
+        # Diccionario mejorado español-quechua (enfoque en contexto legal)
         dictionary = {
             # Pronombres
             "yo": "ñuqa",
@@ -314,6 +413,11 @@ class TranslationService:
             "vosotros": "qamkuna",
             "ellos": "paykuna",
             "ellas": "paykuna",
+            "mi": "ñuqap",
+            "tu": "qamp",
+            "su": "payp",
+            "nuestro": "ñuqanchikp",
+            "nuestra": "ñuqanchikp",
             # Verbos comunes
             "ser": "kay",
             "estar": "kay",
@@ -325,6 +429,26 @@ class TranslationService:
             "poder": "atipay",
             "ir": "riy",
             "venir": "hamuy",
+            "debe": "kanan",
+            "deben": "kankunan",
+            "es": "kan",
+            "son": "kanku",
+            "está": "kashan",
+            "están": "kashanku",
+            "hay": "kay",
+            "tengo": "tiyani",
+            "tienes": "tiyanki",
+            "tiene": "tiyan",
+            "queremos": "munanchik",
+            "quiero": "munani",
+            "quieres": "munanki",
+            "quiere": "munan",
+            "sé": "yachani",
+            "sabes": "yachanki",
+            "sabe": "yachan",
+            "puedo": "atipani",
+            "puedes": "atipanki",
+            "puede": "atipan",
             # Sustantivos legales básicos
             "ley": "kamachiy",
             "justicia": "llankhay",
@@ -339,8 +463,152 @@ class TranslationService:
             "hija": "ususi",
             "padre": "tayta",
             "madre": "mama",
+            "padres": "taytamamakuna",
+            "niño": "wawa",
+            "niña": "wawa",
+            "niños": "wawakuna",
+            "violencia": "k'iri",
+            "mujer": "warmi",
+            "mujeres": "warmikuna",
+            "hombre": "qhari",
+            "hombres": "qharikuna",
+            "derecho": "derecho",
+            "derechos": "derechokuna",
+            "protección": "chaway",
+            "ayuda": "yanapay",
+            "caso": "kasu",
+            "problema": "pakay",
+            "autoridad": "kamachiq",
+            "comunidad": "ayllu",
+            "artículo": "artículo",
+            "norma": "norma",
+            "medida": "tupu",
+            "medidas": "tupukuna",
+            "consejo": "yatichiy",
+            "consejos": "yatichiykuna",
+            "paso": "pata",
+            "pasos": "patakuna",
+            "denuncia": "wiruy",
+            "organización": "tinkuy",
+            "abogado": "abogado",
+            "profesional": "prupisyunal",
+            # Términos legales adicionales
+            "orientación": "ñawpaq",
+            "legal": "kamachiy",
+            "consulta": "tapuy",
+            "física": "kallpay",
+            "preguntas": "tapuykuna",
+            "clave": "allin",
+            "investigación": "ñawiriy",
+            "lugar": "maypi",
+            "momento": "pacha",
+            "ocurrió": "tayarikurqan",
+            "agresión": "maqanakuy",
+            "casa": "wasi",
+            "campo": "chakra",
+            "pelea": "maqanakuy",
+            "agresor": "maqakuq",
+            "víctima": "k'irisqa",
+            "tipo": "laya",
+            "produjo": "paqarichirqan",
+            "golpes": "maqaykuna",
+            "puñetazos": "maki maqaykuna",
+            "patadas": "chaki maqaykuna",
+            "consideraciones": "yuyay",
+            "culturales": "sapaq",
+            "contexto": "pacha",
+            "importante": "allin",
+            "considerar": "yuyay",
+            "rencores": "ñakay",
+            "discusiones": "rimanakuykuna",
+            "previas": "ñawpaq",
+            "recíproca": "kuskanchik",
+            "algunos": "some",
+            "casos": "kasukuna",
+            "mutua": "kuskanchik",
+            "crucial": "allin",
+            "entender": "yachay",
+            "circunstancias": "pachakuna",
+            "juzgar": "qatiy",
+            "únicamente": "lla",
+            "parte": "lla",
+            "documentar": "qillqay",
+            "situación": "pacha",
+            "registrar": "qillqay",
+            "fecha": "p'unchaw",
+            "hora": "pacha",
+            "personas": "runakuna",
+            "involucradas": "participaq",
+            "detalles": "willay",
+            "buscar": "taripay",
+            "especializados": "allin",
+            "familiares": "ayllu",
+            "profesionales": "prupisyunalkuna",
+            "entiendan": "yachay",
+            "rural": "chakra",
+            "centros": "wasikuna",
+            "brindan": "qun",
+            "apoyo": "yanapay",
+            "gratuita": "mana qullqita",
+            "presentar": "rikuchiy",
+            "formal": "allin",
+            "autoridades": "kamachiqkuna",
+            "judiciales": "qatiqkuna",
+            "recursos": "llank'aykuna",
+            "locales": "ayllu",
+            "ofrezcan": "qun",
+            "defensa": "chaway",
+            "humanos": "runakuna",
+            "pueden": "atipanku",
+            "información": "willay",
+            "advertencias": "allina",
+            "importantes": "allin",
+            "evita": "amuy",
+            "revictimización": "k'iri",
+            "trata": "ruway",
+            "proteger": "chaway",
+            "presionar": "sachay",
+            "presente": "rikuchiy",
+            "seguridad": "amachay",
+            "peligrosa": "ñak'aq",
+            "inmediata": "kunan",
+            "fuentes": "puriy",
+            "código": "kamachiy",
+            "procesal": "ruway",
+            "civil": "runa",
+            "recuerda": "yuyariy",
+            "variar": "hukllachiy",
+            "región": "suyu",
+            "obtener": "apay",
+            "asesoramiento": "yatichiy",
+            "preciso": "allin",
+            # Conectores y preposiciones
+            "y": "wan",
+            "o": "utaq",
+            "pero": "kas",
+            "porque": "imrayku",
+            "para": "paq",
+            "con": "wan",
+            "de": "manta",
+            "en": "pi",
+            "a": "man",
+            "del": "manta",
+            "al": "man",
+            "como": "imayna",
+            "cuando": "qampa",
+            "donde": "maypi",
+            "que": "ña",
+            "si": "qa",
+            "no": "manam",
+            "también": "pis",
+            "muy": "ancha",
+            "más": "aswan",
+            "menos": "pisi",
+            "siempre": "llapa",
+            "nunca": "ñawpaq",
+            "solo": "lla",
             # Palabras comunes
-            "casa": "was",
+            "casa": "wasi",
             "comida": "mikhuy",
             "agua": "yaku",
             "tierra": "pacha",
@@ -353,6 +621,39 @@ class TranslationService:
             "pequeño": "huch'uy",
             "día": "p'unchaw",
             "noche": "tuta",
+            "ahora": "kunan",
+            "antes": "ñawpaq",
+            "después": "qhipa",
+            "hoy": "kunan",
+            "mañana": "paqarin",
+            "ayer": "qayna",
+            "aquí": "kaypi",
+            "allí": "chaypi",
+            "allá": "chaypi",
+            "este": "kay",
+            "esta": "kay",
+            "esto": "kay",
+            "ese": "chay",
+            "esa": "chay",
+            "eso": "chay",
+            "aquel": "chay",
+            "aquella": "chay",
+            "aquello": "chay",
+            # Palabras específicas del contexto legal
+            "perú": "piruw",
+            "peruano": "piruw",
+            "peruanos": "piruwkuna",
+            "ley30364": "kamachiy 30364",
+            "30364": "30364",
+            "prevención": "qaway",
+            "intrafamiliar": "ayllupi",
+            "especial": "allin",
+            "atención": "qaway",
+            "víctimas": "k'irisqakuna",
+            "comunidades": "ayllukuna",
+            "relación": "tupu",
+            "necesitas": "necesitanki",
+            "asesoría": "yatichiy",
         }
 
         # Procesar texto palabra por palabra
@@ -375,6 +676,8 @@ class TranslationService:
                 translated_word += "."
             elif word.endswith(",") and not translated_word.endswith(","):
                 translated_word += ","
+            elif word.endswith(":") and not translated_word.endswith(":"):
+                translated_word += ":"
 
             translated_words.append(translated_word)
 

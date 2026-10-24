@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
     COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
     COHERE_LLM_MODEL: str = "command-r7b-12-2024"
-    COHERE_MAX_TOKENS: int = 2048
+    COHERE_MAX_TOKENS: int = 4096
     COHERE_TEMPERATURE: float = 0.2
     
     # Configuración de Neo4j

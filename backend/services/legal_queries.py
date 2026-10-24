@@ -98,8 +98,9 @@ async def answer_query(
         return result
 
     processed_query = query
+    query_language = LanguageDetector().detect_language(query)
     translator = TranslationService()
-    if LanguageDetector().detect_language(query) == "qu":
+    if query_language == "qu":
         async with timer.stage("translate_in"):
             translated = await translator.translate(query, "qu", "es")
         if not translated.get("success"):
@@ -132,7 +133,7 @@ async def answer_query(
     enriched_prompt, enriched_context = state.context_engineer.build_legal_prompt(
         query=processed_query,
         documents=documents,
-        language="spanish",
+        language=language,
         history=history,
         context=context,
     )
@@ -142,7 +143,7 @@ async def answer_query(
                 response = await state.legal_agent.respond_general(
                     query=processed_query,
                     context=rag_result,
-                    language="spanish",
+                    language=language,
                     enriched_prompt=enriched_prompt,
                 )
         except Exception as error:
