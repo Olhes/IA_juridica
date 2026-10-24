@@ -76,24 +76,26 @@ export function ChatPage() {
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [voiceInput, setVoiceInput] = useState('');
   const [autoPlayTTS, setAutoPlayTTS] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Voice-to-text hook (solo español)
+  // Voice-to-text hook (solo español). Lo dictado se acumula aquí, no en el input:
+  // al terminar la grabación se envía solo y el campo de texto queda vacío.
+  const voiceTextRef = useRef('');
   const { supported: voiceSupported, listening: voiceListening, start: voiceStart, stop: voiceStop } = useSpeechToText(
-    (spoken) => setVoiceInput((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, 800)),
+    (spoken) => {
+      voiceTextRef.current = ((voiceTextRef.current ? voiceTextRef.current + ' ' : '') + spoken).slice(0, 800);
+    },
     () => {
-      // Auto-enviar cuando termina la grabación
-      if (voiceInput.trim()) {
-        const textToSend = voiceInput.trim();
-        setAutoPlayTTS(true);
-        setVoiceInput(''); // Limpiar antes de enviar
-        handleSendTerminalMessage(textToSend);
-      }
+      const textToSend = voiceTextRef.current.trim();
+      voiceTextRef.current = '';
+      if (!textToSend) return;
+      setAutoPlayTTS(true);
+      setTerminalOpen(true);
+      handleSendTerminalMessage(textToSend);
     },
   );
 
@@ -369,6 +371,7 @@ export function ChatPage() {
       alert('Voz solo disponible en español');
       return;
     }
+    voiceTextRef.current = '';
     voiceStart();
   };
 
@@ -590,8 +593,6 @@ export function ChatPage() {
         onFeedback={(payload) =>
           sendFeedback({ ...payload, language, conversation_id: activeSessionId ?? undefined })
         }
-        voiceInput={voiceInput}
-        onVoiceInputChange={setVoiceInput}
         autoPlayTTS={autoPlayTTS}
       />
 
