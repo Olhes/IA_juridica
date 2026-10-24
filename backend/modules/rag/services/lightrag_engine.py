@@ -536,7 +536,13 @@ class LegalRAGEngine:
                         doc = dict(candidates[entry.index])
                         doc["relevance_score"] = entry.relevance_score
                         selected.append(doc)
-                return self._retrieval_result(selected, "cohere_rerank" if selected else "no_match", len(candidates))
+                # Si el reranker no encontró documentos con score suficiente, usar fallback
+                if not selected:
+                    logger.warning("rerank_no_match: using fallback keyword reranking")
+                    if trace is not None:
+                        trace["reranker"] = "fallback_keyword"
+                    return await self._fallback_rerank(query, candidates, top_k, "")
+                return self._retrieval_result(selected, "cohere_rerank", len(candidates))
             except Exception as error:
                 logger.warning("rerank_failed error_type={}", type(error).__name__)
         if trace is not None:

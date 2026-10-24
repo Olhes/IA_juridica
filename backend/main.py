@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from utils.console import configure_console_output
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent  # Subir a la raíz del proyecto
 configure_console_output()
 load_dotenv(BASE_DIR / ".env")
 

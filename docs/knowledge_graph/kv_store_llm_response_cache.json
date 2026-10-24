@@ -15308,5 +15308,25 @@
     "create_time": 1783976955,
     "update_time": 1783976955,
     "_id": "default:summary:8a4d0a8ce55ab0c2b1090629884112ff"
+  },
+  "mix:keywords:47dcbeac803e265d3ccb6133a3420355": {
+    "return": "{\"high_level_keywords\": [\"pension\", \"food\", \"tenancies\", \"guide\"], \"low_level_keywords\": [\"sonre\", \"pension\", \"alimentos\", \"tenencias\", \"trame\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Dime sonre la pension de alimentos y tenencias, una guia para ese tramite",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792805011,
+    "update_time": 1792805011,
+    "_id": "mix:keywords:47dcbeac803e265d3ccb6133a3420355"
   }
 }
