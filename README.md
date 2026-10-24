@@ -5,7 +5,7 @@ recuperación documental, validación de respuestas, conversaciones persistentes
 y autenticación Google OAuth 2.0.
 No sustituye la revisión de un profesional ni certifica la vigencia de una norma.
 
-**Estado documentado: rama `v8` · Actualización: 2026-10-18.**
+**Estado documentado: rama `v8` · Actualización: 2026-10-24.**
 `v8` identifica la rama de trabajo, no una release semántica. No hay tags de
 release en el historial consultado. Los manifiestos conservan `1.0.0` (Node)
 y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por entorno.
@@ -63,6 +63,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
                  → recuperación LightRAG + reranking
                  → generación Cohere → validación/corrección → traducción
                  → contenido final validado (JSON o NDJSON) → PostgreSQL
+                 → TTS (Web Speech API español, MMS-TTS quechua)
 ```
 
 
@@ -75,6 +76,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
 | RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                          |
 | Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática |
 | Persistencia         | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos                 |
+| Voz (STT/TTS)       | `frontend/src/application/legal/use-cases/useSpeech.ts`, `backend/modules/voice/services/tts_service.py` |
 | Tests                | Solo `tests/<backend                                                                               |
 
 El NDJSON transporta contenido **después** de la validación; no publica borradores
@@ -83,6 +85,30 @@ La caché de respuestas es exacta, con SHA-256 sobre consulta, idioma, propietar
 historial/contexto, conversación y revisión del corpus; no es una caché semántica.
 `LegalAssistantPage`, `useBackendChat` y `usePersistentChat` son alternativas
 heredadas, no el flujo de inicio actual.
+
+## Capacidades de voz (STT/TTS)
+
+El sistema soporta entrada y salida de voz en español y quechua:
+
+**Speech-to-Text (STT) - Español:**
+- Usa Web Speech API del navegador (nativo)
+- Micrófono estilo WhatsApp: mantener presionado para grabar, soltar para enviar
+- Animación visual roja pulsante mientras graba
+- Solo disponible en español (Web Speech API no soporta quechua nativamente)
+- Requiere autenticación
+
+**Text-to-Speech (TTS):**
+- **Español:** Web Speech API del navegador (voz nativa)
+- **Quechua:** MMS-TTS del backend (`facebook/mms-tts-quz`)
+- Reproducción automática de respuestas del asistente
+- Botón para detener reproducción
+- Limpieza automática de artefactos en respuestas quechua
+- Requiere autenticación
+
+**Limitaciones:**
+- STT solo funciona en español (Web Speech API no tiene soporte para quechua)
+- TTS en quechua requiere el modelo MMS-TTS cargado (~145MB)
+- Respuestas en quechua pueden tener calidad variable dependiendo del modelo de traducción
 
 ## Pruebas y cobertura
 

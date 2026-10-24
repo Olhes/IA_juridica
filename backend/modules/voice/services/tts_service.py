@@ -124,57 +124,64 @@ class TTSService:
     async def synthesize_quechua(self, text: str) -> Optional[bytes]:
         """
         Sintetiza texto en quechua usando MMS-TTS.
-        
+
         Retorna audio en formato WAV como bytes.
         """
         if not self.mms_available:
             logger.error("MMS-TTS no disponible")
             return None
-        
+
         try:
+            logger.info(f"[TTS] Texto original: {text[:100]}...")
+
             # Normalizar texto
             normalized_text = self.normalize_text_for_tts(text, language="qu")
-            
-            logger.info(f"Sintetizando texto en quechua: {normalized_text[:50]}...")
-            
+            logger.info(f"[TTS] Texto normalizado: {normalized_text[:100]}...")
+
             # Tokenizar
+            logger.info("[TTS] Tokenizando...")
             inputs = self.mms_tokenizer(normalized_text, return_tensors="pt")
-            
+            logger.info(f"[TTS] Tokenización exitosa. Input shape: {inputs['input_ids'].shape}")
+
             # Ejecutar en thread separado para no bloquear
             loop = asyncio.get_event_loop()
-            
-            def _synthesize():
+
+            def _synthesize(inputs_dict):
                 with torch.no_grad():
                     if torch.cuda.is_available():
-                        inputs = {k: v.to("cuda") for k, v in inputs.items()}
-                    output = self.mms_model(**inputs).waveform
-            
-            await loop.run_in_executor(None, _synthesize)
-            
-            # Obtener waveform
-            with torch.no_grad():
-                if torch.cuda.is_available():
-                    inputs = {k: v.to("cuda") for k, v in inputs.items()}
-                output = self.mms_model(**inputs).waveform
-            
+                        inputs_dict = {k: v.to("cuda") for k, v in inputs_dict.items()}
+                    output = self.mms_model(**inputs_dict).waveform
+                    return output
+
+            logger.info("[TTS] Ejecutando modelo MMS-TTS...")
+            output = await loop.run_in_executor(None, _synthesize, inputs)
+            logger.info(f"[TTS] Modelo ejecutado. Output shape: {output.shape}")
+
             # Convertir a WAV
             audio_array = output.squeeze().cpu().numpy()
-            
+            logger.info(f"[TTS] Audio array shape: {audio_array.shape}, dtype: {audio_array.dtype}")
+
             # Usar scipy o soundfile para guardar como WAV
             try:
                 import soundfile as sf
-                
+
                 buffer = BytesIO()
+                logger.info("[TTS] Escribiendo WAV...")
                 sf.write(buffer, audio_array, 16000, format='WAV')
                 buffer.seek(0)
-                
-                return buffer.read()
+                audio_bytes = buffer.read()
+                logger.info(f"[TTS] WAV generado exitosamente. Size: {len(audio_bytes)} bytes")
+
+                return audio_bytes
             except ImportError:
                 logger.error("soundfile no disponible. Instala con: pip install soundfile")
                 return None
-            
+            except Exception as e:
+                logger.error(f"[TTS] Error escribiendo WAV: {e}")
+                return None
+
         except Exception as e:
-            logger.error(f"Error sintetizando quechua: {e}")
+            logger.error(f"[TTS] Error sintetizando quechua: {e}", exc_info=True)
             return None
     
     def is_available(self, language: str) -> bool:
