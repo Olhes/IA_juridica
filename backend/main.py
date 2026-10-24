@@ -66,7 +66,7 @@ from database.postgres_adapter_final import DatabaseUnavailableError
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DOCS_DIR = BASE_DIR / "docs"
+DOCS_DIR = PROJECT_ROOT / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
