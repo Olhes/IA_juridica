@@ -30,14 +30,14 @@ export function StageProgress({ language, stage, completed = [] }: StageProgress
   const steps: VisibleStep[] = ['retrieval', 'generation', 'validation'];
   if (seenTranslation) steps.push('translating');
   return (
-    <ol aria-label={t.stagesLabel} className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+    <ol aria-label={t.stagesLabel} className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
       {steps.map((step, index) => {
         const active = step === current;
         const done = !active && finished.has(step);
         return (
           <li key={step} className="flex items-center gap-2" aria-current={active ? 'step' : undefined}>
             {index > 0 && <span aria-hidden="true">→</span>}
-            <span className={`inline-flex items-center gap-1 ${active ? 'text-indigo-300' : done ? 'text-emerald-400' : ''}`}>
+            <span className={`inline-flex items-center gap-1 ${active ? 'text-indigo-700' : done ? 'text-emerald-700' : ''}`}>
               {active && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}
               {done && <CheckCircle2 className="w-3 h-3" aria-hidden="true" />}
               {t.stageLabels[step]}
@@ -60,7 +60,7 @@ export function StreamErrorCard({ language, error, onRetry }: StreamErrorCardPro
   const t = chatTranslations[language];
   const message = t.errors[error.code] ?? t.errors.DEFAULT;
   return (
-    <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-red-900 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+    <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
       <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1">
         <p className="font-semibold">{t.errorTitle}</p>
@@ -69,7 +69,7 @@ export function StreamErrorCard({ language, error, onRetry }: StreamErrorCardPro
           <button
             type="button"
             onClick={onRetry}
-            className="mt-2 inline-flex items-center gap-1 rounded-md bg-red-900/60 px-2.5 py-1 font-semibold text-red-100 hover:bg-red-800"
+            className="mt-2 inline-flex items-center gap-1 rounded-md bg-red-100 px-2.5 py-1 font-semibold text-red-800 hover:bg-red-200"
           >
             <RotateCcw className="w-3 h-3" aria-hidden="true" />
             {t.retry}
@@ -92,7 +92,7 @@ export function ResponseTiming({ language, timings }: ResponseTimingProps) {
   const t = chatTranslations[language];
   const entries = Object.entries(timings.stages) as [PipelineStage, number][];
   return (
-    <details className="mt-2 text-xs text-zinc-500">
+    <details className="mt-2 text-xs text-slate-500">
       <summary className="cursor-pointer" aria-label={t.timingsDetail}>
         {timings.cache_hit ? t.answeredFromCache : t.answeredIn(formatSeconds(timings.total_ms))}
       </summary>
@@ -113,7 +113,7 @@ export function ResponseTiming({ language, timings }: ResponseTimingProps) {
 export function DegradedNotice({ language }: { language: SupportedLanguage }) {
   const t = chatTranslations[language].degraded;
   return (
-    <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-900 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+    <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
       <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div>
         <p className="font-semibold">{t.title}</p>

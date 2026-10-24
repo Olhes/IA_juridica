@@ -65,11 +65,12 @@ function ThemeToggle({ language }: { language: SupportedLanguage }) {
       type="button"
       onClick={toggleTheme}
       aria-label={isDark ? t.themeLight : t.themeDark}
-      className="w-9 h-9 flex items-center justify-center rounded-xl
-        bg-slate-100 hover:bg-slate-200
-        dark:bg-gray-800 dark:hover:bg-gray-700
-        text-slate-600 dark:text-slate-300
-        transition-all duration-200 hover:scale-105 active:scale-95"
+      className="w-11 h-11 flex items-center justify-center rounded-lg
+        border-2 border-slate-900 dark:border-slate-300
+        bg-white hover:bg-slate-100
+        dark:bg-slate-900 dark:hover:bg-slate-800
+        text-slate-900 dark:text-slate-100
+        transition-colors duration-200 active:scale-95"
     >
       {isDark
         ? <Sun className="w-4 h-4 text-amber-400" />
@@ -130,11 +131,11 @@ export function ChatHeader({
         <div className="flex items-center gap-2.5 min-w-0">
           {sidebarToggle}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow">
-              <Scale className="w-5 h-5 text-white" />
+            <div className="flex-shrink-0 w-11 h-11 rounded-lg bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center">
+              <Scale className="w-6 h-6 text-indigo-700 dark:text-indigo-300" />
             </div>
             <div className="leading-tight min-w-0">
-              <p className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
+              <p className="font-display text-lg font-extrabold text-slate-900 dark:text-slate-100 truncate">
                 {t.appName}
               </p>
               <div className="flex items-center gap-1.5">
@@ -155,17 +156,17 @@ export function ChatHeader({
           {/* Language toggle */}
           <div className="flex items-center gap-1.5">
             <Globe className="w-4 h-4 text-slate-400 dark:text-slate-500 hidden sm:block" />
-            <div className="flex bg-slate-100 dark:bg-gray-800 rounded-full p-0.5 gap-0.5">
+            <div className="flex bg-slate-100 dark:bg-slate-800 rounded-full p-1 gap-1">
               {(['spanish', 'quechua'] as SupportedLanguage[]).map((lang) => (
                 <button
                   key={lang}
                   id={`lang-toggle-${lang}`}
                   type="button"
                   onClick={() => onLanguageChange(lang)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
+                  className={`min-h-[40px] px-4 rounded-full text-sm transition-colors duration-200 ${
                     currentLanguage === lang
-                      ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                      ? 'bg-slate-900 text-white dark:bg-amber-400 dark:text-slate-900 font-extrabold'
+                      : 'font-bold text-slate-900 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {lang === 'spanish' ? t.langES : t.langQU}
@@ -183,11 +184,12 @@ export function ChatHeader({
             onClick={handleAuth}
             disabled={isAuthenticating}
             aria-label={isAuthenticated ? t.logout : t.login}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
-              bg-slate-100 hover:bg-slate-200
-              dark:bg-gray-800 dark:hover:bg-gray-700
-              text-slate-600 dark:text-slate-300
-              transition-all duration-200 hover:scale-105 active:scale-95
+            className="flex items-center gap-2 min-h-[44px] px-4 rounded-lg text-sm font-extrabold
+              border-2 border-slate-900 dark:border-slate-300
+              bg-white hover:bg-slate-100
+              dark:bg-slate-900 dark:hover:bg-slate-800
+              text-slate-900 dark:text-slate-100
+              transition-colors duration-200 active:scale-95
               disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isAuthenticating ? (

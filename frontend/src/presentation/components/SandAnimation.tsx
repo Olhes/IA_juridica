@@ -576,7 +576,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       const lines = [settings.hiddenText];
 
       ctx.globalAlpha = hiddenAlpha;
-      ctx.fillStyle = "rgb(167, 139, 250)"; // Violet-400
+      ctx.fillStyle = "rgb(242, 169, 59)"; // Dorado Tocapu #F2A93B
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
@@ -593,7 +593,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawFixedCodepen() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(184, 40, 95)"; // Magenta Tocapu #B8285F
 
       const size = settings.cellSize;
 
@@ -614,7 +614,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawFalling() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(242, 169, 59)"; // Dorado Tocapu #F2A93B
 
       const size = settings.cellSize;
 
@@ -626,7 +626,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawPile() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(139, 92, 246)"; // Violet-500
+      ctx.fillStyle = "rgb(30, 156, 151)"; // Turquesa Tocapu #1E9C97
 
       const size = settings.cellSize;
 
@@ -647,7 +647,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawReforming() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(184, 40, 95)"; // Magenta Tocapu #B8285F
 
       const size = settings.cellSize;
 
@@ -709,7 +709,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
         ref={canvasRef}
         className="block w-full h-full"
         style={{
-          background: 'linear-gradient(to bottom right, #f8fafc, #e0e7ff, #ede9fe)'
+          background: 'linear-gradient(to bottom right, #FFF8F0, #FCE6EE, #FDF0D9)'
         }}
       />
     </div>
