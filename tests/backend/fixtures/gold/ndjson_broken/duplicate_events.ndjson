@@ -1,0 +1,11 @@
+{"v":1,"seq":0,"request_id":"0123456789abcdef0123456789abcdef","type":"meta","data":{"language":"spanish"}}
+{"v":1,"seq":1,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"retrieval","status":"start"}
+{"v":1,"seq":2,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"retrieval","status":"end","elapsed_ms":100.0}
+{"v":1,"seq":3,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"generation","status":"start"}
+{"v":1,"seq":4,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"generation","status":"end","elapsed_ms":150.0}
+{"v":1,"seq":4,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"generation","status":"end","elapsed_ms":150.0}
+{"v":1,"seq":5,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"validation","status":"start"}
+{"v":1,"seq":6,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"validation","status":"end","elapsed_ms":40.0}
+{"v":1,"seq":7,"request_id":"0123456789abcdef0123456789abcdef","type":"chunk","delta":"Respuesta final validada ñ 🦙"}
+{"v":1,"seq":8,"request_id":"0123456789abcdef0123456789abcdef","type":"final","data":{"success":true,"query":"Consulta sintética","language":"spanish","cached":false,"response":{"respuesta_espanol":"Respuesta final validada ñ 🦙","respuesta_quechua":"Kutichiy"},"sources":["fuente.md"],"validation":{"status":"passed","is_reliable":true},"metadata":{"evidence_status":"retrieved","timings":{"total_ms":321.5,"stages":{"retrieval":100.0,"generation":150.0,"validation":40.0},"cache_hit":false}}}}
+{"v":1,"seq":9,"request_id":"0123456789abcdef0123456789abcdef","type":"done"}

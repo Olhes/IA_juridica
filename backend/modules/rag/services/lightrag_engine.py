@@ -56,6 +56,10 @@ def _select_graph_storage() -> str:
     return "Neo4JStorage"
 
 
+# Puntuación mínima del reranker para conservar un documento (el harness mide su coste).
+RERANK_MIN_SCORE = 0.1
+
+
 class LegalRAGEngine:
     """Motor RAG especializado para documentos legales con LightRAG + Cohere"""
 
@@ -474,26 +478,34 @@ class LegalRAGEngine:
                 "documents": documents, "rerank_scores": [d["relevance_score"] for d in documents],
                 "sources": sources, "method": method, "total_candidates": count}
 
-    async def query_with_rerank(self, query, top_k=None, rerank_candidates=None):
+    async def _graph_docs(self, query, mode, budget):
+        """Chunks nativos de LightRAG para ``mode``; ``[]`` si no está disponible o falla."""
+        docs = []
+        if LIGHTRAG_AVAILABLE and self.rag is not None:
+            try:
+                await self._ensure_storages_initialized()
+                raw = await self.rag.aquery_data(query, param=QueryParam(mode=mode, top_k=budget, chunk_top_k=budget))
+                for chunk in raw.get("data", {}).get("chunks", []):
+                    if not chunk.get("content"):
+                        continue
+                    identity = chunk.get("chunk_id") or hashlib.sha256(chunk["content"].encode()).hexdigest()
+                    docs.append({"id": identity, "document_id": identity, "content": chunk["content"],
+                        "metadata": {"filename": chunk.get("file_path", "Desconocido"),
+                                     "reference_id": chunk.get("reference_id"), "retrieval_origin": "lightrag"}})
+            except Exception as error:
+                logger.warning("graph_retrieval_failed error_type={}", type(error).__name__)
+        return docs
+
+    async def query_with_rerank(self, query, top_k=None, rerank_candidates=None, trace=None):
+        """Recupera y reordena. ``trace`` (dict) recibe los pasos intermedios para el harness de
+        evaluación; no cambia el resultado. Con ``trace`` se piden al reranker las puntuaciones de
+        *todos* los candidatos para medir cuánta evidencia relevante descarta el umbral."""
         self._ensure_initialized()
         top_k = top_k or settings.RERANK_TOP_K
         budget = rerank_candidates or settings.RERANK_CANDIDATES
         if top_k < 1 or budget < 1:
             raise ValueError("Retrieval limits must be positive")
-        graph_docs = []
-        if LIGHTRAG_AVAILABLE and self.rag is not None:
-            try:
-                await self._ensure_storages_initialized()
-                raw = await self.rag.aquery_data(query, param=QueryParam(mode="mix", top_k=budget, chunk_top_k=budget))
-                for chunk in raw.get("data", {}).get("chunks", []):
-                    if not chunk.get("content"):
-                        continue
-                    identity = chunk.get("chunk_id") or hashlib.sha256(chunk["content"].encode()).hexdigest()
-                    graph_docs.append({"id": identity, "document_id": identity, "content": chunk["content"],
-                        "metadata": {"filename": chunk.get("file_path", "Desconocido"),
-                                     "reference_id": chunk.get("reference_id"), "retrieval_origin": "lightrag"}})
-            except Exception as error:
-                logger.warning("graph_retrieval_failed error_type={}", type(error).__name__)
+        graph_docs = await self._graph_docs(query, "mix", budget)
         local_docs = self._local_candidates(query, budget)
         # Native graph retrieval is semantic; reserve a bounded share before lexical fill.
         graph_docs = graph_docs[:max(1, budget//2)]
@@ -505,21 +517,36 @@ class LegalRAGEngine:
                 candidates.append(doc)
             if len(candidates) >= budget:
                 break
+        if trace is not None:
+            trace.update(graph_docs=graph_docs, local_docs=local_docs, candidates=candidates,
+                         threshold=RERANK_MIN_SCORE, rerank=None, reranker="none")
         if not candidates:
             return self._retrieval_result([], "no_documents" if not self.documents else "no_match", 0)
         if self.cohere_client and COHERE_AVAILABLE:
             try:
+                top_n = len(candidates) if trace is not None else min(top_k, len(candidates))
                 result = await self.cohere_client.rerank(query=query, documents=[d["content"] for d in candidates],
-                    model=settings.COHERE_RERANK_MODEL, top_n=min(top_k,len(candidates)))
+                    model=settings.COHERE_RERANK_MODEL, top_n=top_n)
+                entries = list(result.results)
+                if trace is not None:
+                    trace.update(reranker="cohere", rerank=[(e.index, e.relevance_score) for e in entries])
                 selected = []
-                for entry in result.results:
-                    if 0 <= entry.index < len(candidates) and 0.1 <= entry.relevance_score <= 1:
+                for entry in entries[:top_k]:
+                    if 0 <= entry.index < len(candidates) and RERANK_MIN_SCORE <= entry.relevance_score <= 1:
                         doc = dict(candidates[entry.index])
                         doc["relevance_score"] = entry.relevance_score
                         selected.append(doc)
-                return self._retrieval_result(selected, "cohere_rerank" if selected else "no_match", len(candidates))
+                # Si el reranker no encontró documentos con score suficiente, usar fallback
+                if not selected:
+                    logger.warning("rerank_no_match: using fallback keyword reranking")
+                    if trace is not None:
+                        trace["reranker"] = "fallback_keyword"
+                    return await self._fallback_rerank(query, candidates, top_k, "")
+                return self._retrieval_result(selected, "cohere_rerank", len(candidates))
             except Exception as error:
                 logger.warning("rerank_failed error_type={}", type(error).__name__)
+        if trace is not None:
+            trace["reranker"] = "fallback_keyword"
         return await self._fallback_rerank(query, candidates, top_k, "")
 
 

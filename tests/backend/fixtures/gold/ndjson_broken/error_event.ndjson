@@ -1,0 +1,4 @@
+{"v":1,"seq":0,"request_id":"0123456789abcdef0123456789abcdef","type":"meta","data":{"language":"spanish"}}
+{"v":1,"seq":1,"request_id":"0123456789abcdef0123456789abcdef","type":"stage","stage":"retrieval","status":"start"}
+{"v":1,"seq":2,"request_id":"0123456789abcdef0123456789abcdef","type":"error","code":"TIMEOUT","message":"Legal query timed out","retryable":true}
+{"v":1,"seq":3,"request_id":"0123456789abcdef0123456789abcdef","type":"done"}

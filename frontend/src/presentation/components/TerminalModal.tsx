@@ -1,12 +1,31 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import { X, Send, Loader2, Bot, User, Sparkles, FileText, Image as ImageIcon, X as XIcon } from 'lucide-react';
+import type { FeedbackPayload } from '../../domain/legal/quality';
+import type {
+  LegalQueryApiResponse,
+  PipelineStage,
+  ResponseTimings,
+  StreamErrorInfo,
+  SupportedLanguage,
+} from '../../domain/legal/types';
+import { AssistantEvidence } from './chat/EvidencePanels';
+import { FeedbackBar } from './chat/FeedbackBar';
+import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
-interface TerminalMessage {
+export interface TerminalMessage {
   id: string;
   content: string;
   isUser: boolean;
+  isStreaming?: boolean;
+  degraded?: boolean;
+  stage?: PipelineStage;
+  completedStages?: PipelineStage[];
+  errorInfo?: StreamErrorInfo;
+  timings?: ResponseTimings;
+  apiResponse?: LegalQueryApiResponse;
+  requestId?: string;
 }
 
 interface TerminalModalProps {
@@ -15,7 +34,13 @@ interface TerminalModalProps {
   onSend: (message: string) => void;
   messages: TerminalMessage[];
   isLoading?: boolean;
+  language?: SupportedLanguage;
+  onRetry?: (messageId: string) => void;
+  /** Envía 👍/👎 de una respuesta; si falta, no se muestra la barra de opinión. */
+  onFeedback?: (payload: Omit<FeedbackPayload, 'conversation_id' | 'language'>) => Promise<{ ok: boolean; queued: boolean }>;
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
+  attachedFile?: File | null;
+  onRemoveAttachment?: () => void;
 }
 
 export function TerminalModal({
@@ -24,7 +49,12 @@ export function TerminalModal({
   onSend,
   messages,
   isLoading = false,
+  language = 'spanish',
+  onRetry,
+  onFeedback,
   returnFocusRef,
+  attachedFile,
+  onRemoveAttachment,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -96,7 +126,10 @@ export function TerminalModal({
                   Online
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">Modelo neural de consulta de leyes y regulaciones</p>
+              <p className="text-xs text-zinc-400">
+                Modelo neural de consulta de leyes y regulaciones ·{' '}
+                <a href="/calidad" className="underline hover:text-zinc-200">{language === 'quechua' ? 'Allin kayninta qhaway' : 'Ver calidad del sistema'}</a>
+              </p>
             </div>
           </div>
 
@@ -147,7 +180,33 @@ export function TerminalModal({
                     : 'bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {(msg.content || msg.isUser) && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
+                  <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
+                ) : null}
+                {!msg.isUser && msg.degraded && <DegradedNotice language={language} />}
+                {!msg.isUser && msg.errorInfo && (
+                  <StreamErrorCard
+                    language={language}
+                    error={msg.errorInfo}
+                    onRetry={onRetry ? () => onRetry(msg.id) : undefined}
+                  />
+                )}
+                {!msg.isUser && msg.apiResponse && !msg.isStreaming && (
+                  <AssistantEvidence language={language} apiResponse={msg.apiResponse} />
+                )}
+                {!msg.isUser && msg.apiResponse && msg.requestId && !msg.isStreaming && onFeedback && (
+                  <FeedbackBar
+                    language={language}
+                    requestId={msg.requestId}
+                    context={{
+                      evidence_status: msg.apiResponse.metadata?.evidence_status,
+                      translation_quality: msg.apiResponse.metadata?.translation?.quality,
+                    }}
+                    onSubmit={(rating) => onFeedback({ request_id: msg.requestId as string, ...rating })}
+                  />
+                )}
+                {!msg.isUser && msg.timings && <ResponseTiming language={language} timings={msg.timings} />}
               </div>
             </div>
           ))}
@@ -166,26 +225,49 @@ export function TerminalModal({
         <div className="p-4 sm:p-6 border-t border-zinc-800/80 bg-zinc-950">
           <form
             onSubmit={handleSubmit}
-            className="max-w-5xl mx-auto relative flex items-center"
+            className="max-w-5xl mx-auto"
           >
-            <input
-              ref={inputRef}
-              aria-label="Consulta legal"
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe tu consulta legal aquí..."
-              className="w-full bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              aria-label="Enviar consulta"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+            {/* Archivo adjunto */}
+            {attachedFile && (
+              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                {attachedFile.type.startsWith('image/') ? (
+                  <ImageIcon className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <FileText className="w-4 h-4 text-indigo-400" />
+                )}
+                <span className="text-sm text-indigo-300 truncate max-w-[300px]">
+                  {attachedFile.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={onRemoveAttachment}
+                  className="p-1 rounded hover:bg-indigo-500/20 transition-colors"
+                >
+                  <XIcon className="w-3.5 h-3.5 text-indigo-400" />
+                </button>
+              </div>
+            )}
+
+            <div className="relative flex items-center">
+              <input
+                ref={inputRef}
+                aria-label="Consulta legal"
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Escribe tu consulta legal aquí..."
+                className="w-full bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                aria-label="Enviar consulta"
+                disabled={!input.trim() && !attachedFile || isLoading}
+                className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </form>
         </div>
       </div>

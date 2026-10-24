@@ -43,16 +43,54 @@ export interface AuthState {
 const TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'auth_user';
+const USER_CACHE_KEY = 'auth_user_cache';
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
 export class AuthService {
   private token: string | null = null;
   private refreshToken: string | null = null;
   private user: User | null = null;
   private listeners: Set<(state: AuthState) => void> = new Set();
+  private userCacheExpiry: number = 0;
 
   constructor() {
-    // Ya no cargamos desde localStorage por seguridad
-    // Verificamos autenticación con el backend
+    // Cargar usuario desde cache local si existe y es válido
+    this.loadUserFromCache();
+  }
+
+  // ── Cache local de usuario ────────────────────────────────────────────────────────
+
+  private loadUserFromCache() {
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      if (cached) {
+        const { user, expiry } = JSON.parse(cached);
+        if (expiry > Date.now()) {
+          this.user = user;
+          this.token = 'from_cache';
+          this.userCacheExpiry = expiry;
+        } else {
+          localStorage.removeItem(USER_CACHE_KEY);
+        }
+      }
+    } catch {
+      // Ignorar errores de cache
+    }
+  }
+
+  private saveUserToCache(user: User) {
+    try {
+      const expiry = Date.now() + CACHE_TTL;
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify({ user, expiry }));
+      this.userCacheExpiry = expiry;
+    } catch {
+      // Ignorar errores de cache
+    }
+  }
+
+  private clearUserCache() {
+    localStorage.removeItem(USER_CACHE_KEY);
+    this.userCacheExpiry = 0;
   }
 
   // ── Almacenamiento ────────────────────────────────────────────────────────
@@ -64,10 +102,12 @@ export class AuthService {
 
   private saveToStorage() {
     // Deshabilitado por seguridad - usamos httpOnly cookies
+    // Las cookies se manejan automáticamente por el navegador
   }
 
   private clearStorage() {
     // Deshabilitado por seguridad - usamos httpOnly cookies
+    // Las cookies se manejan automáticamente por el navegador
   }
 
   // ── Gestión del estado ────────────────────────────────────────────────────
@@ -176,6 +216,7 @@ export class AuthService {
       this.token = null;
       this.refreshToken = null;
       this.user = null;
+      this.clearUserCache(); // Limpiar cache local
       this.notifyListeners();
     }
   }
@@ -208,19 +249,48 @@ export class AuthService {
   }
 
   private async fetchCurrentUser(): Promise<void> {
-    const response = await fetch(`${API_BASE}/auth/me`, {
+    let response = await fetch(`${API_BASE}/auth/me`, {
       credentials: 'include',  // Importante: incluir cookies httpOnly
     });
+
+    // La cookie de acceso dura 15 minutos; la de refresco, 7 días. Al volver a la app después de
+    // ese plazo se renueva una sola vez con la cookie de refresco antes de dar la sesión por cerrada.
+    if (response.status === 401 && (await this.refreshCookieSession())) {
+      response = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+    }
 
     if (!response.ok) {
       throw new Error('Error al obtener usuario');
     }
 
     this.user = await response.json();
+    // Guardar en cache local si el usuario existe
+    if (this.user) {
+      this.saveUserToCache(this.user);
+    }
+  }
+
+  /** Renueva la cookie de acceso con la cookie httpOnly de refresco (sin tokens en JavaScript). */
+  private async refreshCookieSession(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: 'from_cookie' }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   async getCurrentUser(): Promise<User | null> {
-    if (this.user) return this.user;
+    // Retornar usuario en cache si existe y no ha expirado
+    if (this.user && this.userCacheExpiry > Date.now()) {
+      return this.user;
+    }
+
     // OAuth usa cookies httpOnly: restaurar el usuario sin exigir un token JS.
     try {
       await this.fetchCurrentUser();
@@ -229,6 +299,7 @@ export class AuthService {
     } catch {
       this.token = null;
       this.user = null;
+      this.clearUserCache();
       return null;
     }
 
@@ -257,23 +328,9 @@ export class AuthService {
         throw new Error('Sesión expirada');
       }
       // Intentar refrescar token usando cookies
-      try {
-        const refreshResponse = await fetch(`${API_BASE}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: 'from_cookie' }),
-        });
-        
-        if (refreshResponse.ok) {
-          // Reintentar la solicitud
-          return this.authenticatedRequest<T>(endpoint, options, false);
-        }
-      } catch {
-        await this.logout();
-        throw new Error('Sesión expirada');
+      if (await this.refreshCookieSession()) {
+        // Reintentar la solicitud
+        return this.authenticatedRequest<T>(endpoint, options, false);
       }
       await this.logout();
       throw new Error('Sesión expirada');

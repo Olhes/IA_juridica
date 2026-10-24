@@ -218,9 +218,10 @@ async def test_query_and_stream_return_same_validated_content(pipeline):
         request=request, payload=payload, principal=owner
     )
     events = [json.loads(chunk) async for chunk in stream.body_iterator]
+    final = next(event for event in events if event["type"] == "final")
     assert (
         normal["response"]
-        == events[-1]["data"]["response"]
+        == final["data"]["response"]
         == {"respuesta_espanol": "VALIDATED"}
     )
     assert "UNVALIDATED" not in str(events)

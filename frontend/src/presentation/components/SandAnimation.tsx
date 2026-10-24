@@ -33,20 +33,20 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       startText: "IA jurídica",
       hiddenText: "Bienvenido a IA Jurídica",
 
-      releaseTestsPerFrame: 1200, // Aumentado para liberar más partículas por frame (más rápido)
-      releaseChance: 0.025, // Aumentado para mayor probabilidad de liberación (más rápido)
+      releaseTestsPerFrame: 1800, // Aumentado para más velocidad
+      releaseChance: 0.035, // Aumentado para más velocidad
 
-      gravity: 600, // Reducido para caída más lenta
-      airDrag: 0.985, // Aumentado para más resistencia (más lento)
+      gravity: 800, // Aumentado para caída más rápida
+      airDrag: 0.98, // Reducido para menos resistencia (más rápido)
 
-      settleStepsPerFrame: 5, // Aumentado para física más rápida
+      settleStepsPerFrame: 7, // Aumentado para física más rápida
 
-      pileHoldSeconds: 1.0, // Reducido para carga más rápida
-      hiddenFadeInSeconds: 0.4, // Reducido para fade in más rápido
-      reformDurationSeconds: 1.8, // Reducido para reformar más rápido
-      reformStaggerSeconds: 0.6, // Reducido para stagger más rápido
-      revealHoldSeconds: 1.5, // Reducido para mantener el texto menos tiempo
-      revealFadeSeconds: 0.6, // Reducido para fade out más rápido
+      pileHoldSeconds: 0.7, // Reducido para más velocidad
+      hiddenFadeInSeconds: 0.3, // Reducido para más velocidad
+      reformDurationSeconds: 1.2, // Reducido para más velocidad
+      reformStaggerSeconds: 0.4, // Reducido para más velocidad
+      revealHoldSeconds: 1.0, // Reducido para más velocidad
+      revealFadeSeconds: 0.4, // Reducido para más velocidad
 
       reformArrivalDistance: 1.5
     };
@@ -64,7 +64,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
 
     let hiddenAlpha = 0;
     let cycleCount = 0;
-    const maxCycles = 1; // Solo un ciclo antes de completar
+    const maxCycles = 1; // Un ciclo (velocidad normal)
 
     let phase = "codepen"; // Empezar con letras formadas (flujo original)
     let phaseTime = 0;

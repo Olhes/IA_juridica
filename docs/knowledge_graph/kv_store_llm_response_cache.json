@@ -15308,5 +15308,245 @@
     "create_time": 1783976955,
     "update_time": 1783976955,
     "_id": "default:summary:8a4d0a8ce55ab0c2b1090629884112ff"
+  },
+  "mix:keywords:47dcbeac803e265d3ccb6133a3420355": {
+    "return": "{\"high_level_keywords\": [\"pension\", \"food\", \"tenancies\", \"guide\"], \"low_level_keywords\": [\"sonre\", \"pension\", \"alimentos\", \"tenencias\", \"trame\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Dime sonre la pension de alimentos y tenencias, una guia para ese tramite",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792805011,
+    "update_time": 1792805011,
+    "_id": "mix:keywords:47dcbeac803e265d3ccb6133a3420355"
+  },
+  "mix:keywords:cdb0dc950197ee57e8fda399f03b497d": {
+    "return": "{\"high_level_keywords\": [\"violencia\", \"tratamiento\"], \"low_level_keywords\": [\"casos\", \"pension de alimentos\", \"tenencias\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "expliame casos de violencia y como tratarlos\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806614,
+    "update_time": 1792806614,
+    "_id": "mix:keywords:cdb0dc950197ee57e8fda399f03b497d"
+  },
+  "mix:keywords:0ba2e65b56eee067876508e5824dc331": {
+    "return": "{\"high_level_keywords\": [\"visitation rights\", \"child custody\", \"parenting plan\"], \"low_level_keywords\": [\"visitation schedule\", \"parenting time\", \"child custody arrangement\", \"court order\", \"legal process\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué es el régimen de visitas y cómo funciona?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806682,
+    "update_time": 1792806682,
+    "_id": "mix:keywords:0ba2e65b56eee067876508e5824dc331"
+  },
+  "mix:keywords:96012576503dc8ade854de7669383499": {
+    "return": "{\"high_level_keywords\": [\"tenencia\", \"regimen de visitas\", \"pension de alimentos\", \"casos de violencia\"], \"low_level_keywords\": [\"hijos\", \"tiempo\", \"pension\", \"alimentos\", \"visitas\", \"violencia\", \"tratamiento\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Tenencia: ¿Cuáles son los tipos de tenencia de hijos según el tiempo?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos\n¿Qué es el régimen de visitas y cómo funciona?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806731,
+    "update_time": 1792806731,
+    "_id": "mix:keywords:96012576503dc8ade854de7669383499"
+  },
+  "mix:keywords:3f74fd6696fa2e978b853177f947ba4d": {
+    "return": "{\"high_level_keywords\": [\"visitation rights\", \"parenting plan\", \"child custody\"], \"low_level_keywords\": [\"visitation\", \"visitation rights\", \"parent\", \"compliance\", \"regime\", \"pension\", \"food support\", \"tenancies\", \"violence\", \"cases\", \"treatment\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué pasa si el padre no cumple con el régimen de visitas?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos\n¿Qué es el régimen de visitas y cómo funciona?\nTenencia: ¿Cuáles son los tipos de tenencia de hijos según el tiempo?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806791,
+    "update_time": 1792806791,
+    "_id": "mix:keywords:3f74fd6696fa2e978b853177f947ba4d"
+  },
+  "mix:keywords:cb0a251c999799c1a972e7a00e784f57": {
+    "return": "{\"high_level_keywords\": [\"pension\", \"calculation\", \"food\"], \"low_level_keywords\": [\"Per\\u00fa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo se calcula la pensión de alimentos en Perú?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792807787,
+    "update_time": 1792807787,
+    "_id": "mix:keywords:cb0a251c999799c1a972e7a00e784f57"
+  },
+  "mix:keywords:277a7bb8b9e418de47e8ec216b90409e": {
+    "return": "{\"high_level_keywords\": [\"Per\\u00fa\", \"pension\", \"food\"], \"low_level_keywords\": [\"Imaynatataq\", \"wawa\", \"uyway\", \"yupasqa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynatataq Perú suyupi wawa uyway yupasqa?\nContexto de preguntas anteriores:\n¿Cómo se calcula la pensión de alimentos en Perú?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792807913,
+    "update_time": 1792807913,
+    "_id": "mix:keywords:277a7bb8b9e418de47e8ec216b90409e"
+  },
+  "mix:keywords:32802ec069f79de80ecb476391ea1213": {
+    "return": "{\"high_level_keywords\": [\"Peru\", \"language\", \"indigenous\"], \"low_level_keywords\": [\"Imaynatataq\", \"wawa\", \"uyway\", \"yupasqa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynatataq Perú suyupi wawa uyway yupasqa?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792809104,
+    "update_time": 1792809104,
+    "_id": "mix:keywords:32802ec069f79de80ecb476391ea1213"
+  },
+  "mix:keywords:32bbfd6a94beb081ec91fde2db4a4e18": {
+    "return": "{\"high_level_keywords\": [\"language\", \"question\"], \"low_level_keywords\": [\"Imataq\", \"wasipi\", \"maqanakuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq wasipi maqanakuy?\nContexto de preguntas anteriores:\n¿Imaynatataq Perú suyupi wawa uyway yupasqa?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792810154,
+    "update_time": 1792810154,
+    "_id": "mix:keywords:32bbfd6a94beb081ec91fde2db4a4e18"
+  },
+  "mix:keywords:38c4cc3ef30a8d7189b2e78c5e210fcf": {
+    "return": "{\"high_level_keywords\": [\"question\", \"inquiry\"], \"low_level_keywords\": [\"Imataq\", \"wasipi\", \"maqanakuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq wasipi maqanakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792810687,
+    "update_time": 1792810687,
+    "_id": "mix:keywords:38c4cc3ef30a8d7189b2e78c5e210fcf"
+  },
+  "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9": {
+    "return": "{\"high_level_keywords\": [\"law\", \"Peru\"], \"low_level_keywords\": [\"30364\", \"Imaynatataq\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq Ley 30364?\nContexto de preguntas anteriores:\n¿Imaynatataq Perú suyupi wawa uyway yupasqa?\n¿Imataq wasipi maqanakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850068,
+    "update_time": 1792850068,
+    "_id": "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9"
+  },
+  "mix:keywords:f131457183e9bfebf10aa12d046066f3": {
+    "return": "{\"high_level_keywords\": [\"law\", \"regulation\"], \"low_level_keywords\": [\"Ley 30364\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué es la Ley 30364?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850945,
+    "update_time": 1792850945,
+    "_id": "mix:keywords:f131457183e9bfebf10aa12d046066f3"
   }
 }

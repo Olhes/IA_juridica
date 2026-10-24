@@ -1,0 +1,2 @@
+# Los streams se comparan byte a byte (BOM, CRLF, truncados): git no debe normalizar sus saltos de línea.
+* -text

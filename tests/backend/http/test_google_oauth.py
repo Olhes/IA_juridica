@@ -323,3 +323,37 @@ def test_google_session_can_read_profile_and_logout(google_oauth):
     assert not oauth.client.cookies
     assert oauth.client.get("/auth/me").status_code == 401
     assert len(oauth.requests) == 2
+
+
+async def test_google_refresh_token_renews_the_access_session(monkeypatch):
+    """Los tokens de Google llevan `email`/`user_id` (sin `sub`): el refresco debe aceptarlos."""
+    from modules.auth.services import auth_service
+
+    class FakeDatabase:
+        def __init__(self):
+            self.closed = False
+
+        async def initialize(self):
+            return None
+
+        async def get_user_by_email(self, email):
+            if email != "persona@example.test":
+                return None
+            return {"id": "user-1", "email": email, "username": "persona", "role": "admin", "is_active": True}
+
+        async def get_user_roles(self, user_id):
+            return [{"name": "admin"}]
+
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(auth_service, "PostgreSQLAdapter", FakeDatabase)
+    service = auth_service.AuthService()
+    refresh = security.AuthService().create_refresh_token({"user_id": "user-1", "email": "persona@example.test"})
+    access = await service.refresh_access_token(refresh)
+    payload = security.AuthService().decode_token(access)
+    assert (payload["type"], payload["user_id"], payload["roles"]) == ("access", "user-1", ["admin"])
+    assert service.db.closed
+    with pytest.raises(HTTPException) as denied:  # un token de acceso no sirve como token de refresco
+        await service.refresh_access_token(access)
+    assert denied.value.status_code == 401

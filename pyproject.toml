@@ -32,6 +32,7 @@ dependencies = [
   "rich>=14.3.2,<16",
   "click>=8.3.3,<9",
   "googletrans==4.0.2",
+  "deep-translator>=1.11.0",
   "neo4j==6.4.0",
   "email-validator==2.3.0",
   "pyjwt==2.15.1",

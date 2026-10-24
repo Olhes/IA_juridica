@@ -5,10 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// ragas 0.4.3 importa un módulo que langchain-community retiró en 0.4.
+export const RAGAS_OVERLAY = ['--with', 'ragas==0.4.3', '--with', 'langchain-community<0.4'];
 
 export function testPlan(mode, extra = []) {
   const real = extra.includes('--run-model-evals');
-  if (['quality', 'e2e-real'].includes(mode) && !real) {
+  if (['quality', 'e2e-real', 'harness-real'].includes(mode) && !real) {
     throw new Error('Confirma red/coste con --run-model-evals. No se inició ninguna prueba real.');
   }
   if (['frontend', 'frontend-coverage', 'e2e', 'e2e-real'].includes(mode)) {
@@ -24,6 +26,24 @@ export function testPlan(mode, extra = []) {
         ...(mode === 'frontend-coverage' ? ['--coverage'] : []), ...extra.filter(arg => arg !== '--run-model-evals')],
       env: { RUN_MODEL_EVALS: '0' } }];
   }
+  if (mode === 'harness-real') {
+    // Evaluación real del harness: temperatura 0, sin caché de respuestas y N=3 muestras (EVAL_MODE=1).
+    // RAGAS solo se instala para esta corrida (capa temporal de uv), sin tocar uv.lock ni producción.
+    const suites = [['legal_qa', 'gold jurídico con juez DeepEval + RAGAS', ['--judge', 'deepeval']],
+      ['retrieval', 'recuperación', []], ['translation', 'traducción es→qu', []], ['stream', 'stream NDJSON', []]];
+    return suites.map(([suite, label, flags]) => ({ name: `Harness / ${label} (red/coste)`,
+      command: process.platform === 'win32' ? 'uv.exe' : 'uv',
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', ...RAGAS_OVERLAY, 'python', '-m', 'evaluation.harness.runner',
+        suite, ...flags, ...extra],
+      env: { EVAL_MODE: '1', PYTHONPATH: 'backend', DEEPEVAL_TELEMETRY_OPT_OUT: 'YES' } }));
+  }
+  if (mode === 'harness-compare') {
+    // Compara los resultados del harness de dos commits (`--base <ref> --head <ref>`); offline salvo --run-model-evals.
+    return [{ name: 'Harness / comparación entre commits', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
+      args: ['run', '--frozen', '--extra', 'dev', '--inexact', ...(real ? RAGAS_OVERLAY : []), 'python', '-m',
+        'evaluation.harness.compare', ...extra],
+      env: { PYTHONPATH: 'backend' } }];
+  }
   const flags = {
     python: [],
     backend: ['tests/backend'],
@@ -32,6 +52,7 @@ export function testPlan(mode, extra = []) {
     coverage: ['--cov', '--cov-report=term-missing', '--cov-report=xml:coverage.xml',
       '--junitxml=temp/sonar-reports/pytest.xml', '-o', 'junit_family=legacy'],
     all: [],
+    harness: ['tests/backend/harness'],
     quality: ['tests/backend/quality', '-m', 'model_quality', '--run-model-evals'],
     'quality-offline': ['tests/backend/quality', '-m', 'quality'],
   };

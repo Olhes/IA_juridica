@@ -265,6 +265,43 @@ export class ApiService {
       body: JSON.stringify({ query, language }),
     });
   }
+
+  // ── Subir y consultar documento (nuevo) ─────────────────────────────────────
+  async queryDocument(
+    file: File,
+    query: string,
+    language: string = 'spanish'
+  ): Promise<ApiResponse<{
+    success: boolean;
+    query: string;
+    response: string;
+    language: string;
+    document_type: string;
+    original_filename: string;
+  }>> {
+    await this.initializeSession();
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('query', query);
+    formData.append('language', language);
+
+    const url = `${this.baseUrl}/query-document`;
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData?.detail || errorData?.error || `HTTP ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  }
 }
 
 // Exportar instancia singleton

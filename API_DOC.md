@@ -15,6 +15,12 @@ La documentación interactiva está deshabilitada por defecto en producción.
 | `POST /session/bootstrap` | Público, limitado por IP | Cookie de principal anónimo firmada; `principal_id`, `expires_at` |
 | `POST /legal-query` | Principal anónimo | Respuesta JSON validada |
 | `POST /legal-query-stream` | Principal anónimo | Respuesta final transportada por NDJSON |
+| `POST /telemetry/stream` | Público, limitado por IP | Telemetría numérica del cliente (sin texto); 204 |
+| `GET /telemetry/stream/summary` | Admin | p50/p95 por etapa, resultados y líneas inválidas |
+| `POST /feedback` | Principal anónimo, limitado | 👍/👎 con motivo; el texto solo con `share_text` y 👎 |
+| `GET /feedback/queue`, `POST /feedback/queue/{item_id}/decision` | Admin (clave o rol `admin`) | Cola de candidatos al gold: aceptar o descartar |
+| `GET /quality/published` | Público | Métricas publicadas (agregados, sin texto de consultas) |
+| `GET /quality/admin/overview` | Admin (clave o rol `admin`) | Regresiones entre commits, colas de revisión, feedback y latencia |
 | `POST /generate-pdf-report` | Principal anónimo | PDF de consulta/respuesta suministradas por cliente |
 | `/chat/*` | Principal anónimo, excepto health | Conversaciones, mensajes y caché del propietario |
 | `POST /upload-pdf`, `POST /batch-process` | Admin | Ingesta documental |
@@ -52,21 +58,90 @@ no asumas siempre una única clave. Traducción quechua incompleta/no disponible
 conserva texto y advertencias. `validation.is_reliable` no certifica verdad jurídica.
 Sin documentos recuperados: abstención, sin fuentes y sin fiabilidad positiva.
 
-## NDJSON: validación antes de entrega
+`metadata` también incluye, para que la interfaz explique la respuesta sin inventar nada:
 
-`POST /legal-query-stream` acepta el mismo payload. La recuperación, generación,
-validación y persistencia ocurren **antes** de comenzar el stream. El contrato
-actual emite dos líneas, no token-streaming provisional:
+| Campo | Contenido |
+|---|---|
+| `evidence_status` | `retrieved` o `insufficient_evidence` (abstención) |
+| `citations` | `[{key, text, status, source, excerpt}]`: cada norma citada (Ley, artículo, Casación, D.S.) y si aparece (`verified`) o no (`unverified`) en las fuentes recuperadas; `excerpt` es texto del corpus, nunca del modelo |
+| `evidence` | `[{source, relevance, excerpt}]`: fuentes recuperadas con un extracto de hasta 240 caracteres |
+| `timings` | `total_ms`, `stages` y `cache_hit` (ver NDJSON) |
+| `translation` | Solo con `language=quechua`: `success`, `complete`, `warning`, `review_required` (siempre `true`), `fallback_to_spanish`, `quality` (`alta` \| `media` \| `baja`), `reasons` y `basis` |
+
+El aviso de revisión de la traducción **no** va pegado al texto: vive solo en `metadata.translation.warning`.
+Con `fallback_to_spanish=true` la respuesta conserva el español. `quality` es una estimación automática sin
+referencia (idioma del resultado, texto sin traducir, referencias legales conservadas y longitud); `alta` no
+significa que un hablante nativo la haya revisado.
+
+Que una cita sea `verified` solo significa que aparece en el texto recuperado: no acredita
+vigencia ni que la norma diga lo que la respuesta le atribuye.
+
+## NDJSON v1: etapas en vivo, texto solo validado
+
+`POST /legal-query-stream` acepta el mismo payload. La autorización (401) y la
+conversación ajena o inexistente (404) se resuelven **antes** de abrir el stream;
+el resto del pipeline corre mientras el stream ya está abierto. Cada línea es un
+evento `{v, seq, request_id, type, ...}` (`v` = 1, `seq` consecutivo desde 0,
+`request_id` = cabecera `X-Request-ID`):
 
 ```json
-{"type":"chunk","delta":"Contenido final validado"}
-{"type":"final","data":{"success":true,"response":{"respuesta_espanol":"Contenido final validado"}}}
+{"v":1,"seq":0,"request_id":"3f1c…","type":"meta","data":{"language":"spanish"}}
+{"v":1,"seq":1,"request_id":"3f1c…","type":"stage","stage":"retrieval","status":"start"}
+{"v":1,"seq":2,"request_id":"3f1c…","type":"stage","stage":"retrieval","status":"end","elapsed_ms":412.5}
+{"v":1,"seq":7,"request_id":"3f1c…","type":"chunk","delta":"Contenido final validado"}
+{"v":1,"seq":8,"request_id":"3f1c…","type":"final","data":{"success":true,"metadata":{"timings":{"total_ms":2310.4,"stages":{"retrieval":412.5},"cache_hit":false}}}}
+{"v":1,"seq":9,"request_id":"3f1c…","type":"done"}
 ```
 
-El ejemplo `final` está abreviado; el real incluye los campos comunes. Se envían
+Etapas (`stage`): `translate_in`, `retrieval`, `generation`, `validation` y
+`translate_out`; solo aparecen las que se ejecutan. El texto (`chunk`) se envía
+únicamente cuando ya está validado: nunca hay borradores. Un fallo posterior a
+la apertura emite un único `error` y luego `done`, sin `final`:
+
+```json
+{"v":1,"seq":3,"request_id":"3f1c…","type":"error","code":"RETRIEVAL_UNAVAILABLE","message":"Legal retrieval unavailable","retryable":true}
+```
+
+`code` es uno de `RETRIEVAL_UNAVAILABLE`, `GENERATION_UNAVAILABLE`,
+`TRANSLATION_UNAVAILABLE`, `TIMEOUT` (`STREAM_PIPELINE_TIMEOUT_SECONDS`, 120 s por
+defecto) o `INTERNAL_ERROR` (no reintentable). El mensaje es fijo: nunca repite
+la consulta ni el texto de una excepción. `final.data.metadata.timings` lleva
+`total_ms`, `stages` (milisegundos por etapa) y `cache_hit`; los tiempos no se
+guardan en la caché de respuestas.
+
+`StreamGuard` verifica todo lo que sale: esquema, `seq` consecutivo, un único terminal seguido de un único
+`done`, y que el `chunk` coincida con el texto del `final`. Si el origen se queda mudo más de
+`STREAM_IDLE_TIMEOUT_SECONDS` (135 s por defecto) emite `error` `TIMEOUT`; ante cualquier violación el
+cliente recibe `INTERNAL_ERROR` en lugar de datos dudosos y se registra solo el tipo de violación.
+
+El cliente debe tolerar BOM, CRLF y líneas partidas, descartar o reparar líneas inválidas contándolas,
+deduplicar por `seq` y, si falta el `final`, usar el `chunk` avisando de que la respuesta es parcial
+(`frontend/src/application/legal/stream/ndjsonParser.ts`). Al terminar envía, con `navigator.sendBeacon`, una
+telemetría de **solo números** y el `request_id` a `POST /telemetry/stream` (cuerpo JSON de hasta 4 KB, sin
+campos extra; límite `TELEMETRY_RATE_LIMIT`, 120/minuto): resultado, `ttfb_ms`, `total_ms`, `stage_ms` y
+contadores de líneas válidas/inválidas/reparadas/duplicadas. Nunca texto de consultas ni de respuestas.
+`GET /telemetry/stream/summary` (admin) agrega los últimos 2000 streams en memoria.
+
+El contrato se define en `backend/models/stream_events.py` y se exporta a
+`backend/contracts/stream_event.v1.schema.json` y a
+`frontend/src/domain/legal/streamEvents.generated.ts`. Se envían
 `Content-Type: application/x-ndjson`, `Cache-Control: no-cache, no-transform`
 y `X-Accel-Buffering: no`. El cliente debe gestionar líneas partidas entre lecturas,
 UTF-8 incremental, cancelación y errores HTTP antes del primer evento.
+
+## Feedback y calidad
+
+`POST /feedback` recibe `{request_id, rating: up|down, reason?, comment?, conversation_id?, language,
+evidence_status?, translation_quality?, share_text}`. Un 👎 exige `reason` (`incorrecta`, `incompleta`, `sin_fuentes`,
+`mala_traduccion`, `confusa`, `otro`) y un 👍 no lleva motivo. Se guardan solo etiquetas, números y un hash del
+propietario; la consulta y la respuesta se guardan **únicamente** con 👎 y `share_text=true` (el servidor las lee de una
+conversación del propio propietario) y entran a la cola de candidatos, pendiente de revisión humana. Un candidato
+aceptado no se agrega al gold: se exporta como esqueleto para que abogados redacten los hechos y citas. Un voto por
+persona y petición (el último prevalece). Límite `FEEDBACK_RATE_LIMIT` (30/hora). `FEEDBACK_DIR` define dónde se guarda.
+
+`GET /quality/published` devuelve `docs/quality/published.json`: solo se publica lo medido con un sistema real; las
+líneas base sintéticas figuran como «no medido». Las vistas de administración aceptan `X-API-Key` o una sesión de
+persona con el rol `admin` (la clave nunca va al navegador). Límite `QUALITY_RATE_LIMIT` (60/minuto).
 
 ## Chat persistente
 

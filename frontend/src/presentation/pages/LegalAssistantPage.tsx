@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useTheme } from 'next-themes';
+import { useTheme } from '../components/ThemeProvider';
 import { useEffect, useState } from 'react';
 import { ChevronDown, Compass, FileCheck2, Heart, MessageSquare, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
 import type { SupportedLanguage } from '../../domain/legal/types';
@@ -14,7 +14,7 @@ export function LegalAssistantPage() {
   const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('spanish');
   const [mounted, setMounted] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
@@ -32,7 +32,7 @@ export function LegalAssistantPage() {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   };
 
-  const isDark = resolvedTheme === 'dark';
+  const isDark = theme === 'dark';
   const t = homeTranslations[currentLanguage];
 
   const landing = {
@@ -175,7 +175,7 @@ export function LegalAssistantPage() {
 
             <button
               type="button"
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              onClick={toggleTheme}
               aria-label={copy.darkLabel}
               className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-600 dark:text-slate-300 transition-all duration-200"
             >

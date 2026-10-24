@@ -46,7 +46,7 @@ def pytest_collection_modifyitems(config, items):
         if getattr(item, "path", None) is None:
             continue
         parts = Path(item.path).relative_to(config.rootpath / "tests").parts
-        if len(parts) > 1 and parts[1] in {"unit", "integration", "security", "http", "contract", "bdd", "benchmark"}:
+        if len(parts) > 1 and parts[1] in {"unit", "integration", "security", "http", "contract", "bdd", "benchmark", "harness"}:
             item.add_marker(getattr(pytest.mark, parts[1]))
     live = [item for item in items if item.get_closest_marker("model_quality")]
     if not config.getoption("--run-model-evals"):
