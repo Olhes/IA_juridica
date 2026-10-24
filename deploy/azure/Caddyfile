@@ -1,0 +1,13 @@
+{
+	# El tráfico llega vía el rewrite de Vercel; conservar X-Forwarded-For para que
+	# el backend vea la IP del usuario. Es spoofeable por quien llame directo a la
+	# API: aceptable para la demo (solo afecta al rate limit por IP).
+	servers {
+		trusted_proxies static 0.0.0.0/0 ::/0
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+{$API_DOMAIN} {
+	reverse_proxy backend:8000
+}

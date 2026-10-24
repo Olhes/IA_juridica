@@ -416,7 +416,7 @@ export function ChatPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:8000/auth/google';
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/auth/google`;
   };
 
   const showLandingScreen = showLanding && messages.length === 0;

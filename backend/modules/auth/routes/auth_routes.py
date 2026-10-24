@@ -39,7 +39,7 @@ async def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # False en desarrollo para HTTP
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=900,  # 15 minutos
         path="/",
@@ -49,7 +49,7 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=604800,  # 7 días
         path="/",
@@ -79,7 +79,7 @@ async def refresh_token(request: Request, response: Response):
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=900,  # 15 minutos
     )
@@ -327,7 +327,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,  # False en desarrollo para HTTP
+            secure=settings.session_cookie_secure(),
             samesite="lax",
             max_age=900,  # 15 minutos
             path="/",
@@ -337,7 +337,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,
+            secure=settings.session_cookie_secure(),
             samesite="lax",
             max_age=604800,  # 7 días
             path="/",

@@ -1,0 +1,24 @@
+name: Deploy backend (Azure VM)
+
+on:
+  push:
+    branches: [v8]
+    paths-ignore:
+      - "frontend/**"
+      - "**/*.md"
+      - "pitch/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Runner self-hosted instalado en la VM (label azure-vm).
+    runs-on: [self-hosted, azure-vm]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build y up
+        run: bash deploy/azure/deploy.sh

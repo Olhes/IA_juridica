@@ -1,0 +1,97 @@
+# Stack de producción para la VM de Azure (backend + Postgres + Redis + Caddy).
+# El frontend vive en Vercel y llega aquí vía rewrite (/api/* -> API_DOMAIN).
+#
+# Secretos fuera del repo (los crea deploy/azure/bootstrap-secrets.sh):
+#   /etc/ia-juridica/compose.env  -> API_DOMAIN, POSTGRES_PASSWORD, REDIS_PASSWORD
+#   /etc/ia-juridica/backend.env  -> variables del backend
+#
+# Uso: bash deploy/azure/deploy.sh
+name: iajuridica
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: juridica_db
+      POSTGRES_USER: juridica_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Solo se ejecutan sobre un volumen vacío (primer arranque).
+      - ../../backend/database/init_multi_schema.sql:/docker-entrypoint-initdb.d/01_init_multi_schema.sql:ro
+      - ../../backend/database/migrations/001_add_auth_roles_permissions.sql:/docker-entrypoint-initdb.d/02_auth_roles_permissions.sql:ro
+      - ../../backend/database/migrations/002_add_picture_column.sql:/docker-entrypoint-initdb.d/03_picture_column.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U juridica_user -d juridica_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?falta REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile.production
+    image: ia-juridica-backend:latest
+    restart: unless-stopped
+    env_file:
+      - /etc/ia-juridica/backend.env
+    # --proxy-headers: la IP real del cliente llega en X-Forwarded-For (Vercel -> Caddy),
+    # necesaria para que el rate limit no sea global. El puerto 8000 no se publica:
+    # solo Caddy puede hablar con el backend.
+    command:
+      - /app/.venv/bin/uvicorn
+      - main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --workers=1
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    volumes:
+      # KNOWLEDGE_GRAPH_DIR=../docs/knowledge_graph desde /app/backend. Se monta docs/
+      # entero porque el arranque crea ../docs/{raw_pdfs,processed,failed}.
+      - ../../docs:/app/docs
+      - /srv/ia-juridica/data:/app/backend/data
+      - /srv/ia-juridica/logs:/app/backend/logs
+      - /srv/ia-juridica/temp:/app/backend/temp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?falta API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

@@ -94,7 +94,7 @@ export function ChatHeader({
       logout();
     } else {
       // Iniciar Google OAuth en popup para evitar recarga completa
-      const authUrl = 'http://localhost:8000/auth/google';
+      const authUrl = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/auth/google`;
       const width = 500;
       const height = 600;
       const left = window.screenX + (window.outerWidth - width) / 2;
