@@ -1,0 +1,2 @@
+{"type":"chunk","delta":"Respuesta final validada ñ 🦙"}
+{"type":"final","data":{"success":true,"query":"Consulta sintética","language":"spanish","cached":false,"response":{"respuesta_espanol":"Respuesta final validada ñ 🦙","respuesta_quechua":"Kutichiy"},"sources":["fuente.md"],"validation":{"status":"passed","is_reliable":true},"metadata":{"evidence_status":"retrieved","timings":{"total_ms":321.5,"stages":{"retrieval":100.0,"generation":150.0,"validation":40.0},"cache_hit":false}}}}

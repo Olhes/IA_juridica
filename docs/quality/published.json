@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "status": "preliminar",
+  "generated_at": "2026-10-23T20:36:37.709994+00:00",
+  "sha": "90c52df587e83e56f72a709b786c6253d53a5df7",
+  "dirty": false,
+  "prompt_digest": "547e841a790381844e569f8187272c15bbb8584ad5dc8136e03ae6a6b39494f1",
+  "corpus_revision": "1cd3571035cf2504",
+  "notices": [
+    "Medición preliminar: los casos del gold son candidatos extraídos del corpus y aún no los revisaron abogados ni, en la traducción, hablantes nativos.",
+    "Las métricas describen el corpus y los casos medidos; no certifican verdad jurídica ni sustituyen asesoría profesional.",
+    "Un valor «no medido» significa que falta una evaluación real autorizada; no es un resultado."
+  ],
+  "suites": {
+    "legal_qa": {
+      "measured": false,
+      "reason": "Aún no se ejecutó esta evaluación."
+    },
+    "retrieval": {
+      "measured": false,
+      "reason": "Aún no se ejecutó esta evaluación."
+    },
+    "translation": {
+      "measured": true,
+      "answer_source": "cassette",
+      "created_at": "2026-10-23T20:36:35.895196+00:00",
+      "system": "google_translate",
+      "n_scored": 319,
+      "gold": {
+        "total": 319,
+        "status": {
+          "candidate": 319
+        },
+        "kind": {
+          "article": 34,
+          "sentence": 227,
+          "term": 24,
+          "title": 34
+        },
+        "variant": {
+          "chanka": 120,
+          "cusco-collao": 131,
+          "sureno-sin-confirmar": 68
+        },
+        "adjudicated": 0
+      },
+      "metrics": {
+        "chrf++": {
+          "macro": 0.24491750801913395,
+          "micro": 0.24491750801913395,
+          "n": 319
+        },
+        "bleu": {
+          "macro": 0.07752379522294853,
+          "micro": 0.07752379522294853,
+          "n": 319
+        },
+        "ter": {
+          "macro": 1.3279564877251178,
+          "micro": 1.3279564877251178,
+          "n": 319
+        },
+        "glossary": {
+          "macro": 0.5,
+          "micro": 0.5,
+          "n": 10
+        },
+        "references": {
+          "macro": 1.0,
+          "micro": 1.0,
+          "n": 10
+        },
+        "language_ok": {
+          "macro": 0.1755485893416928,
+          "micro": 0.1755485893416928,
+          "n": 319
+        }
+      },
+      "corpus": {
+        "chrf++": 16.913822395895608,
+        "bleu": 2.769178073090935,
+        "n": 319
+      }
+    },
+    "stream": {
+      "measured": false,
+      "reason": "Aún no se ejecutó esta evaluación."
+    }
+  }
+}

@@ -144,8 +144,16 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX_REQUESTS: int = 100
     RATE_LIMIT_STORAGE_URI: str = "memory://"
     LLM_RATE_LIMIT: str = "10/minute"
+    STREAM_PIPELINE_TIMEOUT_SECONDS: float = float(os.getenv("STREAM_PIPELINE_TIMEOUT_SECONDS", "120"))
+    # Red de seguridad del watchdog de StreamGuard: debe superar al plazo del pipeline.
+    STREAM_IDLE_TIMEOUT_SECONDS: float = float(os.getenv("STREAM_IDLE_TIMEOUT_SECONDS", "135"))
     CONVERSATION_CREATE_RATE_LIMIT: str = "20/hour"
     ADMIN_RATE_LIMIT: str = "5/hour"
+    TELEMETRY_RATE_LIMIT: str = "120/minute"
+    FEEDBACK_RATE_LIMIT: str = "30/hour"
+    QUALITY_RATE_LIMIT: str = "60/minute"
+    # Cola de feedback (JSON local). Con disco efímero se pierde al reiniciar.
+    FEEDBACK_DIR: str = os.getenv("FEEDBACK_DIR", "./data/feedback")
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS

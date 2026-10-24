@@ -1,4 +1,23 @@
+import type { ErrorEvent, StageEvent } from './streamEvents.generated';
+
 export type SupportedLanguage = 'spanish' | 'quechua';
+
+/** Etapas del pipeline (contrato NDJSON v1). */
+export type PipelineStage = StageEvent['stage'];
+/** Códigos de error del stream (contrato NDJSON v1). */
+export type StreamErrorCode = ErrorEvent['code'];
+
+export interface StreamErrorInfo {
+  code: StreamErrorCode;
+  retryable: boolean;
+}
+
+/** Tiempos por etapa que entrega el backend en `metadata.timings`. Solo números. */
+export interface ResponseTimings {
+  total_ms: number;
+  stages: Partial<Record<PipelineStage, number>>;
+  cache_hit: boolean;
+}
 
 export type LegalTopic =
   | 'violencia_familiar'
@@ -61,6 +80,46 @@ export interface CrossCheckSummary {
   supporting_chunks: string[];
 }
 
+/** Cita legal verificada contra las fuentes recuperadas (`metadata.citations`). */
+export interface CitationCheck {
+  key: string;
+  /** Texto tal como lo citó la respuesta. */
+  text: string;
+  status: 'verified' | 'unverified';
+  source: string | null;
+  /** Extracto del corpus donde aparece la cita; nunca texto del modelo. */
+  excerpt: string | null;
+}
+
+/** Fuente recuperada con su relevancia y un extracto del corpus (`metadata.evidence`). */
+export interface EvidenceItem {
+  source: string;
+  relevance: number | null;
+  excerpt: string;
+  /** Camino de recuperación: grafo de conocimiento (LightRAG) o búsqueda léxica local. */
+  origin?: 'lightrag' | 'lexical';
+  /** Casaciones citadas en el fragmento; vacío si no es jurisprudencia. */
+  jurisprudence?: string[];
+}
+
+export type EvidenceStatus = 'retrieved' | 'insufficient_evidence';
+
+export type TranslationQuality = 'alta' | 'media' | 'baja';
+
+/** Estado de la traducción al quechua (`metadata.translation`). El aviso vive aquí, no en el texto. */
+export interface TranslationInfo {
+  success: boolean | null;
+  complete: boolean | null;
+  warning: string;
+  review_required: boolean;
+  /** `true` si no se pudo traducir y se muestra el español original. */
+  fallback_to_spanish?: boolean;
+  /** Estimación automática sin referencia; no sustituye la revisión de un hablante nativo. */
+  quality?: TranslationQuality;
+  reasons?: string[];
+  basis?: string;
+}
+
 export interface ValidationReport {
   status: ValidationStatus;
   confidence: ConfidenceLevel;
@@ -74,6 +133,8 @@ export interface ValidationReport {
   warnings: string[];
   processing_time_ms: number;
   validated_at: string;
+  /** El pipeline lo considera fiable: hubo evidencia y el validador la aprobó. No certifica verdad jurídica. */
+  is_reliable?: boolean;
 }
 
 export interface LegalQueryApiResponse {
@@ -85,6 +146,11 @@ export interface LegalQueryApiResponse {
   sources: string[];
   validation: ValidationReport;
   metadata: {
+    timings?: ResponseTimings;
+    evidence_status?: EvidenceStatus;
+    citations?: CitationCheck[];
+    translation?: TranslationInfo | null;
+    evidence?: EvidenceItem[];
     rerank_scores: number[];
     retrieval_method: string;
     total_candidates: number;
@@ -107,6 +173,16 @@ export interface ChatMessage {
   apiResponse?: LegalQueryApiResponse;
   isStreaming?: boolean;
   isLoadingFull?: boolean;
+  /** Etapa del pipeline en curso mientras llega la respuesta. */
+  stage?: PipelineStage;
+  /** Etapas ya terminadas, en orden de llegada. */
+  completedStages?: PipelineStage[];
+  /** Identificador de la petición (`request_id` del stream); permite calificar la respuesta. */
+  requestId?: string;
+  /** El servidor no envió el `final` (validación y fuentes): el texto es el del chunk. */
+  degraded?: boolean;
+  /** Error del stream con código; la UI lo traduce y ofrece reintentar. */
+  errorInfo?: StreamErrorInfo;
   timestamp: Date;
   error?: string;
   language?: SupportedLanguage;

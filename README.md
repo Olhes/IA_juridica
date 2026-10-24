@@ -151,3 +151,4 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 | Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
 | Consultar antecedentes, no capacidades actuales | [Migración Cohere](CHANGELOG_MIGRACION_COHERE.md), [auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
 | Revisar propuestas aún no implementadas        | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md)               |
+| Seguir el plan del harness de evaluación        | [Plan del harness](docs/HARNESS-IMPLEMENTATION-PLAN.md)                                                   |

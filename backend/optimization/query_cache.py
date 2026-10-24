@@ -9,16 +9,8 @@ from config.settings import settings
 PIPELINE_VERSION = "legal-answer-v2"
 
 
-def answer_cache_key(
-    query,
-    language,
-    owner_id,
-    context=None,
-    history=None,
-    conversation_id=None,
-    corpus_revision=None,
-    mode="query",
-):
+def pipeline_digest():
+    """SHA-256 del código que define prompts y pipeline; cambia al editar cualquiera."""
     root = Path(__file__).resolve().parents[1]
     directories = (
         "services",
@@ -31,9 +23,20 @@ def answer_cache_key(
     prompt_files = sorted(
         p for directory in directories for p in (root / directory).rglob("*.py")
     )
-    pipeline = hashlib.sha256(
-        b"".join(p.read_bytes() for p in prompt_files)
-    ).hexdigest()
+    return hashlib.sha256(b"".join(p.read_bytes() for p in prompt_files)).hexdigest()
+
+
+def answer_cache_key(
+    query,
+    language,
+    owner_id,
+    context=None,
+    history=None,
+    conversation_id=None,
+    corpus_revision=None,
+    mode="query",
+):
+    pipeline = pipeline_digest()
     identity = {
         "pipeline": PIPELINE_VERSION,
         "prompt_digest": pipeline,

@@ -2,11 +2,30 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, Bot, User, Sparkles, FileText, Image as ImageIcon, X as XIcon } from 'lucide-react';
+import type { FeedbackPayload } from '../../domain/legal/quality';
+import type {
+  LegalQueryApiResponse,
+  PipelineStage,
+  ResponseTimings,
+  StreamErrorInfo,
+  SupportedLanguage,
+} from '../../domain/legal/types';
+import { AssistantEvidence } from './chat/EvidencePanels';
+import { FeedbackBar } from './chat/FeedbackBar';
+import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 
-interface TerminalMessage {
+export interface TerminalMessage {
   id: string;
   content: string;
   isUser: boolean;
+  isStreaming?: boolean;
+  degraded?: boolean;
+  stage?: PipelineStage;
+  completedStages?: PipelineStage[];
+  errorInfo?: StreamErrorInfo;
+  timings?: ResponseTimings;
+  apiResponse?: LegalQueryApiResponse;
+  requestId?: string;
 }
 
 interface TerminalModalProps {
@@ -15,6 +34,10 @@ interface TerminalModalProps {
   onSend: (message: string) => void;
   messages: TerminalMessage[];
   isLoading?: boolean;
+  language?: SupportedLanguage;
+  onRetry?: (messageId: string) => void;
+  /** Envía 👍/👎 de una respuesta; si falta, no se muestra la barra de opinión. */
+  onFeedback?: (payload: Omit<FeedbackPayload, 'conversation_id' | 'language'>) => Promise<{ ok: boolean; queued: boolean }>;
   returnFocusRef?: React.RefObject<HTMLButtonElement | null>;
   attachedFile?: File | null;
   onRemoveAttachment?: () => void;
@@ -26,6 +49,9 @@ export function TerminalModal({
   onSend,
   messages,
   isLoading = false,
+  language = 'spanish',
+  onRetry,
+  onFeedback,
   returnFocusRef,
   attachedFile,
   onRemoveAttachment,
@@ -100,7 +126,10 @@ export function TerminalModal({
                   Online
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">Modelo neural de consulta de leyes y regulaciones</p>
+              <p className="text-xs text-zinc-400">
+                Modelo neural de consulta de leyes y regulaciones ·{' '}
+                <a href="/calidad" className="underline hover:text-zinc-200">{language === 'quechua' ? 'Allin kayninta qhaway' : 'Ver calidad del sistema'}</a>
+              </p>
             </div>
           </div>
 
@@ -151,7 +180,33 @@ export function TerminalModal({
                     : 'bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {(msg.content || msg.isUser) && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
+                  <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
+                ) : null}
+                {!msg.isUser && msg.degraded && <DegradedNotice language={language} />}
+                {!msg.isUser && msg.errorInfo && (
+                  <StreamErrorCard
+                    language={language}
+                    error={msg.errorInfo}
+                    onRetry={onRetry ? () => onRetry(msg.id) : undefined}
+                  />
+                )}
+                {!msg.isUser && msg.apiResponse && !msg.isStreaming && (
+                  <AssistantEvidence language={language} apiResponse={msg.apiResponse} />
+                )}
+                {!msg.isUser && msg.apiResponse && msg.requestId && !msg.isStreaming && onFeedback && (
+                  <FeedbackBar
+                    language={language}
+                    requestId={msg.requestId}
+                    context={{
+                      evidence_status: msg.apiResponse.metadata?.evidence_status,
+                      translation_quality: msg.apiResponse.metadata?.translation?.quality,
+                    }}
+                    onSubmit={(rating) => onFeedback({ request_id: msg.requestId as string, ...rating })}
+                  />
+                )}
+                {!msg.isUser && msg.timings && <ResponseTiming language={language} timings={msg.timings} />}
               </div>
             </div>
           ))}

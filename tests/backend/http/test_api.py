@@ -131,19 +131,21 @@ def test_cached_stream_emits_chunk_then_final_without_external_calls(api, monkey
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/x-ndjson")
     events = [json.loads(line) for line in response.text.splitlines()]
-    assert events == [
-        {"type": "chunk", "delta": "Artículo local"},
-        {
-            "type": "final",
-            "data": {
-                "success": True,
-                "query": "licencia",
-                "language": "spanish",
-                "cached": True,
-                "response": {"respuesta_espanol": "Artículo local"},
-                "sources": ["licencia.md"],
-                "validation": {"is_reliable": True},
-            },
-        },
-    ]
+    assert [e["type"] for e in events] == ["meta", "chunk", "final", "done"]
+    assert [e["seq"] for e in events] == [0, 1, 2, 3]
+    assert {e["v"] for e in events} == {1}
+    assert len({e["request_id"] for e in events}) == 1
+    assert events[1]["delta"] == "Artículo local"
+    final = events[2]["data"]
+    assert final["metadata"]["timings"]["cache_hit"] is True
+    del final["metadata"]
+    assert final == {
+        "success": True,
+        "query": "licencia",
+        "language": "spanish",
+        "cached": True,
+        "response": {"respuesta_espanol": "Artículo local"},
+        "sources": ["licencia.md"],
+        "validation": {"is_reliable": True},
+    }
     main.app.state.rag_engine.query_with_rerank.assert_not_awaited()
