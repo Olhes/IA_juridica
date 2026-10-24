@@ -154,7 +154,8 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       const maskCanvas = document.createElement("canvas");
       const maskCtx = maskCanvas.getContext("2d");
 
-      if (!maskCtx) return;
+      // Contenedor sin tamaño (aún sin layout u oculto): getImageData lanza con 0.
+      if (!maskCtx || w <= 0 || h <= 0) return;
 
       maskCanvas.width = w;
       maskCanvas.height = h;
