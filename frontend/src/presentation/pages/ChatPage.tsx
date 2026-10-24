@@ -15,6 +15,7 @@ import { SandAnimation } from '../components/SandAnimation';
 import { FloatingRadialHub } from '../components/FloatingRadialHub';
 import { TerminalModal, type TerminalMessage } from '../components/TerminalModal';
 import { HistoryPanel } from '../components/HistoryPanel';
+import { useSpeechToText } from '../../application/legal/use-cases/useSpeech';
 
 const LANGUAGE_KEY = 'preferredLanguage';
 const ANIMATION_COMPLETE_KEY = 'animationComplete';
@@ -74,10 +75,16 @@ export function ChatPage() {
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [voiceInput, setVoiceInput] = useState('');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Voice-to-text hook (solo español)
+  const { supported: voiceSupported, listening: voiceListening, start: voiceStart, stop: voiceStop } = useSpeechToText(
+    (spoken) => setVoiceInput((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, 800)),
+  );
 
   useEffect(() => {
     const saved = localStorage.getItem(LANGUAGE_KEY);
@@ -347,6 +354,12 @@ export function ChatPage() {
       setAuthModalOpen(true);
       return;
     }
+    if (language !== 'spanish') {
+      alert('Voz solo disponible en español');
+      return;
+    }
+    if (voiceListening) voiceStop();
+    else voiceStart();
   };
 
   const handleFileUpload = () => {
@@ -540,6 +553,8 @@ export function ChatPage() {
         onFeedback={(payload) =>
           sendFeedback({ ...payload, language, conversation_id: activeSessionId ?? undefined })
         }
+        voiceInput={voiceInput}
+        onVoiceInputChange={setVoiceInput}
       />
 
       {/* Historial */}

@@ -15548,5 +15548,25 @@
     "create_time": 1792850945,
     "update_time": 1792850945,
     "_id": "mix:keywords:f131457183e9bfebf10aa12d046066f3"
+  },
+  "mix:keywords:c31a463f9cbc3a38e6336d7f361cda67": {
+    "return": "{\"high_level_keywords\": [\"violence\", \"family\"], \"low_level_keywords\": [\"familiar\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Hola, me gustaría saber sobre violencia familiar.",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792854965,
+    "update_time": 1792854965,
+    "_id": "mix:keywords:c31a463f9cbc3a38e6336d7f361cda67"
   }
 }
