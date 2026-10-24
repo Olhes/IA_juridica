@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from utils.console import configure_console_output
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent  # Subir a la raíz del proyecto
 configure_console_output()
 load_dotenv(BASE_DIR / ".env")
 
@@ -59,7 +60,7 @@ from database.postgres_adapter_final import DatabaseUnavailableError
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-DOCS_DIR = BASE_DIR / "docs"
+DOCS_DIR = PROJECT_ROOT / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"

@@ -77,11 +77,11 @@ class Settings(BaseSettings):
     RERANK_CANDIDATES: int = 50
     
     # Configuración de Documentos
-    DOCS_ROOT_DIR: str = "./docs"
-    RAW_PDF_DIR: str = "./docs/raw_pdfs"
-    PROCESSED_DIR: str = "./docs/processed"
-    KNOWLEDGE_GRAPH_DIR: str = "./docs/knowledge_graph"
-    FAILED_DIR: str = "./docs/failed"
+    DOCS_ROOT_DIR: str = "../docs"
+    RAW_PDF_DIR: str = "../docs/raw_pdfs"
+    PROCESSED_DIR: str = "../docs/processed"
+    KNOWLEDGE_GRAPH_DIR: str = "../docs/knowledge_graph"
+    FAILED_DIR: str = "../docs/failed"
     
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
