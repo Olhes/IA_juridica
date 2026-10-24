@@ -8,6 +8,7 @@ import { useChatSessions } from '../../application/legal/use-cases/useChatSessio
 import { useAuth } from '../components/AuthProvider';
 import { sendFeedback } from '../../application/legal/services/qualityService';
 import { AuthModal } from '../components/AuthModal';
+import { openGoogleLoginPopup } from '../components/googleLoginPopup';
 import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatSidebar, SidebarToggleButton } from '../components/sidebar/ChatSidebar';
@@ -431,8 +432,13 @@ export function ChatPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/auth/google`;
+    openGoogleLoginPopup();
   };
+
+  // Login completado en el popup: cerrar el modal en esta misma pestaña.
+  useEffect(() => {
+    if (isAuthenticated) setAuthModalOpen(false);
+  }, [isAuthenticated]);
 
   const showLandingScreen = showLanding && messages.length === 0;
   const showAnimation = showLandingScreen && !animationComplete;

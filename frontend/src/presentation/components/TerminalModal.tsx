@@ -12,6 +12,7 @@ import type {
 } from '../../domain/legal/types';
 import { AssistantEvidence } from './chat/EvidencePanels';
 import { FeedbackBar } from './chat/FeedbackBar';
+import { MarkdownRenderer } from './chat/MarkdownRenderer';
 import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 import { useTextToSpeech, useQuechuaTextToSpeech } from '../../application/legal/use-cases/useSpeech';
 
@@ -45,6 +46,30 @@ interface TerminalModalProps {
   voiceInput?: string;
   onVoiceInputChange?: (text: string) => void;
   autoPlayTTS?: boolean;
+}
+
+// Texto sin marcas de Markdown para la voz (si no, lee "asterisco", "almohadilla"…).
+function toSpeechText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/(\*\*|__|\*|_|`)/g, '')
+    .replace(/\n{2,}/g, '. ')
+    .trim();
+}
+
+// Barras de onda animadas mientras se reproduce la voz (keyframes `eq-bar` en globals.css).
+function AudioWave({ className = '' }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={`inline-flex h-4 items-center gap-[3px] ${className}`}>
+      {[0, 0.15, 0.3, 0.45, 0.6].map((delay) => (
+        <span key={delay} className="eq-bar" style={{ animationDelay: `${delay}s` }} />
+      ))}
+    </span>
+  );
 }
 
 export function TerminalModal({
@@ -114,9 +139,9 @@ export function TerminalModal({
         lastPlayedMessageId.current = lastMessage.id;
         // Use Quechua TTS if language is quechua, otherwise Spanish TTS
         if (language === 'quechua') {
-          speakQuechua(lastMessage.content);
+          speakQuechua(toSpeechText(lastMessage.content));
         } else {
-          speakSpanish(lastMessage.content);
+          speakSpanish(toSpeechText(lastMessage.content));
         }
       }
     }
@@ -187,15 +212,23 @@ export function TerminalModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {ttsSpeaking && (
-              <button
-                onClick={stopTTS}
-                className="w-11 h-11 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                aria-label="Detener voz"
-                title="Detener voz"
-              >
-                <VolumeX className="w-5 h-5" />
-              </button>
+            {(ttsSpeaking || quechuaLoading) && (
+              <div className="flex items-center gap-2 rounded-full bg-indigo-50 pl-4 pr-1 py-1 text-indigo-700">
+                <AudioWave />
+                <span role="status" className="hidden sm:inline text-sm font-extrabold">
+                  {quechuaLoading && !ttsSpeaking
+                    ? (language === 'quechua' ? 'Rimayta ruraspa…' : 'Preparando audio…')
+                    : (language === 'quechua' ? 'Uyarichkan' : 'Escuchando respuesta')}
+                </span>
+                <button
+                  onClick={stopTTS}
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-white text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  aria-label="Detener voz"
+                  title="Detener voz"
+                >
+                  <VolumeX className="w-4 h-4" />
+                </button>
+              </div>
             )}
             <button
               onClick={onClose}
@@ -247,7 +280,15 @@ export function TerminalModal({
                     : 'min-w-0 flex-1 bg-white text-[#26162F] border border-slate-200 rounded-[6px_20px_20px_20px]'
                 }`}
               >
-                {(msg.content || msg.isUser) && <p className="whitespace-pre-wrap text-left text-[16px] leading-[1.7]">{msg.content}</p>}
+                {!msg.isUser && msg.id === lastPlayedMessageId.current && (ttsSpeaking || quechuaLoading) && (
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-extrabold text-indigo-700">
+                    <AudioWave className="h-3.5" />
+                    {quechuaLoading && !ttsSpeaking ? 'Preparando audio…' : 'Reproduciendo'}
+                  </div>
+                )}
+                {msg.isUser
+                  ? <p className="whitespace-pre-wrap text-left text-[16px] leading-[1.7]">{msg.content}</p>
+                  : msg.content && <MarkdownRenderer content={msg.content} isStreaming={msg.isStreaming} />}
                 {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
                   <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
                 ) : null}

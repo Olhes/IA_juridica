@@ -118,3 +118,49 @@ input:focus-visible {
     font-weight: 700;
   }
 }
+
+/* ── Listas de las respuestas (MarkdownRenderer, diseño A) ──────
+   Viñeta: rombo dorado. Numerada: casilla magenta con el número. */
+.md-list { counter-reset: md-item; }
+.md-list > li { counter-increment: md-item; }
+.md-bullet {
+  flex: none;
+  margin-top: 0.55em;
+  width: 9px;
+  height: 9px;
+  background: #F2A93B;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+ol.md-list > li > .md-bullet {
+  margin-top: 0;
+  width: 26px;
+  height: 26px;
+  transform: none;
+  border-radius: 8px;
+  background: #B8285F;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 26px;
+  text-align: center;
+}
+ol.md-list > li > .md-bullet::before { content: counter(md-item); }
+
+/* ── Ondas de audio mientras se reproduce la respuesta ─────────── */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+.eq-bar {
+  display: inline-block;
+  width: 3px;
+  height: 100%;
+  border-radius: 9999px;
+  background: currentColor;
+  transform-origin: center;
+  animation: eq-bar 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq-bar { animation: none; transform: scaleY(0.6); }
+}

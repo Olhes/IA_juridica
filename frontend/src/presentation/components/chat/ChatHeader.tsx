@@ -17,6 +17,7 @@ import { useTheme } from '../ThemeProvider';
 import { useEffect, useState } from 'react';
 import type { SupportedLanguage } from '../../../domain/legal/types';
 import { useAuth } from '../AuthProvider';
+import { openGoogleLoginPopup } from '../googleLoginPopup';
 
 interface ChatHeaderProps {
   currentLanguage: SupportedLanguage;
@@ -94,27 +95,8 @@ export function ChatHeader({
     if (isAuthenticated) {
       logout();
     } else {
-      // Iniciar Google OAuth en popup para evitar recarga completa
-      const authUrl = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/auth/google`;
-      const width = 500;
-      const height = 600;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const popup = window.open(
-        authUrl,
-        'google-auth',
-        `width=${width},height=${height},left=${left},top=${top},resizable,scrollbars=yes,status=1`
-      );
-
-      // Verificar si el popup se cerró (login completado o cancelado)
-      const checkPopup = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(checkPopup);
-          // Recargar usuario después de cerrar el popup
-          window.location.reload();
-        }
-      }, 1000);
+      // Google OAuth en popup; la sesión se abre en esta pestaña sin recargar.
+      openGoogleLoginPopup();
     }
   };
 
