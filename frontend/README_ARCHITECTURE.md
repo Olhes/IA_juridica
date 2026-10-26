@@ -1,7 +1,9 @@
 # Frontend — arquitectura activa de v8
 
-Actualización: **2026-10-06**. Next **16.3.8**, React **19.3.0**, Node **24**,
+Base: **2026-10-06**; seguridad: **2026-10-26**. Next **16.4.3**, React **19.3.0**, Node **24.22.1**,
 pnpm **10.30.2**; consulta `package.json`/`pnpm-lock.yaml` para el resto del stack.
+
+Ambos proyectos exigen Node `>=24.22.1 <25` y rechazan instalaciones incompatibles.
 
 ## Flujo principal
 

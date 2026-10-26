@@ -417,25 +417,25 @@ Ejecutados desde `D:\Web\IA_juridica`; ejemplos sin secretos:
 
 ```powershell
 # Ambas suites con el mismo entorno; salida de cobertura conservada fuera de la aplicación.
-rtk proxy uv run --no-sync --with pytest-cov python -X utf8 -m pytest `
+uv run --no-sync --with pytest-cov python -X utf8 -m pytest `
   -c pytest.ini tests --import-mode=importlib -q -ra `
   -p no:cacheprovider --basetemp=temp/audit-2026-10-01/pytest-coverage `
   --cov=backend --cov-report=xml:temp/audit-2026-10-01/coverage.xml `
   --cov-report=json:temp/audit-2026-10-01/coverage.json --cov-report=term
 
-rtk proxy pnpm --dir frontend exec tsc --noEmit --incremental false
-rtk proxy pnpm --dir frontend build
-rtk proxy pnpm --dir frontend lint
-rtk proxy pnpm run test:dev-full
-rtk proxy uv tool run ruff check backend tests --output-format=json
-rtk proxy uv tool run bandit -r backend -x backend/docs -f json
-rtk proxy uv tool run pip-audit --path .venv/Lib/site-packages --format json
-rtk proxy pnpm --dir frontend audit --json
-rtk proxy uv tool run radon cc backend -j
+pnpm --dir frontend exec tsc --noEmit --incremental false
+pnpm --dir frontend build
+pnpm --dir frontend lint
+pnpm run test:dev-full
+uv tool run ruff check backend tests --output-format=json
+uv tool run bandit -r backend -x backend/docs -f json
+uv tool run pip-audit --path .venv/Lib/site-packages --format json
+pnpm --dir frontend audit --json
+uv tool run radon cc backend -j
 
 # Harnesses offline; sin DB/LLM reales.
-rtk proxy .\.venv\Scripts\python.exe -X utf8 temp/audit-2026-10-01/reproduce_findings.py
-rtk proxy node temp/audit-2026-10-01/reproduce_frontend.mjs
+.\.venv\Scripts\python.exe -X utf8 temp/audit-2026-10-01/reproduce_findings.py
+node temp/audit-2026-10-01/reproduce_frontend.mjs
 ```
 
 Estos comandos son para diagnóstico; la suite todavía falla. **No se debe ignorar un exit code de tests fallidos para dar por aprobada una entrega.** Para incorporar cobertura, corregir primero la configuración de medición/rutas y asegurar XML compatible; luego ejecutar el scanner en la terminal que ya tenga `SONAR_TOKEN`. No copiar tokens a este documento ni al chat.
