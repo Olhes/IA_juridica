@@ -8,24 +8,33 @@ from modules.rag.services.lightrag_engine import LegalRAGEngine
 from utils.file_utils import FileUtils
 from config.settings import settings
 from ingestion.source_evidence import persist_source_evidence
+from ingestion.conversion import convert_for_ingestion
+from ingestion.sat_graph.store import stage_document
 
 
 class LegalIngestionPipeline:
     """Pipeline completo para ingesta de documentos legales"""
 
-    def __init__(self, rag_engine=None, pdf_processor=None, evidence_store_dir=None):
+    def __init__(self, rag_engine=None, pdf_processor=None, evidence_store_dir=None,
+                 legacy_rag_write=None, docs_root=None):
         self.pdf_processor = pdf_processor
         self.rag_engine = rag_engine or LegalRAGEngine()
+        self.legacy_rag_write = (
+            settings.SAT_INGESTION_LEGACY_RAG if legacy_rag_write is None
+            else legacy_rag_write
+        )
         self.file_utils = FileUtils()
 
         # Directorios
-        self.raw_dir = Path("docs/raw_pdfs")
-        self.processed_dir = Path("docs/processed")
-        self.failed_dir = Path("docs/failed")
+        root = Path(docs_root) if docs_root is not None else Path(__file__).resolve().parents[1] / "docs"
+        self.raw_dir = root / "raw_pdfs"
+        self.processed_dir = root / "processed"
+        self.failed_dir = root / "failed"
         self.evidence_store_dir = (
             Path(evidence_store_dir) if evidence_store_dir is not None
-            else Path(__file__).resolve().parents[1] / "docs" / "source_evidence"
+            else root / "source_evidence"
         )
+        self.sat_graph_path = self.evidence_store_dir.parent / "sat_graph.sqlite3"
 
         # Asegurar que existan los directorios
         self._ensure_directories()
@@ -88,7 +97,7 @@ class LegalIngestionPipeline:
                 logger.error(f"❌ Falló: {relative_path} - {str(e)}")
 
         # Actualizar sistema RAG con todos los documentos procesados
-        if results["processed"]:
+        if results["processed"] and self.legacy_rag_write:
             await self.rag_engine.rebuild_index()
 
         summary = {
@@ -124,7 +133,8 @@ class LegalIngestionPipeline:
             if pdf_processor is None:
                 raise RuntimeError("PDF processor no inicializado")
             # Solo este pipeline escribe Markdown, después de la conversión y las comprobaciones de conflictos.
-            markdown_content = await pdf_processor.process_pdf(str(pdf_path), write_output=False)
+            artifact = await convert_for_ingestion(pdf_processor, str(pdf_path))
+            markdown_content = artifact.markdown
 
             # 2. Guardar markdown procesado (mantener estructura de subdirectorios)
             processed_path = (
@@ -143,6 +153,10 @@ class LegalIngestionPipeline:
             evidence = persist_source_evidence(
                 pdf_path, processed_path, markdown_content, self.evidence_store_dir
             )
+            sat_result = await asyncio.to_thread(
+                stage_document, self.sat_graph_path, evidence, markdown_content,
+                artifact.docling_document,
+            )
 
             # 3. Extraer metadatos
             metadata = self._extract_metadata(markdown_content, filename)
@@ -150,11 +164,12 @@ class LegalIngestionPipeline:
             metadata["category"] = str(relative_path.parent)
 
             # 4. Agregar al sistema RAG
-            await self.rag_engine.add_document(
-                content=markdown_content,
-                metadata=metadata,
-                document_id=f"{relative_path.parent}_{filename}",
-            )
+            if self.legacy_rag_write:
+                await self.rag_engine.add_document(
+                    content=markdown_content,
+                    metadata=metadata,
+                    document_id=f"{relative_path.parent}_{filename}",
+                )
 
             # 5. Validar calidad del procesamiento
             validation = self._validate_processing(markdown_content)
@@ -164,7 +179,8 @@ class LegalIngestionPipeline:
                 "category": str(relative_path.parent),
                 "status": "success",
                 "evidence_id": evidence.evidence_id,
-                "graph_write_state": "unverified",
+                "graph_write_state": "unverified" if self.legacy_rag_write else "pending_review",
+                "sat_graph": sat_result,
                 "processed_path": str(processed_path),
                 "metadata": metadata,
                 "validation": validation,

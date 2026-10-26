@@ -1,5 +1,20 @@
 # Implementar recuperación jurídica temporal fundamentada en fuentes
 
+> **Actualización del 10 de octubre de 2026:** búsqueda/historial SAT admin y
+> harness de ablación opt-in Voyage ya están implementados. Consulte
+> [experimentos y límites reales](SAT-GRAPH-EXPERIMENTS.md). PPR/tree son
+> adaptaciones parciales; parser estructural, corpus revisado y migración del chat
+> siguen pendientes. Los experimentos sintéticos no habilitan producción.
+
+> **Actualización del 7 de octubre de 2026:** ya existe un núcleo SQLite SAT
+> aislado, staging común sin LLM, catálogo de 28 recursos y promoción mediante
+> manifiestos revisados (Work/CTV/CLV/Action). Consulte la
+> [guía de ingesta y límites reales](SAT-GRAPH-INGESTION.md). La tabla siguiente
+> describe el diagnóstico previo; LightRAG solo se escribe ahora si se activa
+> `SAT_INGESTION_LEGACY_RAG=true`. El chat sigue legado, no hay corpus aprobado
+> ni transición de producción, y los criterios de páginas/gobernanza/evaluación
+> de este plan siguen pendientes. El núcleo no implementa toda la OpenAPI SAT.
+
 **Resultado:** Responder preguntas jurídicas peruanas para una fecha y un alcance solicitados mediante disposiciones jurídicas citadas y versionadas, o abstenerse cuando la autoridad, vigencia o procedencia no estén resueltas. Construir esta capacidad junto con la ruta RAG existente; no presentar los grafos de entidades actuales como una implementación de SAT-Graph.
 
 ## Alcance y puntos de integración actuales

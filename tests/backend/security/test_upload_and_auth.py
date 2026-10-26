@@ -42,6 +42,9 @@ def test_invalid_upload_is_rejected_and_cleaned(
 
 
 def test_upload_is_confined_and_passes_sanitized_metadata(api, monkeypatch, tmp_path):
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", True)
     client, main, _ = api
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")
@@ -82,6 +85,7 @@ def test_pdf_size_exact_boundary_is_accepted_but_one_byte_more_is_not(
 ):
     from config.settings import settings
 
+    monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", True)
     client, main, _ = api
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")

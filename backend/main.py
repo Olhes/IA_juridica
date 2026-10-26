@@ -36,6 +36,10 @@ from security import (
 )
 from ingestion.pipeline import LegalIngestionPipeline
 from ingestion.source_evidence import persist_source_evidence
+from ingestion.conversion import convert_for_ingestion
+from ingestion.sat_graph.store import SATGraphStore, stage_document
+from retrieval.sat import SATRetriever, SearchPlan
+from retrieval.voyage import VoyageProvider, VoyageError
 from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
@@ -501,6 +505,7 @@ async def upload_pdf(
     raw_path: Optional[Path] = None
     processed_path: Optional[Path] = None
     processed_created = False
+    evidence_published = False
     try:
         original_name = (
             (file.filename or "upload.pdf").replace("\\", "/").rsplit("/", 1)[-1]
@@ -536,9 +541,8 @@ async def upload_pdf(
             raise HTTPException(400, "Empty PDF file")
 
         pdf_processor = _get_pdf_processor(app)
-        processed_content = await pdf_processor.process_pdf(
-            str(raw_path), write_output=False
-        )
+        artifact = await convert_for_ingestion(pdf_processor, str(raw_path))
+        processed_content = artifact.markdown
 
         processed_directory = PROCESSED_DIR.resolve()
         processed_directory.mkdir(parents=True, exist_ok=True)
@@ -554,21 +558,27 @@ async def upload_pdf(
             processed_content,
             PROCESSED_DIR.parent / "source_evidence",
         )
-
-        await app.state.rag_engine.add_document(
-            processed_content,
-            {
-                "filename": server_name,
-                "original_filename": original_name,
-                "title": original_name,
-                "document_type": "legal_pdf",
-                "source": "upload-pdf",
-            },
-            server_name,
+        evidence_published = True
+        sat_result = await asyncio.to_thread(
+            stage_document, PROCESSED_DIR.parent / "sat_graph.sqlite3",
+            evidence, processed_content, artifact.docling_document,
         )
 
+        if settings.SAT_INGESTION_LEGACY_RAG:
+            await app.state.rag_engine.add_document(
+                processed_content,
+                {
+                    "filename": server_name,
+                    "original_filename": original_name,
+                    "title": original_name,
+                    "document_type": "legal_pdf",
+                    "source": "upload-pdf",
+                },
+                server_name,
+            )
+
         # Actualizar el CrossChecker con el nuevo documento [NUEVO]
-        if hasattr(app.state, "response_validator"):
+        if settings.SAT_INGESTION_LEGACY_RAG and hasattr(app.state, "response_validator"):
             app.state.response_validator.cross_checker.update_documents(
                 app.state.rag_engine.documents
             )
@@ -578,19 +588,20 @@ async def upload_pdf(
             "filename": server_name,
             "original_filename": original_name,
             "evidence_id": evidence.evidence_id,
-            "graph_write_state": "unverified",
+            "graph_write_state": "unverified" if settings.SAT_INGESTION_LEGACY_RAG else "pending_review",
+            "sat_graph": sat_result,
             "message": "PDF procesado correctamente con Docling",
         }
     except HTTPException:
-        if raw_path:
+        if raw_path and not evidence_published:
             raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path:
+        if processed_created and processed_path and not evidence_published:
             processed_path.unlink(missing_ok=True)
         raise
     except Exception as error:
-        if raw_path:
+        if raw_path and not evidence_published:
             raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path:
+        if processed_created and processed_path and not evidence_published:
             processed_path.unlink(missing_ok=True)
         _log_failure("pdf_upload_failed", error, request)
         raise HTTPException(500, "PDF processing failed")
@@ -701,13 +712,97 @@ async def generate_pdf_report(
 
 
 @app.get("/knowledge-graph")
-async def get_knowledge_graph(_auth: bool = Depends(verify_admin_api_key)):
+async def get_knowledge_graph(engine: str = "lightrag", _auth: bool = Depends(verify_admin_api_key)):
     try:
+        if engine == "sat":
+            graph_data = await asyncio.to_thread(
+                lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+            )
+            return {"success": True, "graph": graph_data}
+        if engine != "lightrag":
+            raise HTTPException(422, "Unknown graph engine")
         graph_data = await app.state.rag_engine.get_knowledge_graph()
         return {"success": True, "graph": graph_data}
+    except HTTPException:
+        raise
     except Exception as error:
         _log_failure("knowledge_graph_read_failed", error)
         raise HTTPException(500, "Failed to get knowledge graph")
+
+
+@app.get("/sat-graph/resolve")
+async def resolve_sat_version(resource_id: str, component: str, as_of: str,
+                              _auth: bool = Depends(verify_admin_api_key)):
+    """Lectura admin determinística; no cambia el recuperador del chat legado."""
+    try:
+        return await asyncio.to_thread(
+            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").resolve(
+                resource_id, component, as_of
+            )
+        )
+    except ValueError:
+        raise HTTPException(422, "Invalid SAT query")
+    except Exception as error:
+        _log_failure("sat_graph_read_failed", error)
+        raise HTTPException(500, "Failed to read SAT graph")
+
+
+@app.get("/sat-graph/structure")
+async def sat_candidate_structure(evidence_id: str, parse_id: str | None = None,
+                                  _auth: bool = Depends(verify_admin_api_key)):
+    """AST y layout candidatos, solo para revisión administrativa autorizada."""
+    try:
+        return await asyncio.to_thread(
+            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").structure(evidence_id, parse_id)
+        )
+    except ValueError:
+        raise HTTPException(422, "Missing or ambiguous SAT structure; specify a valid parse_id")
+    except Exception as error:
+        _log_failure("sat_structure_read_failed", error)
+        raise HTTPException(500, "Failed to read SAT structure")
+
+
+@app.post("/sat-graph/search")
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool = False,
+                           _auth: bool = Depends(verify_admin_api_key)):
+    """Ruta experimental admin. Egreso Voyage solo con opt-in explícito por consulta."""
+    def retrieve():
+        provider = None
+        if use_voyage:
+            provider = VoyageProvider(
+                settings.VOYAGE_API_KEY.get_secret_value(),
+                PROCESSED_DIR.parent / "voyage_cache.sqlite3",
+                dimension=settings.VOYAGE_DIMENSION,
+                daily_requests=settings.VOYAGE_DAILY_REQUESTS,
+                daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,
+                requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
+                token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
+            )
+        graph = SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+        return SATRetriever(graph).search(plan, provider=provider)
+
+    try:
+        return await asyncio.to_thread(retrieve)
+    except VoyageError:
+        raise HTTPException(503, "Voyage unavailable or local budget exhausted")
+    except ValueError:
+        raise HTTPException(422, "Invalid SAT retrieval parameters")
+    except Exception as error:
+        _log_failure("sat_graph_search_failed", error, request)
+        raise HTTPException(500, "Failed to search SAT graph")
+
+
+@app.get("/sat-graph/history")
+async def sat_graph_history(resource_id: str, component: str,
+                            _auth: bool = Depends(verify_admin_api_key)):
+    try:
+        return await asyncio.to_thread(lambda: SATRetriever(
+            SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+        ).history(resource_id, component))
+    except Exception as error:
+        _log_failure("sat_graph_history_failed", error)
+        raise HTTPException(500, "Failed to read SAT history")
 
 
 @app.post("/evaluate-system")
