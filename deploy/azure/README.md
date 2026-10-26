@@ -2,7 +2,7 @@
 
 ```
 Navegador ──> https://ia-juridica-pe.vercel.app  (Next.js en Vercel)
-                 └─ /api/*  ──rewrite──> https://api.68-211-120-105.sslip.io  (Caddy, HTTPS)
+                 └─ /api/*  ──rewrite──> https://api.68-211-73-117.sslip.io  (Caddy, HTTPS)
                                               └─> backend:8000 (FastAPI, 1 worker)
                                                    ├─ postgres (volumen postgres_data)
                                                    ├─ redis    (volumen redis_data)
@@ -14,14 +14,14 @@ El navegador solo habla con el dominio de Vercel, así que las cookies de sesió
 
 | Qué | Valor |
 |---|---|
-| VM | `azureuser@68.211.120.105` (Ubuntu 22.04, 2 vCPU, 8 GB + 4 GB swap) |
+| VM | `azureuser@68.211.73.117` (Ubuntu 22.04, 2 vCPU, 8 GB + 4 GB swap) |
 | Frontend | https://ia-juridica-pe.vercel.app (proyecto Vercel `bktmtjv-projects/ia-juridica-pe`) |
-| API pública | https://api.68-211-120-105.sslip.io (`/health`, `/ready`) |
+| API pública | https://api.68-211-73-117.sslip.io (`/health`, `/ready`) |
 | Repo en la VM | `/opt/ia-juridica` (rama `v8`) |
 | Secretos | `/etc/ia-juridica/compose.env`, `/etc/ia-juridica/backend.env` (root:docker, 640) |
 | Datos del backend | `/srv/ia-juridica/{data,logs,temp}` |
 
-`sslip.io` resuelve `api.68-211-120-105.sslip.io` a la IP, y Caddy saca el certificado
+`sslip.io` resuelve `api.68-211-73-117.sslip.io` a la IP, y Caddy saca el certificado
 de Let's Encrypt solo. Si cambia la IP pública (no debería: es estática) o usas un
 dominio propio, cambia `API_DOMAIN` en `compose.env` y `BACKEND_URL` en Vercel.
 
@@ -35,7 +35,7 @@ dominio propio, cambia `API_DOMAIN` en `compose.env` y `BACKEND_URL` en Vercel.
    | Nombre | Valor |
    |---|---|
    | `NEXT_PUBLIC_API_URL` | `/api` |
-   | `BACKEND_URL` | `https://api.68-211-120-105.sslip.io` |
+   | `BACKEND_URL` | `https://api.68-211-73-117.sslip.io` |
 
    `NEXT_PUBLIC_API_URL` se incrusta en el build: si la cambias, redeploy.
 4. Deploy. URL de producción: `https://ia-juridica-pe.vercel.app`. Redeploy manual desde `frontend/`:
@@ -43,7 +43,7 @@ dominio propio, cambia `API_DOMAIN` en `compose.env` y `BACKEND_URL` en Vercel.
 5. En la VM, apunta el backend a esa URL:
 
    ```bash
-   ssh -i ~/.ssh/vm-ia-juridica.pem azureuser@68.211.120.105
+   ssh -i ~/.ssh/vm-ia-juridica-2.pem azureuser@68.211.73.117
    cd /opt/ia-juridica
    sudo FRONTEND_URL=https://ia-juridica-pe.vercel.app bash deploy/azure/set-frontend.sh
    ```
