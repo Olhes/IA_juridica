@@ -113,12 +113,12 @@ export function FloatingRadialHub({
 
           {/* --- CÍRCULO BASE ROTATORIO --- */}
           <div
-            className="absolute inset-0 rounded-full bg-slate-900 border-4 border-black shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-transform duration-75"
+            className="absolute inset-0 rounded-full bg-slate-900 border-4 border-slate-950 shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-transform duration-75"
             style={{ transform: `rotate(${rotation}rad)` }}
           >
             {/* Cruz Divisoria Negra en Capa Intermedia */}
-            <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-2.5 bg-black z-20 pointer-events-none shadow-[2px_0_8px_rgba(0,0,0,0.6)]" />
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2.5 bg-black z-20 pointer-events-none shadow-[0_2px_8px_rgba(0,0,0,0.6)]" />
+            <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-2.5 bg-slate-950 z-20 pointer-events-none shadow-[2px_0_8px_rgba(0,0,0,0.6)]" />
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-2.5 bg-slate-950 z-20 pointer-events-none shadow-[0_2px_8px_rgba(0,0,0,0.6)]" />
 
             {/* --- CUADRANTE 1: ARRIBA IZQUIERDA (LÁPIZ) --- */}
             <button
@@ -176,11 +176,11 @@ export function FloatingRadialHub({
               className={`absolute top-0 right-0 w-1/2 h-1/2 rounded-tr-full flex items-center justify-center transition-all duration-300 ease-out group hover:z-30 hover:scale-110 hover:translate-x-1 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.8)] active:scale-95 ${
                 voiceListening
                   ? 'bg-red-600 animate-pulse'
-                  : 'bg-slate-900 hover:bg-slate-800'
+                  : 'bg-amber-400 hover:bg-amber-300'
               }`}
             >
               <div style={{ transform: `rotate(${-rotation}rad)` }} className="transition-transform group-hover:scale-110">
-                <Mic className={`w-8 h-8 stroke-[2.5] ${voiceListening ? 'text-white' : 'text-white'}`} />
+                <Mic className={`w-8 h-8 stroke-[2.5] ${voiceListening ? 'text-white' : 'text-slate-900'}`} />
               </div>
             </button>
 
@@ -222,7 +222,7 @@ export function FloatingRadialHub({
               onFileUpload?.();
               setShowSatellites(false);
             }}
-            className={`absolute top-1/2 left-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-slate-900 border-2 border-black shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex items-center justify-center hover:scale-125 active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-40 ${
+            className={`absolute top-1/2 left-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-slate-900 border-2 border-slate-950 shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex items-center justify-center hover:scale-125 active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-40 ${
               showSatellites 
                 ? 'opacity-100 pointer-events-auto' 
                 : 'opacity-0 pointer-events-none'
@@ -246,7 +246,7 @@ export function FloatingRadialHub({
               onCameraOpen?.();
               setShowSatellites(false);
             }}
-            className={`absolute top-1/2 left-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-slate-900 border-2 border-black shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex items-center justify-center hover:scale-125 active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-40 ${
+            className={`absolute top-1/2 left-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-slate-900 border-2 border-slate-950 shadow-[0_8px_20px_rgba(0,0,0,0.6)] flex items-center justify-center hover:scale-125 active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-40 ${
               showSatellites 
                 ? 'opacity-100 pointer-events-auto' 
                 : 'opacity-0 pointer-events-none'

@@ -14,6 +14,11 @@ import RootLayout, { metadata } from '../../../frontend/app/layout';
 const state = vi.hoisted(() => ({ mounted: false, isAuthenticated: false }));
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
+// next/font lo resuelve el compilador de Next; en Vitest basta con devolver la variable CSS.
+vi.mock('next/font/google', () => ({
+  Bricolage_Grotesque: () => ({ className: 'font-bricolage', variable: '--font-bricolage' }),
+  Nunito_Sans: () => ({ className: 'font-nunito', variable: '--font-nunito' }),
+}));
 vi.mock('../../../frontend/src/presentation/components/AuthProvider', () => ({
   useAuth: () => state, AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));

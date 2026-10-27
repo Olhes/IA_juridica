@@ -13,6 +13,7 @@ export default defineConfig({
       'lucide-react': fileURLToPath(new URL('../../frontend/node_modules/lucide-react/dist/esm/lucide-react.mjs', import.meta.url)),
       'next/link': fileURLToPath(new URL('../../frontend/node_modules/next/link.js', import.meta.url)),
       'next/navigation': fileURLToPath(new URL('../../frontend/node_modules/next/navigation.js', import.meta.url)),
+      'next/font/google': fileURLToPath(new URL('../../frontend/node_modules/next/font/google/index.js', import.meta.url)),
     },
   },
   oxc: { jsx: { runtime: 'automatic' } },

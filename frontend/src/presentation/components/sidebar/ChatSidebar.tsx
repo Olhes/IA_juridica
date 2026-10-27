@@ -102,10 +102,10 @@ function SessionRow({
 
   return (
     <div
-      className={`group relative flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
+      className={`group relative flex items-start gap-2.5 px-3 py-2 rounded-md cursor-pointer transition-colors duration-150 border-l-4 ${
         isActive
-          ? 'bg-indigo-600 text-white shadow-md'
-          : 'hover:bg-slate-100 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-300'
+          ? 'bg-[#33203F] border-amber-400 text-white'
+          : 'border-transparent hover:bg-slate-800 text-slate-100'
       }`}
       onClick={onSelect}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
@@ -114,24 +114,24 @@ function SessionRow({
       tabIndex={0}
     >
       {/* Icon */}
-      <MessagesSquare className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isActive ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`} />
+      <MessagesSquare className={`w-4 h-4 mt-1 flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-300'}`} />
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+        <p className={`text-[15px] truncate ${isActive ? 'font-bold text-white' : 'font-semibold text-slate-100'}`}>
           {session.title}
         </p>
         {session.preview && (
-          <p className={`text-xs truncate mt-0.5 ${isActive ? 'text-indigo-200' : 'text-slate-400 dark:text-slate-500'}`}>
+          <p className="text-xs truncate mt-0.5 text-slate-300">
             {session.preview}
           </p>
         )}
         <div className="flex items-center gap-2 mt-1">
-          <span className={`text-xs ${isActive ? 'text-indigo-300' : 'text-slate-400 dark:text-slate-600'}`}>
+          <span className="text-[13px] text-slate-300">
             {formatDate(session.updatedAt, language)}
           </span>
           {session.messageCount > 0 && (
-            <span className={`text-xs ${isActive ? 'text-indigo-300' : 'text-slate-400 dark:text-slate-600'}`}>
+            <span className="text-[13px] text-slate-300">
               · {t.messages(session.messageCount)}
             </span>
           )}
@@ -150,21 +150,17 @@ function SessionRow({
           id={`session-menu-${session.id}`}
           aria-label={`Opciones de ${session.title}`}
           onClick={() => setMenuOpen((v) => !v)}
-          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
-            isActive
-              ? 'hover:bg-indigo-500 text-indigo-200'
-              : 'hover:bg-slate-200 dark:hover:bg-gray-700 text-slate-400'
-          } ${menuOpen ? 'opacity-100' : ''}`}
+          className={`w-7 h-7 rounded-md flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-slate-700 text-slate-300 ${menuOpen ? 'opacity-100' : ''}`}
         >
           <MoreVertical className="w-3.5 h-3.5" />
         </button>
 
         {/* Dropdown */}
         {menuOpen && (
-          <div className="absolute right-2 top-8 z-50 bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-xl shadow-lg p-1 min-w-[160px]">
+          <div className="absolute right-2 top-8 z-50 bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-1 min-w-[160px]">
             {confirming ? (
               <div className="px-3 py-2">
-                <div className="flex items-center gap-2 mb-2 text-xs text-amber-600 dark:text-amber-400">
+                <div className="flex items-center gap-2 mb-2 text-xs text-amber-400">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   {t.confirmDel}
                 </div>
@@ -172,14 +168,14 @@ function SessionRow({
                   <button
                     type="button"
                     onClick={() => setConfirming(false)}
-                    className="flex-1 text-xs px-2 py-1 rounded-lg border border-slate-200 dark:border-gray-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors"
+                    className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-slate-600 text-slate-100 hover:bg-slate-700 transition-colors"
                   >
                     {t.cancel}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setMenuOpen(false); onDelete(); }}
-                    className="flex-1 text-xs px-2 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
                   >
                     {t.delete}
                   </button>
@@ -189,7 +185,7 @@ function SessionRow({
               <button
                 type="button"
                 onClick={() => setConfirming(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-300 hover:bg-red-950/40 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 {t.delete}
@@ -226,35 +222,47 @@ export function ChatSidebar({
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
+      {/* ── Franja tejida (tocapu) del diseño A ── */}
+      <svg width="100%" height="28" aria-hidden="true" className="block flex-none">
+        <defs>
+          <pattern id="sidebar-tocapu" width="56" height="28" patternUnits="userSpaceOnUse">
+            <rect width="56" height="28" fill="#B8285F" />
+            <rect width="28" height="28" fill="#F2A93B" />
+            <path d="M14 4l10 10-10 10L4 14z" fill="#2B1838" />
+            <path d="M14 9l5 5-5 5-5-5z" fill="#1E9C97" />
+            <rect x="34" y="6" width="16" height="16" fill="none" stroke="#FFF8F0" strokeWidth="2" />
+            <rect x="39" y="11" width="6" height="6" fill="#FFF8F0" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="28" fill="url(#sidebar-tocapu)" />
+      </svg>
+
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 pt-5 pb-4 border-b border-slate-200 dark:border-gray-800">
-        <div className="flex items-center gap-2">
-          <Scale className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{t.title}</span>
+      <div className="flex items-center justify-between px-5 pt-5 pb-2">
+        <div className="flex items-center gap-3">
+          <Scale className="w-7 h-7 text-amber-400" />
+          <span className="font-display text-xl font-extrabold leading-tight text-white">{t.title}</span>
         </div>
         {/* Close button — mobile only */}
         <button
           type="button"
           onClick={onClose}
           aria-label="Cerrar consultas"
-          className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
+          className="lg:hidden w-9 h-9 rounded-md flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* ── Nueva consulta ── */}
-      <div className="px-3 pt-3 pb-2">
+      <div className="px-5 pt-4 pb-4">
         <button
           id="new-session-btn"
           type="button"
           onClick={onNewSession}
-          className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl
-            bg-gradient-to-r from-indigo-600 to-violet-600
-            hover:from-indigo-700 hover:to-violet-700
-            text-white text-sm font-semibold
-            shadow-sm hover:shadow-md
-            transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+          className="w-full min-h-[50px] flex items-center justify-center gap-2 px-4 rounded-xl
+            bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold
+            transition-colors duration-200 active:scale-[0.98]"
         >
           <MessageSquarePlus className="w-4 h-4" />
           {t.newChat}
@@ -262,7 +270,7 @@ export function ChatSidebar({
       </div>
 
       {/* ── Lista de sesiones ── */}
-      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5">
         {loadError && (
           <div role="alert" className="mx-1 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
             <div className="flex items-start gap-2">
@@ -283,9 +291,9 @@ export function ChatSidebar({
         )}
         {sorted.length === 0 && !loadError ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-            <MessagesSquare className="w-10 h-10 text-slate-200 dark:text-gray-700 mb-3" />
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t.noChats}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-600 mt-1">{t.noChatsHint}</p>
+            <MessagesSquare className="w-10 h-10 text-slate-600 mb-3" />
+            <p className="text-sm font-semibold text-slate-100">{t.noChats}</p>
+            <p className="text-xs text-slate-300 mt-1">{t.noChatsHint}</p>
           </div>
         ) : sorted.length > 0 ? (
           sorted.map((session) => (
@@ -306,7 +314,7 @@ export function ChatSidebar({
   return (
     <>
       {/* ── Desktop sidebar (fixed) ── */}
-      <aside className="hidden lg:flex flex-col w-64 xl:w-72 flex-shrink-0 h-screen sticky top-0 border-r border-slate-200 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md overflow-hidden">
+      <aside className="hidden lg:flex flex-col w-64 xl:w-72 flex-shrink-0 h-screen sticky top-0 bg-slate-900 text-slate-100 overflow-hidden">
         {sidebarContent}
       </aside>
 
@@ -324,7 +332,7 @@ export function ChatSidebar({
             tabIndex={-1}
           />
           {/* Drawer */}
-          <aside className="lg:hidden fixed left-0 top-0 h-full w-72 z-50 bg-white dark:bg-gray-900 border-r border-slate-200 dark:border-gray-800 shadow-2xl flex flex-col overflow-hidden animate-slide-in-left">
+          <aside className="lg:hidden fixed left-0 top-0 h-full w-72 z-50 bg-slate-900 text-slate-100 shadow-2xl flex flex-col overflow-hidden animate-slide-in-left">
             {sidebarContent}
           </aside>
         </>

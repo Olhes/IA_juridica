@@ -8,6 +8,7 @@ import { useChatSessions } from '../../application/legal/use-cases/useChatSessio
 import { useAuth } from '../components/AuthProvider';
 import { sendFeedback } from '../../application/legal/services/qualityService';
 import { AuthModal } from '../components/AuthModal';
+import { openGoogleLoginPopup } from '../components/googleLoginPopup';
 import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatSidebar, SidebarToggleButton } from '../components/sidebar/ChatSidebar';
@@ -84,24 +85,26 @@ export function ChatPage() {
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [voiceInput, setVoiceInput] = useState('');
   const [autoPlayTTS, setAutoPlayTTS] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Voice-to-text hook (solo español)
+  // Voice-to-text hook (solo español). Lo dictado se acumula aquí, no en el input:
+  // al terminar la grabación se envía solo y el campo de texto queda vacío.
+  const voiceTextRef = useRef('');
   const { supported: voiceSupported, listening: voiceListening, start: voiceStart, stop: voiceStop } = useSpeechToText(
-    (spoken) => setVoiceInput((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, 800)),
+    (spoken) => {
+      voiceTextRef.current = ((voiceTextRef.current ? voiceTextRef.current + ' ' : '') + spoken).slice(0, 800);
+    },
     () => {
-      // Auto-enviar cuando termina la grabación
-      if (voiceInput.trim()) {
-        const textToSend = voiceInput.trim();
-        setAutoPlayTTS(true);
-        setVoiceInput(''); // Limpiar antes de enviar
-        handleSendTerminalMessage(textToSend);
-      }
+      const textToSend = voiceTextRef.current.trim();
+      voiceTextRef.current = '';
+      if (!textToSend) return;
+      setAutoPlayTTS(true);
+      setTerminalOpen(true);
+      handleSendTerminalMessage(textToSend);
     },
   );
 
@@ -109,6 +112,10 @@ export function ChatPage() {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
 
+    // La intro se muestra en cada visita: animationComplete ya arranca en false.
+    // No volver a ponerlo en false aquí: este efecto corre después del de SandAnimation,
+    // y si la intro termina al instante (reduced motion, sin canvas, ventana sin tamaño)
+    // pisaría ese fin y la página quedaría en blanco para siempre.
   }, []);
 
   useEffect(() => {
@@ -376,6 +383,7 @@ export function ChatPage() {
       alert('Voz solo disponible en español');
       return;
     }
+    voiceTextRef.current = '';
     voiceStart();
   };
 
@@ -439,8 +447,13 @@ export function ChatPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:8000/auth/google';
+    openGoogleLoginPopup();
   };
+
+  // Login completado en el popup: cerrar el modal en esta misma pestaña.
+  useEffect(() => {
+    if (isAuthenticated) setAuthModalOpen(false);
+  }, [isAuthenticated]);
 
   const showLandingScreen = showLanding && messages.length === 0;
   const showAnimation = showLandingScreen && !animationComplete;
@@ -519,13 +532,27 @@ export function ChatPage() {
                   </div>
                 </div>
               ) : showLandingScreen ? (
-                <section className="max-w-3xl w-full p-8 rounded-3xl border border-white/10 bg-slate-900/60 backdrop-blur-xl shadow-2xl">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <section className="max-w-3xl w-full p-8 rounded-3xl border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl overflow-hidden">
+                  {/* Franja tejida (tocapu) del diseño A */}
+                  <svg height="22" aria-hidden="true" className="block w-[calc(100%+4rem)] max-w-none -mx-8 -mt-8 mb-6">
+                    <defs>
+                      <pattern id="hero-tocapu" width="44" height="22" patternUnits="userSpaceOnUse">
+                        <rect width="44" height="22" fill="#B8285F" />
+                        <rect width="22" height="22" fill="#F2A93B" />
+                        <path d="M11 3l8 8-8 8-8-8z" fill="#2B1838" />
+                        <path d="M11 7l4 4-4 4-4-4z" fill="#1E9C97" />
+                        <rect x="27" y="5" width="12" height="12" fill="none" stroke="#FFF8F0" strokeWidth="2" />
+                        <rect x="31" y="9" width="4" height="4" fill="#FFF8F0" />
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="22" fill="url(#hero-tocapu)" />
+                  </svg>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-400 text-slate-900 font-extrabold">
                     <Sparkles className="w-3.5 h-3.5" />
                     {t.badge}
                   </span>
 
-                  <h1 className="mt-4 text-3xl md:text-5xl font-extrabold tracking-tight leading-tight text-white">
+                  <h1 className="mt-4 font-display text-3xl md:text-5xl font-extrabold tracking-tight leading-tight text-white">
                     {t.title}
                   </h1>
                   <p className="mt-4 text-sm md:text-base text-slate-300 leading-relaxed">
@@ -536,7 +563,7 @@ export function ChatPage() {
                     <button
                       type="button"
                       onClick={handleStartChat}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all"
+                      className="inline-flex items-center gap-2 min-h-[50px] px-6 rounded-xl text-base font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-900 transition-colors"
                     >
                       <MessageSquare className="w-4 h-4" />
                       {t.ctaPrimary}
@@ -546,7 +573,7 @@ export function ChatPage() {
               ) : !terminalOpen ? (
                 <button
                   onClick={() => setTerminalOpen(true)}
-                  className="px-6 py-3 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-2xl shadow-xl backdrop-blur-md border border-white/10 flex items-center gap-2 font-medium transition-all hover:scale-105"
+                  className="min-h-[50px] px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xl flex items-center gap-2 font-extrabold transition-colors"
                 >
                   <Sparkles className="w-4 h-4" />
                   Abrir Ventana de Consulta
@@ -586,8 +613,6 @@ export function ChatPage() {
         onFeedback={(payload) =>
           sendFeedback({ ...payload, language, conversation_id: activeSessionId ?? undefined })
         }
-        voiceInput={voiceInput}
-        onVoiceInputChange={setVoiceInput}
         autoPlayTTS={autoPlayTTS}
       />
 

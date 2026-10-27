@@ -1,4 +1,7 @@
 import logging
+import secrets
+
+import bcrypt
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -39,7 +42,7 @@ async def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # False en desarrollo para HTTP
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=900,  # 15 minutos
         path="/",
@@ -49,7 +52,7 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=604800,  # 7 días
         path="/",
@@ -79,7 +82,7 @@ async def refresh_token(request: Request, response: Response):
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
+        secure=settings.session_cookie_secure(),
         samesite="lax",
         max_age=900,  # 15 minutos
     )
@@ -275,10 +278,12 @@ async def google_callback(request: Request, code: str, state: str = None):
             raise HTTPException(status_code=500, detail=f"Error al buscar usuario: {str(e)}")
 
         if not user:
-            # Crear nuevo usuario con Google OAuth (sin contraseña)
-            # Usar un hash precalculado para evitar problemas con bcrypt/passlib
-            # Hash de "google_oauth_temp" con bcrypt
-            temp_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5NU7bXqL0f1eS"
+            # Crear nuevo usuario con Google OAuth (sin contraseña usable).
+            # bcrypt directo (passlib falla con bcrypt>=5) sobre un secreto aleatorio
+            # descartado: nadie puede entrar por /auth/login con esta cuenta.
+            temp_hash = bcrypt.hashpw(
+                secrets.token_urlsafe(32).encode(), bcrypt.gensalt()
+            ).decode()
 
             try:
                 user = await db.create_user(
@@ -327,7 +332,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,  # False en desarrollo para HTTP
+            secure=settings.session_cookie_secure(),
             samesite="lax",
             max_age=900,  # 15 minutos
             path="/",
@@ -337,7 +342,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,
+            secure=settings.session_cookie_secure(),
             samesite="lax",
             max_age=604800,  # 7 días
             path="/",

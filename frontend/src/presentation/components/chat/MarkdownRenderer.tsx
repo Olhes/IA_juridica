@@ -9,61 +9,86 @@ interface MarkdownRendererProps {
   isStreaming?: boolean;
 }
 
+// Rombo tocapu que marca los subtítulos (diseño A).
+function HeadingMark() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" className="flex-none">
+      <path d="M12 2l10 10-10 10L2 12z" fill="#B8285F" />
+      <path d="M12 8l4 4-4 4-4-4z" fill="#F2A93B" />
+    </svg>
+  );
+}
+
 /**
- * Renderizador de Markdown con estilos propios para burbujas del chat.
- * Soporta light y dark mode con variantes dark: de Tailwind.
+ * Renderizador de Markdown para las respuestas del asistente, con la jerarquía
+ * del diseño A (Tocapu): subtítulos en Bricolage con rombo, viñetas en rombo
+ * dorado y listas numeradas en casillas magenta (ver `.md-list` en globals.css).
  */
 export function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
   const components: Components = {
     // ─── Headings ──────────────────────────────────────────────
     h1: ({ children }) => (
-      <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-4 mb-2 pb-1.5 border-b border-slate-200 dark:border-gray-700 first:mt-0">
+      <h1 className="font-display text-2xl font-extrabold leading-tight text-[#26162F] mt-6 mb-3 first:mt-0">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2 first:mt-0">
+      <h2 className="flex items-center gap-2 font-display text-xl font-extrabold leading-snug text-[#26162F] mt-6 mb-2.5 first:mt-0">
+        <HeadingMark />
         {children}
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-3 mb-1.5 first:mt-0">
+      <h3 className="flex items-center gap-2 font-display text-lg font-extrabold leading-snug text-[#26162F] mt-5 mb-2 first:mt-0">
+        <HeadingMark />
         {children}
       </h3>
     ),
     h4: ({ children }) => (
-      <h4 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mt-2 mb-1">
+      <h4 className="text-[13px] font-extrabold uppercase tracking-wider text-indigo-700 mt-4 mb-1.5 first:mt-0">
         {children}
       </h4>
     ),
 
     // ─── Párrafos ──────────────────────────────────────────────
-    p: ({ children }) => (
-      <p className="text-sm md:text-base leading-relaxed text-slate-800 dark:text-slate-200 mb-3 last:mb-0">
-        {children}
-      </p>
-    ),
+    // Un párrafo que solo contiene negrita (`**Título**`) es un subtítulo de la respuesta.
+    p: ({ children, node }) => {
+      const only = node?.children.length === 1 ? node.children[0] : undefined;
+      if (only?.type === 'element' && only.tagName === 'strong') {
+        return (
+          <h3 className="flex items-center gap-2 font-display text-lg font-extrabold leading-snug text-[#26162F] mt-5 mb-2 first:mt-0">
+            <HeadingMark />
+            <span>{children}</span>
+          </h3>
+        );
+      }
+      return (
+        <p className="text-base leading-[1.7] text-[#26162F] mb-3.5 last:mb-0">
+          {children}
+        </p>
+      );
+    },
 
-    // ─── Listas (unordered) ────────────────────────────────────
+    // ─── Listas ────────────────────────────────────────────────
     ul: ({ children }) => (
-      <ul className="my-3 space-y-2 ml-1">{children}</ul>
+      <ul className="md-list my-3 space-y-2">{children}</ul>
     ),
     ol: ({ children }) => (
-      <ol className="my-3 space-y-2 ml-1 list-decimal list-inside">{children}</ol>
+      <ol className="md-list my-3 space-y-2.5">{children}</ol>
     ),
     li: ({ children }) => (
-      <li className="flex items-start gap-2.5 text-sm md:text-base text-slate-800 dark:text-slate-200 leading-relaxed">
-        <span className="flex-shrink-0 mt-2 w-1.5 h-1.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+      <li className="flex items-start gap-3 text-base text-[#26162F] leading-[1.65]">
+        <span className="md-bullet" aria-hidden="true" />
         <span className="flex-1 min-w-0">{children}</span>
       </li>
     ),
 
     // ─── Énfasis ───────────────────────────────────────────────
     strong: ({ children }) => (
-      <strong className="font-semibold text-slate-900 dark:text-slate-100">{children}</strong>
+      <strong className="font-extrabold text-indigo-800">{children}</strong>
     ),
     em: ({ children }) => (
-      <em className="italic text-slate-700 dark:text-slate-300">{children}</em>
+      <em className="italic text-slate-700">{children}</em>
     ),
 
     // ─── Código inline ─────────────────────────────────────────
@@ -71,13 +96,13 @@ export function MarkdownRenderer({ content, isStreaming = false }: MarkdownRende
       const isBlock = className?.startsWith('language-');
       if (isBlock) {
         return (
-          <code className="block w-full font-mono text-xs leading-relaxed text-indigo-200 dark:text-indigo-300">
+          <code className="block w-full font-mono text-xs leading-relaxed text-slate-100">
             {children}
           </code>
         );
       }
       return (
-        <code className="inline-block font-mono text-xs bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded px-1.5 py-0.5 mx-0.5">
+        <code className="inline-block font-mono text-[13px] bg-slate-100 text-indigo-800 rounded-md px-1.5 py-0.5 mx-0.5">
           {children}
         </code>
       );
@@ -85,47 +110,47 @@ export function MarkdownRenderer({ content, isStreaming = false }: MarkdownRende
 
     // ─── Bloque de código ──────────────────────────────────────
     pre: ({ children }) => (
-      <pre className="my-3 p-4 bg-gray-900 dark:bg-gray-950 rounded-xl overflow-x-auto text-xs font-mono text-slate-100 border border-gray-700 dark:border-gray-800">
+      <pre className="my-3 p-4 bg-slate-900 rounded-xl overflow-x-auto text-xs font-mono text-slate-100">
         {children}
       </pre>
     ),
 
-    // ─── Citas ─────────────────────────────────────────────────
+    // ─── Citas: aviso dorado como en el diseño ─────────────────
     blockquote: ({ children }) => (
-      <blockquote className="my-3 pl-4 border-l-4 border-indigo-300 dark:border-indigo-700 bg-indigo-50/60 dark:bg-indigo-950/30 rounded-r-lg py-2 pr-3 text-sm text-indigo-800 dark:text-indigo-300 italic">
+      <blockquote className="my-4 rounded-2xl bg-amber-50 px-4 py-3 text-[15px] text-amber-800 [&_p]:text-amber-800 [&_p]:text-[15px]">
         {children}
       </blockquote>
     ),
 
     // ─── Divider ───────────────────────────────────────────────
-    hr: () => <hr className="my-4 border-slate-200 dark:border-gray-700" />,
+    hr: () => <hr className="my-5 border-0 border-t border-dashed border-slate-300" />,
 
     // ─── Tablas ────────────────────────────────────────────────
     table: ({ children }) => (
-      <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
-        <table className="w-full text-sm border-collapse bg-white dark:bg-gray-900">
+      <div className="my-4 overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="w-full text-sm border-collapse bg-white">
           {children}
         </table>
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="bg-slate-50 dark:bg-gray-800 border-b border-slate-200 dark:border-gray-700">
+      <thead className="bg-slate-100 border-b border-slate-200">
         {children}
       </thead>
     ),
     tbody: ({ children }) => (
-      <tbody className="divide-y divide-slate-100 dark:divide-gray-800">{children}</tbody>
+      <tbody className="divide-y divide-slate-100">{children}</tbody>
     ),
     tr: ({ children }) => (
-      <tr className="hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors">{children}</tr>
+      <tr className="hover:bg-slate-50 transition-colors">{children}</tr>
     ),
     th: ({ children }) => (
-      <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+      <th className="px-4 py-2.5 text-left text-xs font-extrabold text-slate-700 uppercase tracking-wide">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300">{children}</td>
+      <td className="px-4 py-2.5 text-[#26162F]">{children}</td>
     ),
 
     // ─── Links ─────────────────────────────────────────────────
@@ -134,7 +159,7 @@ export function MarkdownRenderer({ content, isStreaming = false }: MarkdownRende
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-indigo-600 dark:text-indigo-400 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+        className="font-bold text-indigo-700 underline underline-offset-2 hover:text-indigo-800 transition-colors"
       >
         {children}
       </a>
@@ -147,7 +172,7 @@ export function MarkdownRenderer({ content, isStreaming = false }: MarkdownRende
         {content}
       </ReactMarkdown>
       {isStreaming && (
-        <span className="inline-block w-0.5 h-4 bg-indigo-500 dark:bg-indigo-400 ml-0.5 align-middle animate-pulse" />
+        <span className="inline-block w-0.5 h-4 bg-indigo-600 ml-0.5 align-middle animate-pulse" />
       )}
     </div>
   );

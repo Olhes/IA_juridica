@@ -1,8 +1,21 @@
 import type { Metadata } from 'next';
+import { Bricolage_Grotesque, Nunito_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { ThemeProvider } from '../src/presentation/components/ThemeProvider';
 import { AuthProvider } from '../src/presentation/components/AuthProvider';
 import './globals.css';
+
+// Tipografías del diseño A, servidas desde el propio dominio (next/font).
+const bricolage = Bricolage_Grotesque({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-bricolage',
+  display: 'swap',
+});
+const nunito = Nunito_Sans({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-nunito',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'IA Jurídica — Asistente Legal Bilingüe',
@@ -15,7 +28,7 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="es" className="h-full dark" suppressHydrationWarning>
+    <html lang="es" className={`${bricolage.variable} ${nunito.variable} h-full dark`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

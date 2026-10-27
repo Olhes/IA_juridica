@@ -11,20 +11,20 @@ export function InsufficientEvidenceCard({ language }: { language: SupportedLang
   return (
     <section
       aria-label={t.title}
-      className="mt-3 rounded-xl border border-amber-900/70 bg-amber-950/30 p-4 text-sm text-amber-100"
+      className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
     >
       <h3 className="flex items-center gap-2 font-semibold">
         <ShieldQuestion className="w-4 h-4" aria-hidden="true" />
         {t.title}
       </h3>
-      <p className="mt-1 text-amber-200/90">{t.body}</p>
-      <h4 className="mt-3 text-xs font-semibold uppercase tracking-wide text-amber-300">{t.resourcesLabel}</h4>
+      <p className="mt-1 text-amber-800">{t.body}</p>
+      <h4 className="mt-3 text-xs font-semibold uppercase tracking-wide text-amber-700">{t.resourcesLabel}</h4>
       <ul className="mt-2 grid gap-2 sm:grid-cols-3">
         {t.resources.map((resource) => (
-          <li key={resource.name} className="rounded-lg border border-amber-900/60 bg-zinc-950/60 p-3">
-            <p className="font-semibold text-amber-100">{resource.name}</p>
-            <p className="text-xs text-amber-200/80">{resource.detail}</p>
-            <p className="mt-1 flex items-center gap-1 font-mono text-xs text-amber-300">
+          <li key={resource.name} className="rounded-lg border border-amber-200 bg-white p-3">
+            <p className="font-semibold text-amber-800">{resource.name}</p>
+            <p className="text-xs text-amber-800">{resource.detail}</p>
+            <p className="mt-1 flex items-center gap-1 font-mono text-xs text-amber-700">
               <Phone className="w-3 h-3" aria-hidden="true" />
               <a href={`tel:${resource.contact}`} className="underline">
                 {resource.contact}
@@ -44,7 +44,7 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
   const t = chatTranslations[language].citations;
   return (
     <section aria-label={t.label} className="mt-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{t.label}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{t.label}</h3>
       <ul className="mt-1 flex flex-wrap gap-2">
         {citations.map((citation) => {
           const verified = citation.status === 'verified';
@@ -59,8 +59,8 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
                   aria-label={`${citation.text}: ${verified ? t.verified : t.unverified}`}
                   className={`inline-flex cursor-pointer list-none items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
                     verified
-                      ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
-                      : 'border-amber-800 bg-amber-950/40 text-amber-300'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-amber-200 bg-amber-50 text-amber-700'
                   }`}
                 >
                   {verified ? (
@@ -71,10 +71,10 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
                   <span aria-hidden="true">{verified ? '✓' : '⚠'}</span>
                   {citation.text}
                 </summary>
-                <p className="mt-1 max-w-md rounded-md bg-zinc-900 p-2 text-xs text-zinc-300">
+                <p className="mt-1 max-w-md rounded-md bg-slate-100 p-2 text-xs text-slate-700">
                   {verified && citation.excerpt ? (
                     <>
-                      <span className="block font-semibold text-zinc-200">{citation.source ? t.excerptFrom(citation.source) : t.verified}</span>
+                      <span className="block font-semibold text-slate-900">{citation.source ? t.excerptFrom(citation.source) : t.verified}</span>
                       “{citation.excerpt}”
                     </>
                   ) : (
@@ -99,11 +99,11 @@ export function TranslationNotice({ language, apiResponse }: { language: Support
   const quality = translation.quality;
   const original = apiResponse.response?.respuesta_espanol;
   const failed = translation.fallback_to_spanish || translation.success === false;
-  const tone = quality === 'alta' ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
-    : quality === 'media' ? 'border-amber-800 bg-amber-950/40 text-amber-300'
-    : 'border-red-900 bg-red-950/40 text-red-300';
+  const tone = quality === 'alta' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : quality === 'media' ? 'border-amber-200 bg-amber-50 text-amber-700'
+    : 'border-red-200 bg-red-50 text-red-700';
   return (
-    <section aria-label={t.reviewNotice} className="mt-3 text-xs text-zinc-300">
+    <section aria-label={t.reviewNotice} className="mt-3 text-xs text-slate-700">
       <div className="flex flex-wrap items-center gap-2">
         {quality && !failed && (
           <span data-quality={quality} title={t.qualityHints[quality]} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium ${tone}`}>
@@ -112,15 +112,15 @@ export function TranslationNotice({ language, apiResponse }: { language: Support
           </span>
         )}
         {original && (
-          <button type="button" aria-expanded={showOriginal} onClick={() => setShowOriginal((v) => !v)} className="rounded-md border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800">
+          <button type="button" aria-expanded={showOriginal} onClick={() => setShowOriginal((v) => !v)} className="rounded-md border border-slate-300 px-2 py-1 text-slate-900 hover:bg-slate-100">
             {showOriginal ? t.hideOriginal : t.showOriginal}
           </button>
         )}
       </div>
-      <p role="note" className="mt-2 text-zinc-400">{failed ? t.fallback : t.reviewNotice}</p>
+      <p role="note" className="mt-2 text-slate-600">{failed ? t.fallback : t.reviewNotice}</p>
       {showOriginal && original && (
-        <blockquote className="mt-2 rounded-md bg-zinc-900 p-2 text-zinc-300">
-          <span className="block font-semibold text-zinc-200">{t.originalLabel}</span>
+        <blockquote className="mt-2 rounded-md bg-slate-100 p-2 text-slate-700">
+          <span className="block font-semibold text-slate-900">{t.originalLabel}</span>
           {original}
         </blockquote>
       )}
@@ -137,7 +137,7 @@ export function RelatedJurisprudence({ language, apiResponse }: { language: Supp
   const method = methods[apiResponse.metadata?.retrieval_method ?? ''] ?? t.methods.unknown;
   return (
     <section aria-label={t.title} className="mt-3">
-      <h3 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+      <h3 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
         <Scale className="w-3 h-3" aria-hidden="true" />
         {t.title}
       </h3>
@@ -145,16 +145,16 @@ export function RelatedJurisprudence({ language, apiResponse }: { language: Supp
         {items.map((item) => {
           const percent = typeof item.relevance === 'number' ? Math.round(item.relevance * 100) : null;
           return (
-            <li key={`${item.source}-${item.jurisprudence?.join(',')}`} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-300">
-              <p className="font-semibold text-zinc-200">{item.source}</p>
-              <p className="mt-0.5 text-zinc-400">
+            <li key={`${item.source}-${item.jurisprudence?.join(',')}`} className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700">
+              <p className="font-semibold text-slate-900">{item.source}</p>
+              <p className="mt-0.5 text-slate-600">
                 {t.citedCases}: {item.jurisprudence?.map((key) => key.replace('casacion:', 'Casación ')).join(', ')}
               </p>
               <div className="mt-1 flex items-center gap-2">
                 {percent !== null ? (
                   <>
-                    <div role="meter" aria-label={t.relevance(String(percent))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-1.5 w-24 rounded bg-zinc-800">
-                      <div className="h-1.5 rounded bg-indigo-500" style={{ width: `${percent}%` }} />
+                    <div role="meter" aria-label={t.relevance(String(percent))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-1.5 w-24 rounded bg-slate-200">
+                      <div className="h-1.5 rounded bg-indigo-600" style={{ width: `${percent}%` }} />
                     </div>
                     <span>{t.relevance(String(percent))}</span>
                   </>
@@ -162,10 +162,10 @@ export function RelatedJurisprudence({ language, apiResponse }: { language: Supp
                   <span>{t.unknownRelevance}</span>
                 )}
               </div>
-              <p className="mt-1 text-zinc-500">
+              <p className="mt-1 text-slate-500">
                 {t.pathLabel}: {t.origins[item.origin ?? 'lexical']}, {method}.
               </p>
-              <p className="mt-1 text-zinc-400">“{item.excerpt}”</p>
+              <p className="mt-1 text-slate-600">“{item.excerpt}”</p>
             </li>
           );
         })}
@@ -183,8 +183,8 @@ export function TrustPanel({ language, apiResponse }: { language: SupportedLangu
   const verified = citations.filter((c) => c.status === 'verified').length;
   const reliable = validation?.is_reliable;
   return (
-    <details className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/50 text-xs text-zinc-300">
-      <summary className="cursor-pointer px-3 py-2 font-semibold text-zinc-200">{t.summary}</summary>
+    <details className="mt-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-700">
+      <summary className="cursor-pointer px-3 py-2 font-semibold text-slate-900">{t.summary}</summary>
       <ul className="space-y-1 px-3 pb-3 pt-1">
         <li>{evidence.length ? t.evidence(evidence.length) : t.noEvidence}</li>
         {validation && <li>{validation.is_grounded ? t.grounded : t.notGrounded}</li>}
@@ -192,8 +192,8 @@ export function TrustPanel({ language, apiResponse }: { language: SupportedLangu
           <li>{t.risk((validation.hallucination_risk * 100).toFixed(0))}</li>
         )}
         <li>{citations.length ? t.citations(verified, citations.length) : t.noCitations}</li>
-        {typeof reliable === 'boolean' && <li className={reliable ? 'text-emerald-300' : 'text-amber-300'}>{reliable ? t.reliable : t.notReliable}</li>}
-        <li className="pt-1 text-zinc-500">{t.disclaimer}</li>
+        {typeof reliable === 'boolean' && <li className={reliable ? 'text-emerald-700' : 'text-amber-700'}>{reliable ? t.reliable : t.notReliable}</li>}
+        <li className="pt-1 text-slate-500">{t.disclaimer}</li>
       </ul>
     </details>
   );

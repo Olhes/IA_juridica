@@ -12,6 +12,7 @@ import type {
 } from '../../domain/legal/types';
 import { AssistantEvidence } from './chat/EvidencePanels';
 import { FeedbackBar } from './chat/FeedbackBar';
+import { MarkdownRenderer } from './chat/MarkdownRenderer';
 import { DegradedNotice, ResponseTiming, StageProgress, StreamErrorCard } from './chat/PipelineStatus';
 import { useTextToSpeech, useQuechuaTextToSpeech } from '../../application/legal/use-cases/useSpeech';
 
@@ -45,6 +46,30 @@ interface TerminalModalProps {
   voiceInput?: string;
   onVoiceInputChange?: (text: string) => void;
   autoPlayTTS?: boolean;
+}
+
+// Texto sin marcas de Markdown para la voz (si no, lee "asterisco", "almohadilla"…).
+function toSpeechText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/(\*\*|__|\*|_|`)/g, '')
+    .replace(/\n{2,}/g, '. ')
+    .trim();
+}
+
+// Barras de onda animadas mientras se reproduce la voz (keyframes `eq-bar` en globals.css).
+function AudioWave({ className = '' }: { className?: string }) {
+  return (
+    <span aria-hidden="true" className={`inline-flex h-4 items-center gap-[3px] ${className}`}>
+      {[0, 0.15, 0.3, 0.45, 0.6].map((delay) => (
+        <span key={delay} className="eq-bar" style={{ animationDelay: `${delay}s` }} />
+      ))}
+    </span>
+  );
 }
 
 export function TerminalModal({
@@ -114,9 +139,9 @@ export function TerminalModal({
         lastPlayedMessageId.current = lastMessage.id;
         // Use Quechua TTS if language is quechua, otherwise Spanish TTS
         if (language === 'quechua') {
-          speakQuechua(lastMessage.content);
+          speakQuechua(toSpeechText(lastMessage.content));
         } else {
-          speakSpanish(lastMessage.content);
+          speakSpanish(toSpeechText(lastMessage.content));
         }
       }
     }
@@ -161,51 +186,53 @@ export function TerminalModal({
 
   return (
     /* Contenedor Overlay: Transparente sin blur - Ajustado para no tapar parte superior */
-    <div className="fixed inset-0 z-[9990] flex items-end justify-center p-4 pointer-events-none font-mono sm:items-center">
-      
-      {/* Cargar Tipografías */}
-      <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap"
-        rel="stylesheet"
-      />
+    <div className="fixed inset-0 z-[9990] flex items-end justify-center p-4 pointer-events-none sm:items-center">
 
-      {/* Ventana flotante con sombras acentuadas para dar elevación sin oscurecer la pantalla */}
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="terminal-title" className="relative z-10 w-[94vw] max-w-7xl h-[92vh] bg-zinc-950/95 border border-zinc-800/90 rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden font-['Plus_Jakarta_Sans',sans-serif] pointer-events-auto">
-        
+      {/* Ventana flotante (diseño A: crema, bordes rosados, esquinas amplias) */}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="terminal-title" className="relative z-10 w-[94vw] max-w-7xl h-[92vh] bg-slate-50 text-[#26162F] border border-slate-200 rounded-3xl shadow-[0_25px_60px_-15px_rgba(43,24,56,0.55)] flex flex-col overflow-hidden font-sans pointer-events-auto">
+
         {/* Encabezado Superior */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Sparkles className="w-4 h-4" />
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-white">
+          <div className="flex flex-1 items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 shrink-0 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-700">
+              <Sparkles className="w-6 h-6" />
             </div>
-            <div>
-              <h2 id="terminal-title" className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+            <div className="min-w-0">
+              <h2 id="terminal-title" className="font-display text-xl font-extrabold leading-tight text-[#26162F] flex items-center gap-2">
                 Asistente IA Jurídico
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                <span className="font-sans text-xs px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-extrabold">
                   Online
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">
+              <p className="text-sm text-slate-600">
                 Modelo neural de consulta de leyes y regulaciones ·{' '}
-                <a href="/calidad" className="underline hover:text-zinc-200">{language === 'quechua' ? 'Allin kayninta qhaway' : 'Ver calidad del sistema'}</a>
+                <a href="/calidad" className="font-bold text-indigo-700 underline hover:text-indigo-800">{language === 'quechua' ? 'Allin kayninta qhaway' : 'Ver calidad del sistema'}</a>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {ttsSpeaking && (
-              <button
-                onClick={stopTTS}
-                className="p-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all"
-                aria-label="Detener voz"
-                title="Detener voz"
-              >
-                <VolumeX className="w-5 h-5" />
-              </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {(ttsSpeaking || quechuaLoading) && (
+              <div className="flex items-center gap-2 rounded-full bg-indigo-50 pl-4 pr-1 py-1 text-indigo-700">
+                <AudioWave />
+                <span role="status" className="hidden sm:inline text-sm font-extrabold">
+                  {quechuaLoading && !ttsSpeaking
+                    ? (language === 'quechua' ? 'Rimayta ruraspa…' : 'Preparando audio…')
+                    : (language === 'quechua' ? 'Uyarichkan' : 'Escuchando respuesta')}
+                </span>
+                <button
+                  onClick={stopTTS}
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-white text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  aria-label="Detener voz"
+                  title="Detener voz"
+                >
+                  <VolumeX className="w-4 h-4" />
+                </button>
+              </div>
             )}
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all"
+              className="w-11 h-11 rounded-lg flex items-center justify-center border-2 border-slate-900 bg-white text-slate-900 hover:bg-slate-100 transition-colors"
               aria-label="Cerrar"
             >
               <X className="w-5 h-5" />
@@ -214,14 +241,14 @@ export function TerminalModal({
         </div>
 
         {/* Área de Mensajes */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-10 py-6 space-y-6 scrollbar-thin scrollbar-thumb-zinc-800">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-10 py-7 space-y-6">
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 shadow-inner">
-                <Bot className="w-6 h-6 text-indigo-400" />
+              <div className="w-14 h-14 rounded-2xl bg-amber-400 flex items-center justify-center text-slate-900">
+                <Bot className="w-7 h-7" />
               </div>
-              <h3 className="text-lg font-medium text-zinc-200">¿En qué puedo ayudarte hoy?</h3>
-              <p className="text-sm text-zinc-400">
+              <h3 className="font-display text-2xl font-extrabold text-[#26162F]">¿En qué puedo ayudarte hoy?</h3>
+              <p className="text-base text-slate-600">
                 Puedes realizar preguntas sobre pensiones de alimentos, contratos, o legislación en general.
               </p>
             </div>
@@ -230,28 +257,38 @@ export function TerminalModal({
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex items-start gap-4 max-w-5xl mx-auto ${
+              className={`flex items-start gap-3.5 max-w-5xl mx-auto ${
                 msg.isUser ? 'flex-row-reverse' : 'flex-row'
               }`}
             >
-              <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-medium border ${
-                  msg.isUser
-                    ? 'bg-indigo-600 text-white border-indigo-500'
-                    : 'bg-zinc-900 text-zinc-300 border-zinc-700/80'
-                }`}
-              >
-                {msg.isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-indigo-400" />}
-              </div>
+              {msg.isUser ? (
+                <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-amber-400 text-slate-900">
+                  <User className="w-4 h-4" />
+                </div>
+              ) : (
+                /* Rombo tocapu del diseño A en lugar del robot */
+                <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+                  <path d="M9 2h6v3h4v4h3v6h-3v4h-4v3H9v-3H5v-4H2V9h3V5h4z" fill="#B8285F" />
+                  <circle cx="12" cy="12" r="3.2" fill="#FFF8F0" />
+                </svg>
+              )}
 
               <div
-                className={`rounded-2xl px-5 py-3.5 text-sm leading-relaxed ${
+                className={`px-5 py-3.5 text-base leading-relaxed ${
                   msg.isUser
-                    ? 'bg-indigo-600 text-white rounded-tr-none shadow-md'
-                    : 'bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none shadow-sm'
+                    ? 'max-w-[82%] bg-slate-900 text-white rounded-[20px_20px_6px_20px]'
+                    : 'min-w-0 flex-1 bg-white text-[#26162F] border border-slate-200 rounded-[6px_20px_20px_20px]'
                 }`}
               >
-                {(msg.content || msg.isUser) && <p className="whitespace-pre-wrap">{msg.content}</p>}
+                {!msg.isUser && msg.id === lastPlayedMessageId.current && (ttsSpeaking || quechuaLoading) && (
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-extrabold text-indigo-700">
+                    <AudioWave className="h-3.5" />
+                    {quechuaLoading && !ttsSpeaking ? 'Preparando audio…' : 'Reproduciendo'}
+                  </div>
+                )}
+                {msg.isUser
+                  ? <p className="whitespace-pre-wrap text-left text-[16px] leading-[1.7]">{msg.content}</p>
+                  : msg.content && <MarkdownRenderer content={msg.content} isStreaming={msg.isStreaming} />}
                 {!msg.isUser && msg.isStreaming && (msg.stage || msg.completedStages?.length) ? (
                   <StageProgress language={language} stage={msg.stage} completed={msg.completedStages} />
                 ) : null}
@@ -283,8 +320,8 @@ export function TerminalModal({
           ))}
 
           {isLoading && (
-            <div className="flex items-center gap-3 max-w-5xl mx-auto text-zinc-400 text-sm pl-12">
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+            <div className="flex items-center gap-3 max-w-5xl mx-auto text-slate-600 text-sm font-bold pl-14">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
               <span role="status">Procesando respuesta jurídica...</span>
             </div>
           )}
@@ -293,33 +330,35 @@ export function TerminalModal({
         </div>
 
         {/* Formulario Inferior */}
-        <div className="p-4 sm:p-6 border-t border-zinc-800/80 bg-zinc-950">
+        <div className="px-4 pt-3 pb-4 sm:px-6 sm:pb-5 border-t border-slate-200 bg-slate-50">
           <form
             onSubmit={handleSubmit}
             className="max-w-5xl mx-auto"
           >
             {/* Archivo adjunto */}
             {attachedFile && (
-              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+              <div className="mb-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100">
                 {attachedFile.type.startsWith('image/') ? (
-                  <ImageIcon className="w-4 h-4 text-indigo-400" />
+                  <ImageIcon className="w-4 h-4 text-indigo-700" />
                 ) : (
-                  <FileText className="w-4 h-4 text-indigo-400" />
+                  <FileText className="w-4 h-4 text-indigo-700" />
                 )}
-                <span className="text-sm text-indigo-300 truncate max-w-[300px]">
+                <span className="text-sm font-bold text-[#26162F] truncate max-w-[300px]">
                   {attachedFile.name}
                 </span>
                 <button
                   type="button"
                   onClick={onRemoveAttachment}
-                  className="p-1 rounded hover:bg-indigo-500/20 transition-colors"
+                  aria-label="Quitar archivo adjunto"
+                  className="p-1 rounded-md hover:bg-slate-200 transition-colors"
                 >
-                  <XIcon className="w-3.5 h-3.5 text-indigo-400" />
+                  <XIcon className="w-3.5 h-3.5 text-slate-700" />
                 </button>
               </div>
             )}
 
-            <div className="relative flex items-center">
+            {/* Caja de escritura del diseño A: borde berenjena y botón magenta */}
+            <div className="flex items-center gap-2 bg-white border-2 border-slate-900 rounded-3xl p-2 pl-4 focus-within:ring-4 focus-within:ring-indigo-100 transition-shadow">
               <input
                 ref={inputRef}
                 aria-label="Consulta legal"
@@ -327,16 +366,18 @@ export function TerminalModal({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Escribe tu consulta legal aquí..."
-                className="w-full bg-zinc-900 border border-zinc-700/80 focus:border-indigo-500 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                className="flex-1 min-w-0 bg-transparent py-2.5 text-[17px] text-[#26162F] placeholder-slate-500"
+                // El foco lo marca el anillo del contenedor; la regla global de outline ganaría a una clase.
+                style={{ outline: 'none' }}
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 aria-label="Enviar consulta"
                 disabled={!input.trim() && !attachedFile || isLoading}
-                className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
+                className="w-[46px] h-[46px] shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors disabled:opacity-40 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-5 h-5" />
               </button>
             </div>
           </form>

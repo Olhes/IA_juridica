@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
@@ -12,26 +10,26 @@
 
 /* ── Design tokens (light) ───────────────────────────────────── */
 :root {
-  --bg-base:      #f8fafc;
-  --bg-surface:   #ffffff;
-  --text-primary: #1e293b;
-  --text-muted:   #64748b;
-  --border:       #e2e8f0;
+  --bg-base:      #FFF8F0;
+  --bg-surface:   #FFFFFF;
+  --text-primary: #26162F;
+  --text-muted:   #6A5470;
+  --border:       #F0DDE3;
 }
 
 /* ── Design tokens (dark) ────────────────────────────────────── */
 .dark {
-  --bg-base:      #030712;
-  --bg-surface:   #111827;
-  --text-primary: #f1f5f9;
-  --text-muted:   #94a3b8;
-  --border:       #1f2937;
+  --bg-base:      #1C0F26;
+  --bg-surface:   #2B1838;
+  --text-primary: #F6EAF2;
+  --text-muted:   #D9C3D3;
+  --border:       #3D2550;
 }
 
 body {
   height: 100%;
   margin: 0;
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-nunito), 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-base);
@@ -43,19 +41,19 @@ body {
 button:focus-visible,
 textarea:focus-visible,
 input:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid #B8285F;
   outline-offset: 2px;
 }
 
 /* ── Scrollbar (light) ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-thumb { background: #D9C3D3; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #A68DA1; }
 
 /* ── Scrollbar (dark) ────────────────────────────────────────── */
-.dark ::-webkit-scrollbar-thumb { background: #374151; }
-.dark ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+.dark ::-webkit-scrollbar-thumb { background: #4A2D5E; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #6A5470; }
 
 /* ── Animations ─────────────────────────────────────────────────── */
 @keyframes fadeIn {
@@ -102,4 +100,67 @@ input:focus-visible {
 /* ── Prose-like whitespace pre-wrap ─────────────────────────────── */
 .whitespace-pre-wrap {
   white-space: pre-wrap;
+}
+
+/* ── Tipografía y botones del diseño A (Tocapu) ─────────────────
+   En @layer base para que las utilidades de Tailwind sigan ganando.
+   Las fuentes las carga next/font en app/layout.tsx. */
+@layer base {
+  h1, h2, h3 {
+    font-family: var(--font-bricolage), var(--font-nunito), sans-serif;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  p, li {
+    text-wrap: pretty;
+  }
+  button {
+    font-weight: 700;
+  }
+}
+
+/* ── Listas de las respuestas (MarkdownRenderer, diseño A) ──────
+   Viñeta: rombo dorado. Numerada: casilla magenta con el número. */
+.md-list { counter-reset: md-item; }
+.md-list > li { counter-increment: md-item; }
+.md-bullet {
+  flex: none;
+  margin-top: 0.55em;
+  width: 9px;
+  height: 9px;
+  background: #F2A93B;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+ol.md-list > li > .md-bullet {
+  margin-top: 0;
+  width: 26px;
+  height: 26px;
+  transform: none;
+  border-radius: 8px;
+  background: #B8285F;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 26px;
+  text-align: center;
+}
+ol.md-list > li > .md-bullet::before { content: counter(md-item); }
+
+/* ── Ondas de audio mientras se reproduce la respuesta ─────────── */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+.eq-bar {
+  display: inline-block;
+  width: 3px;
+  height: 100%;
+  border-radius: 9999px;
+  background: currentColor;
+  transform-origin: center;
+  animation: eq-bar 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq-bar { animation: none; transform: scaleY(0.6); }
 }

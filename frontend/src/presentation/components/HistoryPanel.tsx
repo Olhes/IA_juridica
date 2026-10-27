@@ -35,13 +35,13 @@ export function HistoryPanel({
 
   return (
     <div role="region" aria-label="Historial de consultas"
-      className={`fixed top-0 left-0 h-full w-80 bg-gray-900/95 backdrop-blur-xl border-r border-gray-700/50 shadow-2xl z-[10000] transition-transform duration-300 ${
+      className={`fixed top-0 left-0 h-full w-80 bg-slate-900 text-slate-100 shadow-2xl z-[10000] transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50">
-        <h2 className="text-lg font-semibold text-white">Historial</h2>
+        <h2 className="font-display text-xl font-extrabold text-white">Historial</h2>
         <button
           aria-label="Cerrar historial"
           onClick={onClose}
@@ -67,7 +67,7 @@ export function HistoryPanel({
                 if (event.target !== event.currentTarget) return;
                 if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectSession(session.id); }
               }}
-              className="group relative p-4 rounded-xl bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-indigo-500/50 transition-all cursor-pointer"
+              className="group relative p-4 rounded-md bg-[#33203F] hover:bg-slate-800 border-l-4 border-transparent hover:border-amber-400 transition-colors cursor-pointer"
               onClick={() => onSelectSession(session.id)}
             >
               <div className="flex items-start justify-between mb-2">
@@ -106,7 +106,7 @@ export function HistoryPanel({
       <div className="px-6 py-4 border-t border-gray-700/50">
         <button
           onClick={onClose}
-          className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors text-sm font-medium"
+          className="w-full min-h-[50px] px-4 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl transition-colors font-extrabold"
         >
           Cerrar Panel
         </button>

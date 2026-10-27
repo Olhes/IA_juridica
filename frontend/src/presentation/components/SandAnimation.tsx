@@ -10,8 +10,16 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // onComplete una sola vez, venga del fin normal, del límite de tiempo o de un salto.
+    let completed = false;
+    const complete = () => {
+      if (completed) return;
+      completed = true;
       onComplete?.();
+    };
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      complete();
       return;
     }
     const canvas = canvasRef.current;
@@ -19,7 +27,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      onComplete?.();
+      complete();
       return;
     }
 
@@ -154,7 +162,8 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       const maskCanvas = document.createElement("canvas");
       const maskCtx = maskCanvas.getContext("2d");
 
-      if (!maskCtx) return;
+      // Contenedor sin tamaño (aún sin layout u oculto): getImageData lanza con 0.
+      if (!maskCtx || w <= 0 || h <= 0) return;
 
       maskCanvas.width = w;
       maskCanvas.height = h;
@@ -198,7 +207,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       // Si completamos el ciclo máximo, llamar a onComplete y detener animación
       if (cycleCount >= maxCycles) {
         running = false;
-        onComplete?.();
+        complete();
         return;
       }
 
@@ -575,7 +584,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       const lines = [settings.hiddenText];
 
       ctx.globalAlpha = hiddenAlpha;
-      ctx.fillStyle = "rgb(167, 139, 250)"; // Violet-400
+      ctx.fillStyle = "rgb(242, 169, 59)"; // Dorado Tocapu #F2A93B
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
@@ -592,7 +601,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawFixedCodepen() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(184, 40, 95)"; // Magenta Tocapu #B8285F
 
       const size = settings.cellSize;
 
@@ -613,7 +622,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawFalling() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(242, 169, 59)"; // Dorado Tocapu #F2A93B
 
       const size = settings.cellSize;
 
@@ -625,7 +634,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawPile() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(139, 92, 246)"; // Violet-500
+      ctx.fillStyle = "rgb(30, 156, 151)"; // Turquesa Tocapu #1E9C97
 
       const size = settings.cellSize;
 
@@ -646,7 +655,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     function drawReforming() {
       if (!ctx) return;
 
-      ctx.fillStyle = "rgb(99, 102, 241)"; // Indigo-500
+      ctx.fillStyle = "rgb(184, 40, 95)"; // Magenta Tocapu #B8285F
 
       const size = settings.cellSize;
 
@@ -689,8 +698,26 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       if (running) animationFrame = requestAnimationFrame(tick);
     }
 
+    const finishNow = () => {
+      running = false;
+      cancelAnimationFrame(animationFrame);
+      complete();
+    };
+
     resize();
+    // Sin texto dibujado (fuente/canvas no disponibles) la animación no avanzaría nunca.
+    if (codepenCells.length === 0) {
+      finishNow();
+      return;
+    }
     animationFrame = requestAnimationFrame(tick);
+
+    // Red de seguridad: en equipos lentos o con la pestaña en segundo plano,
+    // requestAnimationFrame se frena o se pausa y la app no aparecería nunca.
+    const fallbackTimer = window.setTimeout(finishNow, 7000);
+    // Saltar la intro con un clic, toque o tecla.
+    window.addEventListener("pointerdown", finishNow);
+    window.addEventListener("keydown", finishNow);
 
     const handleResize = () => resize();
     window.addEventListener("resize", handleResize);
@@ -698,6 +725,9 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     return () => {
       running = false;
       cancelAnimationFrame(animationFrame);
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener("pointerdown", finishNow);
+      window.removeEventListener("keydown", finishNow);
       window.removeEventListener("resize", handleResize);
     };
   }, []);
@@ -708,7 +738,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
         ref={canvasRef}
         className="block w-full h-full"
         style={{
-          background: 'linear-gradient(to bottom right, #f8fafc, #e0e7ff, #ede9fe)'
+          background: 'linear-gradient(to bottom right, #FFF8F0, #FCE6EE, #FDF0D9)'
         }}
       />
     </div>
