@@ -10,8 +10,16 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // onComplete una sola vez, venga del fin normal, del límite de tiempo o de un salto.
+    let completed = false;
+    const complete = () => {
+      if (completed) return;
+      completed = true;
       onComplete?.();
+    };
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      complete();
       return;
     }
     const canvas = canvasRef.current;
@@ -19,7 +27,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      onComplete?.();
+      complete();
       return;
     }
 
@@ -199,7 +207,7 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       // Si completamos el ciclo máximo, llamar a onComplete y detener animación
       if (cycleCount >= maxCycles) {
         running = false;
-        onComplete?.();
+        complete();
         return;
       }
 
@@ -690,8 +698,26 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
       if (running) animationFrame = requestAnimationFrame(tick);
     }
 
+    const finishNow = () => {
+      running = false;
+      cancelAnimationFrame(animationFrame);
+      complete();
+    };
+
     resize();
+    // Sin texto dibujado (fuente/canvas no disponibles) la animación no avanzaría nunca.
+    if (codepenCells.length === 0) {
+      finishNow();
+      return;
+    }
     animationFrame = requestAnimationFrame(tick);
+
+    // Red de seguridad: en equipos lentos o con la pestaña en segundo plano,
+    // requestAnimationFrame se frena o se pausa y la app no aparecería nunca.
+    const fallbackTimer = window.setTimeout(finishNow, 7000);
+    // Saltar la intro con un clic, toque o tecla.
+    window.addEventListener("pointerdown", finishNow);
+    window.addEventListener("keydown", finishNow);
 
     const handleResize = () => resize();
     window.addEventListener("resize", handleResize);
@@ -699,6 +725,9 @@ export function SandAnimation({ onComplete }: SandAnimationProps) {
     return () => {
       running = false;
       cancelAnimationFrame(animationFrame);
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener("pointerdown", finishNow);
+      window.removeEventListener("keydown", finishNow);
       window.removeEventListener("resize", handleResize);
     };
   }, []);

@@ -103,14 +103,10 @@ export function ChatPage() {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
 
-    // Comentado temporalmente para que la animación siempre se muestre durante desarrollo
-    // const savedAnimation = localStorage.getItem(ANIMATION_COMPLETE_KEY);
-    // if (savedAnimation === 'true') {
-    //   setAnimationComplete(true);
-    // }
-
-    // SIEMPRE mostrar la animación en desarrollo
-    setAnimationComplete(false);
+    // La intro se muestra en cada visita: animationComplete ya arranca en false.
+    // No volver a ponerlo en false aquí: este efecto corre después del de SandAnimation,
+    // y si la intro termina al instante (reduced motion, sin canvas, ventana sin tamaño)
+    // pisaría ese fin y la página quedaría en blanco para siempre.
   }, []);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
