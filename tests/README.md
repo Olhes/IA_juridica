@@ -1206,11 +1206,14 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 </details>
 
 <details>
-<summary>frontend/integration/ChatPage.test.tsx — 3 escenarios</summary>
+<summary>frontend/integration/ChatPage.test.tsx — 6 escenarios</summary>
 
 | Caso | Qué verifica |
 |---|---|
 | `pantalla principal crea sesión antes de enviar y muestra respuesta final` | Monta pantalla/hooks/API real del frontend con red MSW: crea sesión antes de consultar y muestra final. |
+| `animación que termina inmediatamente no bloquea la pantalla` | La finalización síncrona muestra la interfaz sin regresar a la animación. |
+| `la pantalla aparece si la animación se queda detenida` | Un límite de cuatro segundos permite continuar si la animación no termina. |
+| `la animación se puede omitir sin esperar` | El botón permite acceder al contenido inmediatamente. |
 | `nueva sesión no conserva mensajes del terminal anterior` | Nueva sesión limpia mensajes del terminal anterior, sin confundir el preview persistido del sidebar. |
 | `pantalla recupera historial tras fallo con reintento sin borrar datos` | API de listado 503 expone acción de reintento y al recuperarse elimina el alert. |
 

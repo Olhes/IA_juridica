@@ -68,6 +68,15 @@ export function ChatPage() {
   const [showLanding, setShowLanding] = useState(true);
   const [animationComplete, setAnimationComplete] = useState(false);
 
+  const finishAnimation = useCallback(() => {
+    setAnimationComplete(true);
+    try {
+      localStorage.setItem(ANIMATION_COMPLETE_KEY, 'true');
+    } catch {
+      // La interfaz debe funcionar aunque el almacenamiento esté bloqueado.
+    }
+  }, []);
+
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -100,15 +109,14 @@ export function ChatPage() {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
 
-    // Comentado temporalmente para que la animación siempre se muestre durante desarrollo
-    // const savedAnimation = localStorage.getItem(ANIMATION_COMPLETE_KEY);
-    // if (savedAnimation === 'true') {
-    //   setAnimationComplete(true);
-    // }
-
-    // SIEMPRE mostrar la animación en desarrollo
-    setAnimationComplete(false);
   }, []);
+
+  useEffect(() => {
+    if (animationComplete) return;
+    // La animación es decorativa y nunca debe impedir el acceso al contenido.
+    const timeout = window.setTimeout(finishAnimation, 4000);
+    return () => window.clearTimeout(timeout);
+  }, [animationComplete, finishAnimation]);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     setLanguage(lang);
@@ -453,10 +461,18 @@ export function ChatPage() {
       )}
 
       {/* Sand Animation */}
-      {showAnimation && <SandAnimation onComplete={() => {
-        setAnimationComplete(true);
-        localStorage.setItem(ANIMATION_COMPLETE_KEY, 'true');
-      }} />}
+      {showAnimation && (
+        <>
+          <SandAnimation onComplete={finishAnimation} />
+          <button
+            type="button"
+            onClick={finishAnimation}
+            className="fixed bottom-6 right-6 z-[60] rounded-xl bg-slate-900 px-4 py-2 text-white shadow-lg"
+          >
+            Omitir animación
+          </button>
+        </>
+      )}
 
       {!showAnimation && (
         <>

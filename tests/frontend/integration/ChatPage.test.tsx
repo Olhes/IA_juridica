@@ -1,24 +1,51 @@
 import { test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { ChatPage } from '../../../frontend/src/presentation/pages/ChatPage';
 import { ThemeProvider } from '../../../frontend/src/presentation/components/ThemeProvider';
 import { server, API } from '../fixtures/server';
 import { conversation, payload } from '../fixtures/chat';
+const animation = vi.hoisted(() => ({ mode: 'async' as 'async' | 'sync' | 'stalled' }));
 vi.mock('../../../frontend/src/presentation/components/SandAnimation', () => ({ SandAnimation: ({ onComplete }: any) => {
-  const React = require('react'); React.useEffect(() => { queueMicrotask(onComplete); }, []); return null;
+  const React = require('react'); React.useEffect(() => {
+    if (animation.mode === 'sync') onComplete();
+    else if (animation.mode === 'async') queueMicrotask(onComplete);
+  }, []); return null;
 } }));
 vi.mock('../../../frontend/src/presentation/components/FloatingRadialHub', () => ({ FloatingRadialHub: () => null }));
 vi.mock('../../../frontend/src/presentation/components/AuthProvider', () => ({ useAuth: () => ({ isAuthenticated: true, mounted: true }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 beforeEach(() => {
+  animation.mode = 'async';
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   server.use(http.get(`${API}/chat/conversations`, () => HttpResponse.json({ conversations: [], total_count: 0, active_count: 0 })),
     http.post(`${API}/chat/conversations`, () => HttpResponse.json(conversation())),
     http.get(`${API}/chat/conversations/a`, () => HttpResponse.json({ conversation: conversation(), messages: [], total_messages: 0 })),
     http.put(`${API}/chat/conversations/a`, () => HttpResponse.json(conversation())),
     http.post(`${API}/legal-query-stream`, () => new HttpResponse(JSON.stringify({ type: 'final', data: payload }) + '\n')));
+});
+test('animación que termina inmediatamente no bloquea la pantalla', () => {
+  animation.mode = 'sync';
+  render(<ThemeProvider><ChatPage /></ThemeProvider>);
+  expect(screen.getByRole('heading', { name: /Orientación legal clara/ })).toBeVisible();
+});
+test('la pantalla aparece si la animación se queda detenida', () => {
+  vi.useFakeTimers();
+  try {
+    animation.mode = 'stalled';
+    const { unmount } = render(<ThemeProvider><ChatPage /></ThemeProvider>);
+    expect(screen.getByRole('button', { name: 'Omitir animación' })).toBeVisible();
+    act(() => vi.advanceTimersByTime(4000));
+    expect(screen.getByRole('heading', { name: /Orientación legal clara/ })).toBeVisible();
+    unmount();
+  } finally { vi.useRealTimers(); }
+});
+test('la animación se puede omitir sin esperar', () => {
+  animation.mode = 'stalled';
+  render(<ThemeProvider><ChatPage /></ThemeProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Omitir animación' }));
+  expect(screen.getByRole('heading', { name: /Orientación legal clara/ })).toBeVisible();
 });
 test('pantalla principal crea sesión antes de enviar y muestra respuesta final', async () => {
   const user = userEvent.setup(); render(<ThemeProvider><ChatPage /></ThemeProvider>);
