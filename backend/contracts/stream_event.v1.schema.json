@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StreamEvent",
+  "description": "Contrato NDJSON v1 de /legal-query-stream",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/MetaEvent"
+    },
+    {
+      "$ref": "#/$defs/StageEvent"
+    },
+    {
+      "$ref": "#/$defs/ChunkEvent"
+    },
+    {
+      "$ref": "#/$defs/FinalEvent"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    },
+    {
+      "$ref": "#/$defs/DoneEvent"
+    }
+  ],
+  "$defs": {
+    "ChunkEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "chunk",
+          "default": "chunk",
+          "title": "Type",
+          "type": "string"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id",
+        "delta"
+      ],
+      "title": "ChunkEvent",
+      "type": "object"
+    },
+    "DoneEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "done",
+          "default": "done",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id"
+      ],
+      "title": "DoneEvent",
+      "type": "object"
+    },
+    "ErrorEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "RETRIEVAL_UNAVAILABLE",
+            "GENERATION_UNAVAILABLE",
+            "TRANSLATION_UNAVAILABLE",
+            "TIMEOUT",
+            "INTERNAL_ERROR"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "FinalEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "final",
+          "default": "final",
+          "title": "Type",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id",
+        "data"
+      ],
+      "title": "FinalEvent",
+      "type": "object"
+    },
+    "MetaEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "meta",
+          "default": "meta",
+          "title": "Type",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id",
+        "data"
+      ],
+      "title": "MetaEvent",
+      "type": "object"
+    },
+    "StageEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "const": 1,
+          "default": 1,
+          "title": "V",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "stage",
+          "default": "stage",
+          "title": "Type",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "translate_in",
+            "retrieval",
+            "generation",
+            "validation",
+            "translate_out"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "start",
+            "end"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "elapsed_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Elapsed Ms"
+        }
+      },
+      "required": [
+        "seq",
+        "request_id",
+        "stage",
+        "status"
+      ],
+      "title": "StageEvent",
+      "type": "object"
+    }
+  }
+}

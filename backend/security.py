@@ -14,6 +14,7 @@ from typing import Optional
 from fastapi import HTTPException, Request, Response, Security
 from fastapi.security import APIKeyHeader
 from slowapi import Limiter
+import jwt
 
 from config.settings import settings
 
@@ -76,7 +77,37 @@ def verify_session(token: str, now: Optional[int] = None) -> Optional[Principal]
         return None
 
 
+def verify_jwt_token(token: str) -> Optional[str]:
+    """Verifica un token JWT y retorna el user_id si es válido"""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+        user_id = payload.get("sub")
+        if payload.get("type") != "access":
+            return None
+        return user_id
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+    except AttributeError:
+        # Si JWT_SECRET_KEY no está configurado, fallar silenciosamente
+        return None
+
+
 def principal_from_request(request: Request) -> Optional[Principal]:
+    # Primero verificar autenticación JWT (usuario logueado)
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        user_id = verify_jwt_token(access_token)
+        if user_id:
+            # Usuario autenticado con JWT
+            return Principal(user_id, int(time.time()) + 86400)  # 24 horas
+
+    # Si no hay JWT, usar sesión anónima
     token = request.cookies.get(settings.ANONYMOUS_SESSION_COOKIE_NAME)
     return verify_session(token) if token else None
 
@@ -84,7 +115,7 @@ def principal_from_request(request: Request) -> Optional[Principal]:
 async def require_principal(request: Request) -> Principal:
     principal = principal_from_request(request)
     if principal is None:
-        raise HTTPException(status_code=401, detail="Anonymous session required")
+        raise HTTPException(status_code=401, detail="Authentication required")
     return principal
 
 

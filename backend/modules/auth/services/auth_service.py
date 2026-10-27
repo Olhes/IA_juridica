@@ -40,8 +40,8 @@ class AuthService:
         
         # Crear payload del token
         payload = {
-            "sub": user['email'],
-            "user_id": user['id'],
+            "sub": str(user['id']),  # Usar user_id (UUID) como sub
+            "email": user['email'],
             "username": user['username'],
             "role": role_names[0] if role_names else user.get('role', 'user'),
             "roles": role_names
@@ -58,23 +58,30 @@ class AuthService:
         """
         try:
             payload = self.security.decode_token(refresh_token, is_refresh=True)
-            
-            # Verificar que el usuario aún existe y está activo
-            user = await self.db.get_user_by_email(payload.get("sub"))
-            if not user or not user.get('is_active'):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Usuario no válido o inactivo"
-                )
-            
-            # Obtener roles actualizados
-            roles = await self.db.get_user_roles(user['id'])
+            if payload.get("type") != "refresh":
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token no válido")
+
+            # Los tokens del login con contraseña llevan `sub`; los de Google, `email` y `user_id`.
+            email = payload.get("sub") or payload.get("email")
+            await self.db.initialize()
+            try:
+                user = await self.db.get_user_by_email(email) if email else None
+                if not user or not user.get('is_active'):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Usuario no válido o inactivo"
+                    )
+
+                # Obtener roles actualizados
+                roles = await self.db.get_user_roles(user['id'])
+            finally:
+                await self.db.close()
             role_names = [r['name'] for r in roles]
-            
+
             # Crear nuevo payload con roles actualizados
             new_payload = {
-                "sub": user['email'],
-                "user_id": user['id'],
+                "sub": str(user['id']),  # Usar user_id (UUID) como sub
+                "email": user['email'],
                 "username": user['username'],
                 "role": role_names[0] if role_names else user.get('role', 'user'),
                 "roles": role_names

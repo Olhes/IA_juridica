@@ -13,7 +13,7 @@ import {
   LogOut,
   User,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '../ThemeProvider';
 import { useEffect, useState } from 'react';
 import type { SupportedLanguage } from '../../../domain/legal/types';
 import { useAuth } from '../AuthProvider';
@@ -52,18 +52,18 @@ const i18n = {
 } as const;
 
 function ThemeToggle({ language }: { language: SupportedLanguage }) {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return <div className="w-9 h-9" />;
 
-  const isDark = resolvedTheme === 'dark';
+  const isDark = theme === 'dark';
   const t = i18n[language];
   return (
     <button
       id="theme-toggle-btn"
       type="button"
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      onClick={toggleTheme}
       aria-label={isDark ? t.themeLight : t.themeDark}
       className="w-9 h-9 flex items-center justify-center rounded-xl
         bg-slate-100 hover:bg-slate-200
@@ -87,13 +87,33 @@ export function ChatHeader({
   const t = i18n[currentLanguage];
   const { user, isAuthenticated, logout } = useAuth();
   const router = useRouter();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const handleAuth = () => {
     if (isAuthenticated) {
       logout();
     } else {
-      // Iniciar Google OAuth directamente
-      window.location.href = 'http://localhost:8000/auth/google';
+      // Iniciar Google OAuth en popup para evitar recarga completa
+      const authUrl = 'http://localhost:8000/auth/google';
+      const width = 500;
+      const height = 600;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const popup = window.open(
+        authUrl,
+        'google-auth',
+        `width=${width},height=${height},left=${left},top=${top},resizable,scrollbars=yes,status=1`
+      );
+
+      // Verificar si el popup se cerró (login completado o cancelado)
+      const checkPopup = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkPopup);
+          // Recargar usuario después de cerrar el popup
+          window.location.reload();
+        }
+      }, 1000);
     }
   };
 
@@ -161,14 +181,21 @@ export function ChatHeader({
           <button
             type="button"
             onClick={handleAuth}
+            disabled={isAuthenticating}
             aria-label={isAuthenticated ? t.logout : t.login}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold
               bg-slate-100 hover:bg-slate-200
               dark:bg-gray-800 dark:hover:bg-gray-700
               text-slate-600 dark:text-slate-300
-              transition-all duration-200 hover:scale-105 active:scale-95"
+              transition-all duration-200 hover:scale-105 active:scale-95
+              disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isAuthenticated ? (
+            {isAuthenticating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                <span className="hidden sm:inline">Autenticando...</span>
+              </>
+            ) : isAuthenticated ? (
               <>
                 {user?.picture ? (
                   <img

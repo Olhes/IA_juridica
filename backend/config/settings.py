@@ -3,6 +3,10 @@ from pydantic import Field, SecretStr
 from typing import List, Optional, Dict, Any, Literal
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Cargar explícitamente el archivo .env antes de pydantic_settings
+load_dotenv(override=True)
 
 class Settings(BaseSettings):
     """Configuración centralizada del sistema IA Jurídica"""
@@ -18,7 +22,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "IA Jurídica"
     APP_VERSION: str = "v8"
     DEBUG: bool = False
-    HOST: str = "0.0.0.0"
+    HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = 8000
     
     # Entorno
@@ -38,11 +42,18 @@ class Settings(BaseSettings):
     SQLALCHEMY_DATABASE_URL: str = os.getenv("SQLALCHEMY_DATABASE_URL", f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
     
     # Configuración de Redis
-    REDIS_URL: str = "redis://localhost:6379"
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
-    REDIS_PASSWORD: Optional[str] = None
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD", None)
+
+    # Configuración de JWT
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "CLAVE_SECRETA_DESAROLLO_IA_JURIDICA")
+    JWT_REFRESH_SECRET_KEY: str = os.getenv("JWT_REFRESH_SECRET_KEY", "CLAVE_REFRESH_DESAROLLO_IA_JURIDICA")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # Configuración de SQLAlchemy
     SQLALCHEMY_ECHO: bool = False
@@ -68,8 +79,8 @@ class Settings(BaseSettings):
     COHERE_EMBED_MODEL: str = "embed-multilingual-v3.0"
     COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
     COHERE_LLM_MODEL: str = "command-r7b-12-2024"
-    COHERE_MAX_TOKENS: int = 512
-    COHERE_TEMPERATURE: float = 0.3
+    COHERE_MAX_TOKENS: int = 4096
+    COHERE_TEMPERATURE: float = 0.2
     
     # Configuración de Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -86,11 +97,11 @@ class Settings(BaseSettings):
     RERANK_CANDIDATES: int = 50
     
     # Configuración de Documentos
-    DOCS_ROOT_DIR: str = "./docs"
-    RAW_PDF_DIR: str = "./docs/raw_pdfs"
-    PROCESSED_DIR: str = "./docs/processed"
-    KNOWLEDGE_GRAPH_DIR: str = "./docs/knowledge_graph"
-    FAILED_DIR: str = "./docs/failed"
+    DOCS_ROOT_DIR: str = "../docs"
+    RAW_PDF_DIR: str = "../docs/raw_pdfs"
+    PROCESSED_DIR: str = "../docs/processed"
+    KNOWLEDGE_GRAPH_DIR: str = "../docs/knowledge_graph"
+    FAILED_DIR: str = "../docs/failed"
     
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
@@ -142,15 +153,23 @@ class Settings(BaseSettings):
     RATE_LIMIT_MAX_REQUESTS: int = 100
     RATE_LIMIT_STORAGE_URI: str = "memory://"
     LLM_RATE_LIMIT: str = "10/minute"
+    STREAM_PIPELINE_TIMEOUT_SECONDS: float = float(os.getenv("STREAM_PIPELINE_TIMEOUT_SECONDS", "120"))
+    # Red de seguridad del watchdog de StreamGuard: debe superar al plazo del pipeline.
+    STREAM_IDLE_TIMEOUT_SECONDS: float = float(os.getenv("STREAM_IDLE_TIMEOUT_SECONDS", "135"))
     CONVERSATION_CREATE_RATE_LIMIT: str = "20/hour"
     ADMIN_RATE_LIMIT: str = "5/hour"
+    TELEMETRY_RATE_LIMIT: str = "120/minute"
+    FEEDBACK_RATE_LIMIT: str = "30/hour"
+    QUALITY_RATE_LIMIT: str = "60/minute"
+    # Cola de feedback (JSON local). Con disco efímero se pierde al reiniciar.
+    FEEDBACK_DIR: str = os.getenv("FEEDBACK_DIR", "./data/feedback")
     SESSION_BOOTSTRAP_RATE_LIMIT: str = "20/hour"
     
     # Configuración de CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "https://ia-juridica-frontend-web.onrender.com"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID"]
+    CORS_ALLOW_HEADERS: List[str] = ["Content-Type", "X-API-Key", "X-Request-ID", "Authorization", "Cookie"]
     
     # Configuración de Archivos
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
@@ -159,6 +178,9 @@ class Settings(BaseSettings):
     # Configuración de Traducción
     TRANSLATION_ENABLED: bool = True
     TRANSLATION_METHOD: str = "google_translate"
+
+    # Configuración de HuggingFace
+    HF_HOME: Optional[str] = os.getenv("HF_HOME", None)
     
     # Configuración de Monitoreo
     OPIK_ENABLED: bool = False
@@ -195,9 +217,16 @@ class Settings(BaseSettings):
             self.PDF_OUTPUT_DIR,
             self.PDF_TEMPLATE_DIR
         ]
-        
+
+        # No crear HF_HOME automáticamente porque podría estar en otra unidad
+        # HuggingFace lo creará cuando sea necesario
+
         for directory in directories:
-            Path(directory).mkdir(parents=True, exist_ok=True)
+            try:
+                Path(directory).mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                # Ignorar errores al crear directorios (ej: unidad no existente)
+                print(f"Warning: No se pudo crear directorio {directory}: {e}")
     
     def is_development(self) -> bool:
         return self.DEBUG or self.ENVIRONMENT.lower() == "development"

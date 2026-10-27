@@ -284,9 +284,14 @@ def test_stream_error_and_logs_do_not_echo_query_or_request_id(
             headers={"X-Request-ID": marker},
         )
     captured = capsys.readouterr()
-    assert response.status_code == 500
+    # El fallo ocurre tras abrir el stream: sale como evento `error`, sin eco.
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [e["type"] for e in events] == ["meta", "error", "done"]
+    assert events[1]["code"] == "INTERNAL_ERROR"
     assert marker not in response.text + caplog.text + captured.out + captured.err
     assert response.headers["X-Request-ID"] != marker
+    assert {e["request_id"] for e in events} == {response.headers["X-Request-ID"]}
 
 
 def test_oauth_failure_is_redacted(client, monkeypatch, caplog, capsys):

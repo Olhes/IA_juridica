@@ -18,6 +18,9 @@ import {
   ShieldCheck,
   User,
   XCircle,
+  Volume2,
+  VolumeX,
+  Loader2,
 } from 'lucide-react';
 import { useState } from 'react';
 import type {
@@ -27,6 +30,7 @@ import type {
   ValidationReport,
 } from '../../../domain/legal/types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useTextToSpeech, useQuechuaTextToSpeech } from '../../../application/legal/use-cases/useSpeech';
 
 // ─── Iconos ──────────────────────────────────────────────────────────────────
 
@@ -253,6 +257,10 @@ interface ChatMessageProps {
 export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language }: ChatMessageProps) {
   const isUser = message.role === 'user';
 
+  // Text-to-speech hooks
+  const { supported: ttsSupported, speaking: esSpeaking, speak: speakEs, stop: stopEs } = useTextToSpeech();
+  const { supported: quTtsSupported, speaking: quSpeaking, loading: quLoading, speak: speakQu, stop: stopQu } = useQuechuaTextToSpeech();
+
   if (!isUser && message.isStreaming === false && message.isLoadingFull && !message.content && !message.streamingContent) {
     return <ThinkingBubble />;
   }
@@ -330,6 +338,35 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
 
         {/* Contenido Markdown */}
         <MarkdownRenderer content={respText} isStreaming={message.isStreaming} />
+
+        {/* Escuchar respuesta */}
+        {!message.isStreaming && respText && (
+          <div className="mt-3">
+            {language === 'spanish' && ttsSupported && (
+              <button
+                type="button"
+                onClick={() => (esSpeaking ? stopEs() : speakEs(respText))}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200 dark:border-gray-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all"
+                title={esSpeaking ? 'Detener' : 'Escuchar respuesta'}
+              >
+                {esSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {esSpeaking ? 'Detener' : 'Escuchar'}
+              </button>
+            )}
+            {language === 'quechua' && quTtsSupported && (
+              <button
+                type="button"
+                onClick={() => (quSpeaking ? stopQu() : speakQu(respText))}
+                disabled={quLoading}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200 dark:border-gray-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                title={quSpeaking ? 'Detener' : 'Escuchar respuesta en Quechua'}
+              >
+                {quLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : quSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {quLoading ? 'Generando...' : quSpeaking ? 'Detener' : 'Escuchar'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Detalles completos */}
         {apiResp && !message.isStreaming && (

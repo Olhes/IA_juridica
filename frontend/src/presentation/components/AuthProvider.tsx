@@ -29,8 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthState(state);
     });
 
-    // Intentar auto-login solo una vez al montar
-    const autoLogin = async () => {
+    // Intentar auto-login con reintentos
+    const autoLogin = async (retries = 3) => {
       try {
         console.log('🔍 Verificando autenticación con cookies...');
         const user = await authService.getCurrentUser();
@@ -45,13 +45,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem('auth_just_logged_in');
         } else {
           console.log('❌ No hay usuario autenticado');
+          authService.setState({
+            isAuthenticated: false,
+            user: null,
+            token: null,
+          });
         }
       } catch (error) {
         // No autenticado, continuar sin login
         console.log('❌ No autenticado o sesión expirada:', error);
+        authService.setState({
+          isAuthenticated: false,
+          user: null,
+          token: null,
+        });
       }
     };
 
+    // Verificar inmediatamente sin delay (las cookies deberían estar disponibles)
     autoLogin();
 
     // Escuchar cambios en localStorage para re-verificar después del callback

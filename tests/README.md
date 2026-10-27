@@ -172,6 +172,8 @@ se muestran como **skipped**; los 2 escenarios temporales conocidos son
 | Toda la suite + evaluación real del generador | `pnpm test:all --run-model-evals` | Cohere + juez OpenAI; red/coste |
 | Solo calidad real | `pnpm test:quality --run-model-evals` | Tres casos sintéticos; red/coste |
 | Solo evaluador offline | `pnpm test:quality:offline` | Sin proveedor |
+| Harness de evaluación offline | `pnpm test:harness` | Gold, métricas, cassettes y umbrales; sin proveedor |
+| Harness real | `pnpm test:harness:real --run-model-evals` | Las cuatro suites (`legal_qa`, `retrieval`, `translation`, `stream`) contra el pipeline real con `EVAL_MODE=1` (temperatura 0, sin caché, 3 muestras). Juez de DeepEval y RAGAS: Cohere `command-a-03-2025` con `COHERE_API_KEY` (`EVAL_JUDGE_PROVIDER=openai` + `OPENAI_API_KEY` + `EVAL_JUDGE_MODEL` para usar OpenAI). RAGAS se instala solo para esa corrida (capa temporal de `uv`); red/coste |
 | Cobertura Python + frontend | `pnpm test:coverage` | Cobertura/xUnit Python y LCOV frontend |
 | Lo anterior + scanner y Quality Gate | `pnpm sonar` | Token desde backend/.env; solo tras éxito de todas las suites |
 | Navegador con API simulada | `pnpm test:e2e` | Arranca Next en localhost:3100; sin backend ni modelos |
@@ -266,6 +268,7 @@ tests/
     bdd/                     # Comportamiento y limitaciones explícitas
     benchmark/               # Recuperación local
     quality/                 # Evaluador offline y casos reales opt-in
+    harness/                 # Harness de evaluación offline: gold, métricas, cassettes (ver fases F0-F6)
     manual/                  # Diagnósticos heredados, fuera del discovery
   frontend/
     unit/                    # Mapeos y clientes API/auth con Vitest
@@ -1271,6 +1274,8 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 |---|---|
 | `login por cookie actualiza estado sin persistir tokens` | Login por formulario seguido de /auth/me marca autenticación sin escribir tokens en localStorage. |
 | `usuario se recupera desde cookies tras nueva instancia sin token JS` | Una instancia sin token JavaScript restaura al usuario mediante cookies en /auth/me y notifica una vez a sus suscriptores. |
+| `sesión con la cookie de acceso vencida se renueva una vez con la de refresco` | Si /auth/me responde 401 (la cookie de acceso dura 15 minutos), se renueva con la cookie de refresco y se reintenta una vez. |
+| `sin cookie de refresco válida la sesión queda cerrada sin bucles` | Si la renovación también falla, la sesión queda cerrada tras un solo intento. |
 | `login inválido no autentica y conserva mensaje de error` | 401 conserva el mensaje y deja al usuario no autenticado. |
 | `logout limpia estado y notifica aunque la red falle` | Logout limpia usuario/tokens incluso sin red; desuscribir impide notificaciones posteriores. |
 | `401 refresca cookie una vez y reintenta conservando opciones` | Tras 401 hace exactamente un refresh y reenvía método/cuerpo de la solicitud. |
@@ -1543,7 +1548,7 @@ media queries simuladas; comprueba clases del documento, no estilos/píxeles.
 | Caso | Qué comprueba |
 |---|---|
 | `tema guardado aplica clase oscura sin esconder hijos` | Con preferencia `dark` en localStorage comprueba clase oscura del documento, conservación de la preferencia y visibilidad del contenido hijo. |
-| `tema del sistema sigue cambios y libera listener al desmontar` | Con tema `system` simula cambio de media query de claro a oscuro y comprueba las clases correspondientes; al desmontar verifica eliminación del listener registrado. |
+| `tema guardado puede cambiarse y persistirse` | Comprueba que el tema elegido se refleja en la clase del documento y se conserva en almacenamiento local. |
 
 
 ### `frontend/integration/legacyChatHooks.test.tsx`
@@ -1665,6 +1670,7 @@ backend completo, toca tu cuenta, lee cookies de tu navegador ni requiere red.
 | `test_google_callback_database_failures_do_not_issue_session` | Fallos en inicialización, búsqueda, creación o actualización terminan con error genérico sin JWT ni cookies; los primeros fallos tampoco escriben usuarios. |
 | `test_google_callback_preserves_explicit_http_exception` | Un HTTPException 503 conserva código y detalle, en vez de convertirse en 500; no emite sesión. |
 | `test_google_callback_cannot_issue_session_without_created_user` | Si la creación devuelve None, no firma tokens ni emite cookies. |
+| `test_google_refresh_token_renews_the_access_session` | Un token de refresco de Google (con `email`/`user_id`, sin `sub`) renueva la sesión con los roles actuales y cierra su conexión; un token de acceso no sirve para refrescar. |
 | `test_google_session_can_read_profile_and_logout` | Callback exitoso, cookies aceptadas por `/auth/me`, perfil/avatar/roles correctos, logout elimina ambas cookies y la siguiente consulta devuelve 401; no vuelve a llamar a Google. |
 
 ### Por qué los logs de los tests no describen tu cuenta
@@ -1707,6 +1713,11 @@ cobertura de la ampliación transversal anterior siguen siendo históricas.
 El harness HTTP usa las rutas reales de auth con dependencias externas simuladas.
 
 ## Benchmark documental de PDF oficiales (investigación aislada)
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_non_pdf_upload_stays_outside_sat_and_pdf_endpoint_rejects_it` | Un documento no PDF permanece en la ruta heredada sin identidad ni nodos SAT; `/upload-pdf` lo rechaza. |
+| `test_tts_failure_does_not_log_private_input_or_exception` (`backend/unit/test_tts_privacy.py`) | Un fallo de síntesis de voz no registra el texto privado ni el mensaje de excepción. |
 
 ### `backend/unit/test_documentary.py`
 
@@ -1863,3 +1874,461 @@ previos, 20 warnings**. Nueve ensayos CLI oficiales completed/exit 0, sin API nu
 snapshot v1 compatible exacto. El grafo propaga pero PPR regresa en desarrollo:
 esto es resultado experimental, no un motivo para escribir tests que exijan
 scores altos. Evidencia/rollback en `docs/SAT-GRAPH-EXPERIMENTS.md`.
+
+## Harness de evaluación — v8, 2026-10-22
+
+Plan completo y orden de fases: [plan del harness](../docs/HARNESS-IMPLEMENTATION-PLAN.md).
+Las secciones siguientes catalogan los tests que añade cada fase.
+
+### F0 — Contrato NDJSON v1 y tiempos por etapa
+
+El stream emite `meta`, `stage`, `chunk`, `final`, `error` y `done`, todos con
+`{v, seq, request_id, type}`. Los tests solo usan estados simulados: no llaman a
+Cohere, Google ni OpenAI. El contrato se exporta con
+`uv run python backend/scripts/export_stream_contract.py` a
+`backend/contracts/stream_event.v1.schema.json` y a
+`frontend/src/domain/legal/streamEvents.generated.ts`; un test falla si quedan
+desactualizados.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/contract/test_stream_contract.py`](backend/contract/test_stream_contract.py) | Eventos válidos e inválidos del contrato v1, códigos de error con mensaje fijo y archivos exportados al día. |
+| [`backend/unit/test_stream_pipeline.py`](backend/unit/test_stream_pipeline.py) | Tiempos por etapa de `answer_query`, caché sin tiempos, errores con `code`, orden del stream, timeout, cancelación y fallo de persistencia. |
+| [`frontend/component/PipelineStatus.test.tsx`](frontend/component/PipelineStatus.test.tsx) | Etapas en vivo, errores por `code` con Reintentar, "Respondió en X s" con desglose, en español y quechua. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_valid_events_round_trip` | Cada tipo de evento válido se parsea y se serializa sin cambios. |
+| `test_invalid_events_are_rejected` | Se rechazan eventos sin `v`/`seq`, con campos extra, etapa o código desconocido, versión distinta o `seq` negativo. |
+| `test_every_error_code_has_fixed_message_and_retry_policy` | Todo `code` tiene mensaje fijo y política de reintento; `INTERNAL_ERROR` no es reintentable. |
+| `test_exported_schema_and_typescript_are_up_to_date` | El JSON Schema y los tipos TypeScript coinciden con el modelo Pydantic. |
+| `test_timer_records_stage_and_notifies_start_and_end` | El temporizador acumula milisegundos por etapa, avisa inicio y fin y rechaza etapas desconocidas. |
+| `test_answer_query_reports_every_stage_in_order_and_timings` | `answer_query` notifica retrieval, generation y validation en orden y devuelve `metadata.timings`. |
+| `test_cache_hit_has_timings_and_timings_are_not_cached` | Un acierto de caché marca `cache_hit` y los tiempos nunca se guardan en la caché. |
+| `test_pipeline_errors_carry_stable_code` | Fallos de recuperación y generación llevan `code` estable y no filtran el texto de la excepción. |
+| `test_stream_emits_stages_before_validated_text_then_done` | `meta` y `stage` preceden al texto, que solo sale validado; `seq` consecutivo, un solo `request_id`, termina en `done`. |
+| `test_stream_failures_become_a_single_error_event_with_code` | Un fallo posterior a abrir el stream produce un único `error` con `code` y `retryable`, sin eco del texto privado. |
+| `test_stream_times_out_and_cancels_the_pipeline` | El timeout emite `TIMEOUT` reintentable y cancela el pipeline en curso. |
+| `test_persistence_failure_is_an_error_not_a_final` | Si no se puede persistir la respuesta no se entrega `final`, sino `error`. |
+
+| Caso | Qué verifica |
+|---|---|
+| `etapas en vivo marcan la activa y las terminadas, en español y quechua` | La etapa en curso tiene `aria-current`, las terminadas se marcan y los textos cambian de idioma. |
+| `la traducción de entrada y salida se muestra como un único paso` | `translate_in` y `translate_out` se presentan como un solo "Traduciendo". |
+| `error muestra texto según code, sin eco del servidor, y reintenta solo si es reintentable` | El texto sale de `translations.ts` según `code`; el botón Reintentar solo aparece si `retryable`. |
+| `tiempo de respuesta muestra segundos y desglose por etapa` | "Respondió en X s", desglose por etapa y variante de caché. |
+| `la terminal integra etapas, error con reintento y tiempos del asistente` | `TerminalModal` muestra etapas, error con reintento y tiempos de los mensajes del asistente. |
+| `contrato v1: etapas en vivo, texto validado y tiempos en el payload final` | `useChat` actualiza la etapa en vivo y conserva `metadata.timings` del `final`. |
+| `contrato v1: error con code se conserva y reintentar reenvía la misma consulta` | `useChat` guarda `errorInfo` y `retry` reenvía la consulta sin duplicar mensajes locales. |
+
+**Cambio de comportamiento:** los fallos posteriores a la autorización y a la
+comprobación de la conversación (401/404) dejan de ser un HTTP 5xx y salen como
+evento `error` dentro de un stream 200. `test_stream_error_and_logs_do_not_echo_query_or_request_id`
+documenta ese caso.
+
+### F1 — Gold y métricas contra alucinaciones
+
+El gold (`tests/backend/fixtures/gold/legal_qa.v1.jsonl`) contiene 107 casos **candidatos**
+(`status: "candidate"`, `reviewers: []`) extraídos de `backend/docs/processed/`: 80 en español y
+27 gemelos en quechua sureño (`parallel_id`), con los mismos hechos que su par en español. Cada
+hecho cita un fragmento textual de su segmento y el cargador lo comprueba contra el corpus. Lo que
+el gold llama "hecho" es lo que el corpus afirma, no verdad jurídica verificada; las consultas en
+quechua esperan revisión de un hablante nativo. En los casos en quechua los hechos y citas se
+comprueban sobre la respuesta validada en español (antes de traducir) y la entrega en quechua se
+mide con `quechua_delivered`; `query_language_detected` mide si el detector del pipeline reconoce
+el idioma de la consulta. Se regenera con `uv run python -m evaluation.harness.seed_legal_qa`
+(desde `backend/`). Los tests no llaman a Cohere, Google ni OpenAI.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_gold.py`](backend/harness/test_gold.py) | Esquema estricto del gold, procedencia de los 107 casos semilla bilingües (`candidate`), gemelos coherentes entre idiomas, citas textuales verificadas contra el corpus y rechazo de casos incoherentes. |
+| [`backend/harness/test_metrics.py`](backend/harness/test_metrics.py) | Regla `n/a`, agregación macro/micro, legal factuality, precisión de citas, abstención, calibración y faithfulness como diagnóstico. |
+| [`backend/harness/test_pipeline_eval.py`](backend/harness/test_pipeline_eval.py) | Evaluación del gold con respuestas sintéticas, errores sin ceros falsos, jueces, cassettes, umbrales prerregistrados y metadatos del resultado. |
+| [`backend/unit/test_citation_verifier.py`](backend/unit/test_citation_verifier.py) | Extracción de Ley/artículo/Casación/D.S. con su código, coincidencia por número y verificación contra evidencia, también con OCR espaciado. |
+| [`frontend/component/EvidencePanels.test.tsx`](frontend/component/EvidencePanels.test.tsx) | Tarjeta de evidencia insuficiente con recursos, chips de citas ✓/⚠ con extracto y panel "¿Por qué confiar en esta respuesta?". |
+
+**`backend/harness/test_gold.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_segmenter_is_deterministic_and_drops_page_noise` | El segmentador produce los mismos segmentos con LF o CRLF y descarta imágenes, URLs, contadores de página y sellos de fecha. |
+| `test_document_ids_are_unique_and_stable` | Los `doc_id` salen del nombre de archivo, son únicos y la revisión del corpus es estable entre cargas. |
+| `test_seed_cases_are_candidates_without_reviewers` | Los casos semilla son `candidate`, sin revisores: ninguno se presenta como verdad. |
+| `test_gold_has_100_bilingual_cases_with_consistent_twins` | Hay 100 o más casos, con al menos 25 gemelos en quechua que comparten hechos y partición con su par y cubren todos los temas y estratos. |
+| `test_query_language_detection_is_measured_not_assumed` | Las consultas no se ajustan al detector del pipeline: `query_language_detected` refleja sus aciertos y sus errores conocidos. |
+| `test_parallel_pairs_that_drift_apart_are_rejected` | Un gemelo con otra partición o que apunta a un caso inexistente se rechaza. |
+| `test_seed_covers_all_strata_splits_and_topics` | La semilla cubre positivo/límite/negativo, dev/holdout y los cinco temas más `fuera_de_corpus`. |
+| `test_every_fact_and_contradiction_quotes_the_corpus` | Cada hecho y cada contradicción cita un fragmento que existe en su segmento de origen. |
+| `test_checked_in_jsonl_matches_the_seed_definition` | El JSONL versionado coincide con lo que genera `seed_legal_qa`; no se edita a mano. |
+| `test_each_fact_text_satisfies_its_own_anchors` | Un hecho escrito con sus propias palabras cuenta como cubierto: las anclas no son más estrictas que el hecho. |
+| `test_forbidden_patterns_detect_their_example_but_not_the_facts` | Cada patrón prohibido detecta su ejemplo y no se activa con los hechos correctos. |
+| `test_negative_cases_are_out_of_corpus_and_require_abstention` | Los negativos exigen abstención, no tienen segmentos y sus términos ausentes no están en el corpus. |
+| `test_loader_filters_splits_and_adjudicated` | El cargador filtra por split y por casos adjudicados (hoy ninguno). |
+| `test_gold_hash_ignores_line_endings` | El hash del gold es el mismo con LF o CRLF. |
+| `test_schema_rejects_inconsistent_cases` | Se rechazan campos extra, revisores en un candidato, adjudicación incompleta, abstención con hechos, estrato o split inválidos e IDs mal formados. |
+| `test_negative_with_segments_or_without_absent_terms_is_rejected` | Un negativo sin `absent_terms` o con un tema del corpus no es válido. |
+| `test_two_blind_approvals_make_a_case_adjudicated` | Dos revisores distintos, ciegos y que aprueban habilitan `adjudicated`. |
+| `test_verification_detects_invented_quote_changed_text_and_corpus_leaks` | La verificación detecta una cita inventada, un segmento cambiado, un patrón `unsupported` presente en el corpus, un término ausente que sí aparece y una cita aceptable inexistente. |
+| `test_loader_reports_every_problem_with_its_line` | Un JSON roto y un `id` repetido se informan juntos, con el número de línea. |
+
+**`backend/harness/test_metrics.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_na_is_never_a_silent_zero_in_macro_or_micro` | Un `n/a` no entra en macro ni micro y se cuenta aparte. |
+| `test_macro_and_micro_differ_when_cases_have_different_sizes` | Macro (media por caso) y micro (suma de numeradores/denominadores) se calculan por separado. |
+| `test_all_na_reports_reason_instead_of_a_number` | Si todo es `n/a` el resultado es `null` con la razón, no 0. |
+| `test_zero_denominator_is_na_and_samples_are_merged` | Denominador cero es `n/a`; las muestras de un caso se unen por media y suma. |
+| `test_fact_recall_counts_covered_facts_and_is_na_when_abstention_is_required` | Recall de hechos exigidos; `n/a` cuando el caso exige abstenerse. |
+| `test_legal_factuality_zeroes_out_when_a_forbidden_claim_is_made` | Una afirmación prohibida pone la factualidad en 0 aunque los hechos estén cubiertos. |
+| `test_negated_forbidden_claim_is_not_flagged` | "No pierdes el derecho" no dispara la afirmación "pierdes el derecho". |
+| `test_forbidden_claim_is_na_when_the_case_defines_none` | Sin afirmaciones prohibidas definidas la métrica es `n/a`, no 0. |
+| `test_oracle_answers_are_fully_factual_for_every_answerable_case` | La respuesta ideal de cada caso cubre todos sus hechos sin afirmar nada prohibido. |
+| `test_citation_precision_uses_the_corpus_and_the_acceptable_list` | Precisión de citas contra el corpus y contra las citas aceptables del caso. |
+| `test_citation_metrics_are_na_without_citations_or_acceptable_list` | Sin citas o sin lista aceptable, la métrica es `n/a`. |
+| `test_citation_index_finds_citations_in_spaced_ocr_documents` | El índice encuentra Casación y artículo en documentos con OCR espaciado. |
+| `test_citation_grounded_reads_runtime_statuses` | La precisión contra evidencia recuperada lee `metadata.citations` del runtime. |
+| `test_abstention_metrics_are_complementary_and_semantic_markers_count` | Recall de abstención y abstención innecesaria son complementarias; una no-respuesta explícita cuenta. |
+| `test_calibration_perfect_overconfident_and_empty` | ECE y Brier para confianza perfecta, sobreconfiada y sin datos. |
+| `test_faithfulness_is_a_diagnostic_with_na_when_missing` | Faithfulness es diagnóstico: `n/a` si el validador o el juez no lo midieron. |
+| `test_answer_from_payload_reads_the_pipeline_contract` | `Answer` se construye desde el payload de `answer_query` (texto, estado, confianza, citas, tiempos). |
+
+**`backend/harness/test_pipeline_eval.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_oracle_answers_score_perfectly_on_every_applicable_metric` | Con respuestas ideales todas las métricas aplicables son perfectas y los estratos/splits se agregan. |
+| `test_degraded_answers_lower_factuality_and_expose_missing_facts` | Respuestas degradadas bajan la factualidad, exponen los hechos faltantes y la calibración lo refleja. |
+| `test_forbidden_claim_in_an_otherwise_correct_answer_is_reported` | Una afirmación prohibida se informa por caso aunque el hecho correcto esté presente. |
+| `test_errors_are_counted_not_converted_into_zeros` | Un error al responder se cuenta como error, sin texto de la excepción y sin ceros falsos. |
+| `test_judge_json_block_strips_fences_and_surrounding_text` | El juez extrae el objeto JSON de la respuesta aunque venga con cercas de código o texto alrededor. |
+| `test_a_judge_failure_leaves_the_case_na_instead_of_crashing` | Si el juez falla en un caso (p. ej. salida que no es JSON), ese caso queda `n/a` y se cuenta en `judge_failures`; la suite no se cae. |
+| `test_pipeline_errors_keep_their_stable_code_but_never_the_message` | Un `PipelineError` conserva su código estable (`GENERATION_UNAVAILABLE`, etc.) para saber en qué etapa falló, nunca su mensaje. |
+| `test_samples_are_merged_per_case` | Con N muestras cada caso promedia sus muestras y se conservan todas las respuestas. |
+| `test_judge_metrics_are_na_without_a_judge_and_present_with_one` | Sin juez las métricas del juez (DeepEval y RAGAS) son `n/a`; con juez se registran nombre, modelo y disponibilidad, y el juez lee el texto de los fragmentos recuperados, no los nombres de archivo. |
+| `test_judge_factory_registers_availability_without_calling_models` | El juez `deepeval` usa Cohere por defecto (u OpenAI si se configura) e informa si está disponible sin llamar a ningún modelo ni revelar claves. |
+| `test_cassette_replays_records_and_refuses_unrecorded_requests` | El cassette reproduce, graba solo en modo de grabación y falla ante una solicitud no grabada. |
+| `test_result_file_carries_reproducibility_metadata` | El resultado en disco lleva sha, `prompt_digest`, corpus, hash del gold, modelos, juez y su disponibilidad. |
+| `test_thresholds_are_unregistered_by_default_and_never_pass_silently` | Sin umbrales prerregistrados el veredicto es `unregistered`, nunca `pass`. |
+| `test_registration_requires_a_baseline_measurement_and_adjudicated_gold` | Registrar umbrales exige un baseline medido, métricas aplicables y gold adjudicado (o marcarlo provisional). |
+| `test_registered_thresholds_pass_fail_and_go_stale_with_the_gold` | Umbrales registrados: pass, fail, n/a como fallo y `stale` si cambia el gold. |
+| `test_quechua_cases_check_facts_on_the_validated_spanish_and_measure_the_translation` | En un caso en quechua los hechos se comprueban sobre el español validado y `quechua_delivered` distingue quechua entregado de español sin traducir. |
+| `test_ragas_id_crosscheck_is_na_without_ragas_installed` | Sin RAGAS instalado el control cruzado de recuperación es `n/a` con su motivo, no un número. |
+
+**`backend/unit/test_citation_verifier.py`**
+
+| Caso | Qué verifica |
+|---|---|
+| `test_extracts_normalised_citation_keys` | Claves normalizadas para Ley, artículo (con su código), Casación y Decreto Supremo, incluidas variantes del OCR. |
+| `test_extraction_keeps_the_original_text_of_each_citation` | Cada cita conserva el texto original, con mayúsculas y tildes. |
+| `test_code_is_not_borrowed_from_a_later_citation` | Un artículo no toma el código de la cita siguiente. |
+| `test_codeless_article_matches_by_number_but_different_codes_do_not` | Un artículo sin código coincide por número; códigos distintos no coinciden. |
+| `test_despace_joins_letter_spaced_ocr_runs` | Se unen las rachas de letras sueltas del OCR espaciado. |
+| `test_verification_marks_traceable_and_untraceable_citations_with_excerpt` | Citas trazables a la evidencia con extracto y citas no halladas marcadas `unverified`. |
+| `test_verification_reads_spaced_ocr_evidence` | La verificación lee evidencia con OCR espaciado. |
+| `test_verification_without_evidence_leaves_everything_unverified` | Sin evidencia ninguna cita queda verificada. |
+| `test_answer_includes_verified_citations_and_evidence_excerpts` | `answer_query` agrega `metadata.citations` verificadas y `metadata.evidence` con extractos del corpus. |
+| `test_answer_without_documents_has_no_citations_or_evidence` | Sin documentos hay abstención formal, sin citas ni evidencia. |
+
+**`frontend/component/EvidencePanels.test.tsx`**
+
+| Caso | Qué verifica |
+|---|---|
+| evidencia insuficiente muestra la tarjeta con recursos de ayuda y teléfonos | Línea 100, CEM y Defensoría con enlaces `tel:`. |
+| tarjeta de evidencia insuficiente existe en quechua y reemplaza chips y panel | Existe en quechua y sustituye a los chips y al panel de confianza. |
+| chips de citas distinguen verificadas y no verificadas y muestran el extracto del corpus | ✓/⚠ accesibles y extracto del corpus al abrir el chip. |
+| sin citas no se dibuja el bloque de citas | Sin citas no se renderiza nada. |
+| panel de confianza resume solo lo medido: fuentes, validador, riesgo, citas y aviso | Fuentes, validador, riesgo, citas verificadas, fiabilidad y aviso. |
+| panel de confianza advierte cuando no es fiable y no inventa datos ausentes | Sin fuentes ni citas lo dice; si no es fiable lo advierte. |
+| la terminal muestra tarjeta, chips y panel solo en respuestas finales del asistente | La terminal no muestra estos bloques mientras la respuesta aún se transmite. |
+
+**`scripts/unit/run-tests.test.mjs`**
+
+| Caso | Qué verifica |
+|---|---|
+| harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1 | `harness` es offline; `harness-real` falla sin el flag y fuerza `EVAL_MODE=1`. |
+
+### F2 — Recuperación de jurisprudencia
+
+`backend/evaluation/harness/retrieval_eval.py` evalúa **por separado** cada etapa: LightRAG puro
+(`naive`, `local`, `global`, `hybrid`, `mix`), solo léxico (BM25), la mezcla actual antes del
+rerank, el resultado tras el rerank con umbral 0.1 y el mismo rerank sin umbral. Los fragmentos
+se mapean a segmentos con la regla de solapamiento de `overlap.py` (n-gramas de 10 caracteres; el
+fragmento contiene ≥ 60 % del segmento o es ≥ 60 % parte de él; lo no mapeado se conserva como
+`unmapped:<huella>`). Los sistemas que dependen de LightRAG o de Cohere son `n/a` sin
+`--run-model-evals` o sin cassette; los tests no llaman a ningún proveedor.
+
+Comando sin red: `uv run python -m evaluation.harness.runner retrieval` (desde `backend/`). El gold de
+recuperación `retrieval.v1.jsonl` se deriva de `legal_qa` y hereda su estado `candidate`.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_retrieval.py`](backend/harness/test_retrieval.py) | Regla de solapamiento, recall/precisión de evidencia, MRR, nDCG, jurisprudencia, `no_match`, fallback, pérdida por umbral, auditoría del índice y trazas del motor. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_overlap_rule_maps_containing_inside_and_unrelated_chunks` | Un fragmento que contiene el segmento, que es casi todo parte de él o que no se parece a nada se mapea como corresponde. |
+| `test_overlap_rule_is_insensitive_to_spacing_and_accents` | Mayúsculas, tildes y espacios no cambian el mapeo; un texto demasiado corto no genera n-gramas. |
+| `test_a_long_chunk_maps_to_every_segment_it_contains` | Un fragmento largo corresponde a todos los segmentos que contiene. |
+| `test_recall_precision_mrr_ndcg_follow_the_sat_definitions` | Recall y precisión de evidencia con IDs distintos, precisión por fragmento, MRR y nDCG binario. |
+| `test_every_retrieval_metric_is_na_without_a_denominator` | Sin evidencia exigida, sin resultados o sin método la métrica es `n/a`, no 0 ni 1. |
+| `test_empty_result_and_jurisprudence_flags` | Resultado vacío (indebido o deseable), acierto de jurisprudencia y uso de fallback. |
+| `test_threshold_loss_counts_relevant_evidence_scored_under_the_minimum` | Fracción de evidencia relevante del reranker que el umbral mínimo descarta. |
+| `test_retrieval_gold_is_derived_from_legal_qa_and_matches_the_checked_in_file` | El gold de recuperación sale de los casos en español de `legal_qa` (una consulta en quechua se traduce antes de recuperar) y el JSONL coincide con la derivación. |
+| `test_jurisprudence_is_detected_by_casacion_citations_and_casacion_documents` | La jurisprudencia se detecta por citas de Casación o por documentos sobre una Casación. |
+| `test_oracle_retrieval_is_perfect_and_unavailable_systems_are_na_with_reason` | Un recuperador ideal puntúa 1; un sistema no disponible es `n/a` con su razón. |
+| `test_irrelevant_results_score_zero_recall_but_are_not_empty` | Resultados irrelevantes dan recall 0 sin contarse como vacíos. |
+| `test_threshold_loss_is_measured_from_the_rerank_scores` | La pérdida por umbral se calcula con las puntuaciones del reranker. |
+| `test_retrieved_round_trips_through_json` | `Retrieved` se serializa y deserializa sin pérdida (cassettes). |
+| `test_index_audit_reports_segments_no_indexed_chunk_can_reach` | La auditoría del índice informa los segmentos que ningún fragmento indexado alcanza. |
+| `test_corpus_quality_flags_spaced_ocr_documents_and_gold_dependence` | Se marcan los cuatro documentos con OCR espaciado y cuántos segmentos del gold dependen de ellos. |
+| `test_offline_engine_runs_lexical_mix_and_fallback_rerank_without_network` | El motor local ejecuta léxico, mezcla y rerank de respaldo sin red, de forma determinista. |
+| `test_trace_exposes_every_rerank_score_without_changing_the_selection` | `trace` expone todas las puntuaciones del rerank sin cambiar los documentos seleccionados. |
+| `test_trace_without_reranker_marks_the_fallback` | Sin Cohere la traza marca el rerank de respaldo. |
+| `test_evidence_reports_retrieval_origin_and_cited_jurisprudence` | `metadata.evidence` informa el origen (grafo o léxico) y las Casaciones citadas. |
+| jurisprudencia relacionada muestra relevancia y camino de recuperación solo de fragmentos con Casación | La UI lista solo fragmentos con Casación, con relevancia y camino. |
+| jurisprudencia relacionada tolera relevancia ausente, método desconocido y quechua | Relevancia ausente, método desconocido y versión en quechua. |
+
+### F3 — Traducción es→qu
+
+`tests/backend/fixtures/gold/translation.v1.jsonl` reúne 319 pares **candidatos** extraídos de textos
+impresos: los manuales del Ministerio de Cultura (quechua cusco-collao y chanka) y la edición
+quechua-castellano de la Ley 30364 (por artículo; la variante exacta no consta y se marca
+`sureno-sin-confirmar`). Cada par guarda su origen y el cargador comprueba que el español y el quechua
+aparecen en ese archivo. Todos esperan a dos hablantes nativos (`reviewers: []`); no son verdad
+lingüística. Se regeneran con `uv run python -m evaluation.harness.translation_seed` (desde `backend/`).
+
+Métricas (`metrics/translation.py`): chrF++ (principal), BLEU y TER sin desplazamientos, adherencia al
+glosario, referencias legales conservadas, marcadores `ZXQREF` filtrados, idioma del resultado,
+tasa de copia, cobertura y round-trip con embeddings (precalculado al grabar el cassette). El sistema
+real (Google Translate) solo se mide con `--run-model-evals` o desde un cassette; sin ellos la suite
+mide la línea base "copiar el español".
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_translation.py`](backend/harness/test_translation.py) | Gold paralelo y su procedencia, chrF++/BLEU/TER, señales de contrato, glosario, round-trip y la suite con cassette. |
+| [`backend/unit/test_translation_qe.py`](backend/unit/test_translation_qe.py) | Estimación de calidad sin referencia y `metadata.translation` (aviso fuera del texto, calidad, fallback al español). |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_seed_pairs_are_candidates_with_native_review_pending` | Los pares son `candidate`, sin revisores, de tres variantes y cuatro tipos. |
+| `test_every_pair_is_found_in_its_printed_source` | El español y el quechua de cada par aparecen en su archivo de origen. |
+| `test_verification_rejects_invented_text_and_missing_sources` | Un quechua inventado, un español ausente o un origen inexistente se rechazan. |
+| `test_pairs_need_two_blind_native_reviewers_to_be_adjudicated` | `adjudicated` exige dos hablantes nativos distintos, ciegos y que aprueban; el resto de combinaciones inválidas falla. |
+| `test_loader_reports_broken_lines_and_duplicates` | Una línea rota y un `id` repetido se informan juntos. |
+| `test_loader_filters_kinds_splits_and_adjudicated` | El cargador filtra por tipo, split y adjudicación. |
+| `test_page_noise_is_removed_from_sources` | Se quitan los marcadores de página de la maquetación. |
+| `test_chrf_matches_hand_computed_values_and_ignores_whitespace_in_characters` | chrF++ coincide con valores calculados a mano; los espacios no cuentan en los n-gramas de caracteres. |
+| `test_chrf_rewards_recall_more_than_precision` | Con β = 2 el recall pesa más que la precisión. |
+| `test_bleu_and_ter_follow_their_definitions` | BLEU de 4-gramas con suavizado y TER por edición de palabras con la mejor referencia. |
+| `test_corpus_bleu_sums_statistics_instead_of_averaging_sentences` | BLEU de corpus suma estadísticas, no promedia oraciones. |
+| `test_contract_signals_references_placeholders_language_copy_and_coverage` | Referencias legales conservadas, marcadores filtrados, idioma, copia y cobertura. |
+| `test_glossary_adherence_counts_only_terms_present_in_the_source` | Solo cuentan los términos del glosario presentes en el original. |
+| `test_round_trip_is_a_cosine_over_injected_embeddings` | Round-trip es un coseno sobre embeddings inyectados (sin red). |
+| `test_the_identity_baseline_is_the_floor_and_is_flagged_as_low_quality` | Copiar el español da el piso de las métricas y la estimación de calidad lo marca `baja`. |
+| `test_references_used_as_output_score_perfectly_and_qe_separates_good_from_bad` | Las referencias como salida puntúan perfecto; la estimación separa originales largos y cortos. |
+| `test_missing_and_failed_outputs_are_errors_not_zeros` | Una salida ausente o fallida es un error, no un 0. |
+| `test_precomputed_round_trip_enters_the_report` | El coseno precalculado entra en el informe. |
+| `test_language_id_heuristic_is_measured_on_the_gold_itself` | La heurística de idioma se mide sobre el propio gold. |
+| `test_translation_suite_writes_offline_baseline_and_replays_a_recorded_cassette` | La suite escribe la línea base offline y reproduce un cassette grabado sin llamar al proveedor. |
+| `test_language_heuristic_separates_quechua_spanish_and_short_text` | La heurística distingue quechua, español y textos demasiado cortos. |
+| `test_copy_rate_length_and_references` | Tasa de copia, razón de longitud y referencias protegidas. |
+| `test_quality_is_high_only_when_every_automatic_check_passes` | `alta` solo si pasan todas las comprobaciones automáticas. |
+| `test_quality_is_low_for_untranslated_lost_references_failures_and_absurd_length` | `baja` ante español sin traducir, referencias perdidas, fallos o longitud absurda. |
+| `test_quality_is_medium_when_the_language_cannot_be_confirmed` | `media` si no se puede confirmar que sea quechua. |
+| `test_quechua_answer_keeps_the_notice_out_of_the_text_and_adds_quality` | El aviso ya no se pega al texto; vive en `metadata.translation` con la calidad. |
+| `test_failed_translation_falls_back_to_spanish_without_a_pasted_notice` | Si falla la traducción se conserva el español, sin aviso pegado y sin guardar en caché. |
+| aviso de traducción muestra la calidad estimada, el aviso de revisión y alterna el original | Badge de calidad, aviso de revisión y "Ver original en español". |
+| aviso de traducción informa cuando se muestra el español por falla y no promete calidad | Si se muestra el español por una falla no se anuncia calidad. |
+| aviso de traducción existe en quechua y no aparece sin traducción | Existe en quechua y no se dibuja sin traducción. |
+
+**Limitaciones:** la estimación de calidad exige las referencias legales *literales* (como las produce el
+servicio); una traducción humana que las reescribe obtendría `baja`. En frases de menos de cuatro palabras
+no puede confirmar el idioma y devuelve `media`.
+
+### F4 — QA del stream
+
+Servidor: `StreamGuard` (`services/stream_guard.py`) envuelve el generador del stream y garantiza
+esquema válido, `seq` consecutivo, `request_id` único, **un solo** terminal (`final` o `error`) seguido de
+un único `done`, `chunk` igual al texto del `final` (se retiene hasta verlo) y un watchdog que emite
+`TIMEOUT` si el origen se queda mudo. Cliente: `ndjsonParser.ts` es una función pura (reloj inyectado)
+que tolera BOM, CRLF y líneas partidas, repara o descarta contando, deduplica y ordena por `seq`, usa el
+`chunk` si falta el `final` (`degraded`) y mide los tiempos. `POST /telemetry/stream` recibe solo números.
+
+Los streams rotos de `tests/backend/fixtures/gold/ndjson_broken/` se generan con
+`uv run python -m evaluation.harness.stream_fixtures` (desde `backend/`) y los usan pytest, vitest y
+Playwright. Playwright necesita un navegador: con `npx playwright install` o, si ya tienes Edge,
+`PLAYWRIGHT_CHANNEL=msedge pnpm test:e2e`. La suite `stream` del harness (`python -m evaluation.harness.runner
+stream`) informa validez y latencia p50/p95 por etapa; sin `--run-model-evals` usa un pipeline simulado y
+mide solo el costo propio del stream.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/unit/test_stream_guard.py`](backend/unit/test_stream_guard.py) | Contrato garantizado por `StreamGuard`, violaciones, watchdog y fuzzing con mutaciones. |
+| [`backend/harness/test_stream.py`](backend/harness/test_stream.py) | Fixtures rotos reproducibles, validez del contrato, p50/p95 por etapa, suite `stream` y esquema de telemetría. |
+| [`backend/http/test_stream_telemetry.py`](backend/http/test_stream_telemetry.py) | `POST /telemetry/stream` (solo números), resumen administrativo y stream HTTP real bajo el guardián. |
+| [`frontend/unit/ndjsonParser.test.ts`](frontend/unit/ndjsonParser.test.ts) | Analizador del cliente: fixtures, cortes en cualquier byte, fuzzing, tiempos y telemetría. |
+| [`frontend/e2e/stream-resilience.spec.js`](frontend/e2e/stream-resilience.spec.js) | Navegador con streams rotos: la interfaz muestra la respuesta, el aviso parcial o un error recuperable. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_a_valid_stream_passes_through_unchanged` | Un stream válido pasa sin cambios. |
+| `test_chunk_is_held_until_its_final_and_dropped_if_the_texts_differ` | El `chunk` espera a su `final`; si el texto difiere no se entrega. |
+| `test_violations_are_reported_and_the_client_gets_a_single_error_then_done` | Cada violación se registra y el cliente recibe un solo `error` y `done`. |
+| `test_events_after_the_terminal_are_dropped_but_the_delivered_final_is_kept` | El ruido tras el `final` se descarta sin perder lo entregado. |
+| `test_the_client_always_sees_meta_first_even_if_the_source_never_sent_it` | El cliente ve `meta` primero aunque el origen falle antes de enviarlo. |
+| `test_garbage_lines_and_missing_terminal_are_closed_with_an_error` | Líneas basura o ausencia de terminal se cierran con `error`. |
+| `test_an_upstream_error_is_passed_on_and_its_done_is_kept` | Un `error` del origen se reenvía con su `done`. |
+| `test_seq_is_renumbered_by_the_guard_not_trusted_from_upstream` | El `seq` lo asigna el guardián. |
+| `test_fuzz_mutated_streams_always_satisfy_the_contract` | 400 streams mutados al azar siempre cumplen el contrato. |
+| `test_guard_stream_delivers_valid_streams_and_closes_short_ones` | El generador entrega streams válidos y cierra los cortos. |
+| `test_watchdog_emits_a_retryable_timeout_when_the_source_goes_silent` | El watchdog emite `TIMEOUT` reintentable. |
+| `test_the_source_is_closed_when_the_guard_stops_early` | El origen se cierra cuando el guardián termina antes. |
+| `test_broken_stream_fixtures_match_their_generator_byte_for_byte` | Los fixtures coinciden byte a byte con su generador. |
+| `test_fixtures_cover_the_failure_modes_the_client_must_survive` | Los fixtures cubren BOM, CRLF, líneas rotas, truncado, duplicados, versión y más. |
+| `test_the_reference_valid_stream_satisfies_the_contract_and_broken_ones_do_not` | El stream de referencia cumple el contrato y los rotos no. |
+| `test_contract_checker_names_each_kind_of_problem` | El verificador nombra cada tipo de problema. |
+| `test_percentiles_use_nearest_rank_and_are_na_without_data` | Percentiles por rango más cercano; `n/a` sin datos. |
+| `test_streams_over_the_real_generator_are_valid_and_report_latency_per_stage` | Streams reales del generador: válidos y con latencia por etapa. |
+| `test_pipeline_failures_still_produce_valid_error_streams` | Un fallo del pipeline sigue produciendo un stream válido de error. |
+| `test_summary_is_na_for_an_empty_run` | Sin streams, el resumen es `n/a`. |
+| `test_stream_suite_writes_a_report_with_reproducibility_metadata` | La suite escribe su informe con metadatos de reproducibilidad. |
+| `test_client_telemetry_schema_is_numbers_only` | El esquema de telemetría rechaza texto, ids inválidos y rangos absurdos. |
+| `test_stream_metrics_aggregate_percentiles_outcomes_and_lines_and_stay_bounded` | Agregación acotada de p50/p95, resultados y líneas inválidas. |
+| `test_valid_telemetry_is_accepted_without_a_session_and_with_plain_text_bodies` | Acepta telemetría válida sin sesión y con cuerpo `text/plain`. |
+| `test_telemetry_with_text_or_invalid_numbers_is_rejected_and_never_stored` | Rechaza y no guarda telemetría con texto o números inválidos. |
+| `test_oversized_telemetry_is_rejected_with_413` | Rechaza cuerpos de más de 4 KB. |
+| `test_summary_requires_the_admin_key_and_reports_p50_p95_per_stage` | El resumen exige clave de administración e informa p50/p95. |
+| `test_the_http_stream_is_contract_valid_and_shares_the_request_id_header` | El stream HTTP cumple el contrato y comparte `X-Request-ID`. |
+| cada stream de referencia produce lo que declara su manifiesto | Cada fixture produce lo declarado en `manifest.json`. |
+| tolera BOM y CRLF y entrega el mismo resultado que el stream limpio | BOM y CRLF no cambian el resultado. |
+| el resultado no depende de dónde se parta el stream, ni siquiera en medio de un carácter UTF-8 | Cortes en cualquier byte dan el mismo resultado. |
+| un CRLF partido entre dos lecturas no genera líneas fantasma | Un CRLF partido no crea líneas fantasma. |
+| fuzz: cortes aleatorios en cualquier stream de referencia dan el mismo resultado | Fuzzing de cortes sobre todos los fixtures. |
+| fuzz: corrupción aleatoria nunca lanza y las cuentas son coherentes | Fuzzing de corrupción: nunca lanza y las cuentas cuadran. |
+| fuzz: mezclar líneas y duplicarlas conserva el contenido y cuenta los duplicados | Fuzzing de orden y duplicados. |
+| ordena por seq dentro de cada lectura y cuenta como desordenado lo que llega tarde | Orden por `seq` y cuenta de eventos tardíos. |
+| sin final usa el chunk y marca la respuesta como degradada | Sin `final` se usa el `chunk` y se marca `degraded`. |
+| un error terminal se informa con su código y si es reintentable, sin degradar | Error terminal con código y reintento. |
+| los eventos antiguos sin v ni seq se aceptan; los de otra versión se descartan contados | Compatibilidad con eventos antiguos; versiones ajenas descartadas. |
+| extractObjects separa objetos pegados, ignora basura exterior y respeta las cadenas | Reparación de objetos pegados. |
+| un evento de otra petición no se mezcla con el resultado | Aislamiento por `request_id`. |
+| mide los tiempos con el reloj inyectado: primer byte, primer chunk, terminal, total y etapas | Tiempos medidos con reloj inyectado. |
+| la telemetría del cliente contiene solo números y el request_id, y nada de texto | La telemetría no contiene texto. |
+| la telemetría usa sendBeacon con text/plain y nunca lanza ni envía sin datos | `sendBeacon` con `text/plain`, sin lanzar. |
+| stream sin final marca la respuesta como degradada y conserva el texto recibido | `useChat` marca `degraded` sin `final`. |
+| una línea corrupta ya no tira la respuesta: se descarta y el final se conserva | Una línea corrupta ya no tira la respuesta. |
+| al terminar envía telemetría solo numérica con sendBeacon cuando el servidor informa request_id | `useChat` envía telemetría numérica. |
+| aviso de respuesta parcial se muestra en la terminal solo cuando el mensaje es degradado | Aviso de respuesta parcial en la terminal. |
+| stream con BOM y CRLF se muestra completo con el tiempo de respuesta | Navegador: BOM y CRLF. |
+| una línea corrupta, un prefijo data: y eventos pegados no tiran la respuesta | Navegador: líneas rotas y reparables. |
+| eventos duplicados o desordenados muestran la respuesta una sola vez | Navegador: duplicados y desorden. |
+| sin evento final se muestra el texto recibido con aviso de respuesta parcial | Navegador: aviso de respuesta parcial. |
+| un error con código se explica en español y permite reintentar | Navegador: error con código y reintento. |
+| un stream vacío o de otra versión termina con un mensaje recuperable | Navegador: stream vacío o de otra versión. |
+| la telemetría del stream viaja sin texto de la consulta ni de la respuesta | Navegador: la telemetría no lleva texto. |
+
+**Mantenimiento de tests previos:** `ChatPage.test.tsx` y el mock de Playwright asumían que se podía chatear sin
+sesión, pero `ChatPage` exige autenticación desde antes de este harness; ahora simulan un usuario autenticado
+(`authenticated: true`).
+
+### F5 — Comparación entre commits, feedback y calidad
+
+`pnpm test:harness:compare --base v8 --head HEAD [--run-missing] [--ab]` compara los resultados del harness de dos
+refs (`temp/harness/<sha>/<suite>.json`). Con `--run-missing` crea un `git worktree` temporal por ref (en una ruta corta
+de `%TEMP%`), le superpone el harness **actual** —el código bajo prueba no cambia— y ejecuta solo las suites offline
+(`retrieval`, `translation`, `stream`); `legal_qa` y los modelos reales exigen `--run-model-evals`. El informe
+(`temp/harness/compare/<base>..<head>/report.{md,json}`) trae el delta macro y micro con IC por bootstrap pareado,
+los casos que empeoraron o mejoraron, qué cambió (`prompt_digest`, corpus, modelos, juez), el A/B ciego con orden
+invertido y el veredicto `MEJORÓ`/`IGUAL`/`EMPEORÓ`; una afirmación prohibida nueva o un caso fuera del corpus que
+deja de abstenerse bloquean aunque el promedio mejore. La interfaz suma 👍/👎 con motivo (`POST /feedback`), la
+página pública `/calidad` y `/calidad/admin` (solo rol admin).
+
+| Archivo | Qué verifica |
+|---|---|
+| [`backend/harness/test_compare.py`](backend/harness/test_compare.py) | Bootstrap pareado, veredicto, bloqueos, A/B ciego y orquestación con `git worktree`. |
+| [`backend/harness/test_publish.py`](backend/harness/test_publish.py) | Solo se publica lo medido con un sistema real, sin texto de casos. |
+| [`backend/http/test_quality_feedback.py`](backend/http/test_quality_feedback.py) | Feedback, cola de candidatos, métricas publicadas y panel de administración. |
+| [`frontend/component/FeedbackBar.test.tsx`](frontend/component/FeedbackBar.test.tsx) | Barra de opinión 👍/👎 con motivo y consentimiento explícito. |
+| [`frontend/component/QualityPages.test.tsx`](frontend/component/QualityPages.test.tsx) | Páginas `/calidad` y `/calidad/admin`. |
+| [`frontend/e2e/quality.spec.js`](frontend/e2e/quality.spec.js) | Navegador: calidad pública, administración y feedback. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_digest_matches_the_cache_key_digest` | La huella del código del harness coincide con la de la clave de caché. |
+| `test_paired_bootstrap_detects_a_consistent_improvement_and_a_consistent_regression` | El bootstrap pareado detecta una mejora y una regresión consistentes, respetando si menos es mejor. |
+| `test_noise_is_not_reported_as_a_change_and_small_samples_make_no_claim` | El ruido no se informa como cambio y con pocos casos no se afirma nada. |
+| `test_bootstrap_is_deterministic_for_a_seed_and_pairs_cases_by_id` | Con la misma semilla el IC es idéntico y solo se parean casos presentes en ambos. |
+| `test_micro_pools_numerators_and_denominators_while_macro_averages_cases` | Micro suma numeradores y denominadores; macro promedia casos. |
+| `test_case_changes_lists_the_cases_that_moved_most` | Lista los casos que más empeoraron y mejoraron. |
+| `test_a_new_unsupported_claim_blocks_even_if_everything_else_is_unchanged` | Una afirmación prohibida nueva bloquea aunque nada más cambie. |
+| `test_an_out_of_corpus_case_that_stops_abstaining_blocks` | Un caso fuera del corpus que deja de abstenerse bloquea. |
+| `test_verdict_rules` | Reglas del veredicto MEJORÓ/IGUAL/EMPEORÓ, bloqueos y errores nuevos. |
+| `test_meta_diff_reports_what_changed_and_flags_incomparable_measurements` | Se informan los cambios de digest, corpus y modelos; gold o juez distintos son no comparables. |
+| `test_stream_validity_drop_blocks_and_latency_is_reported` | Una caída de validez del stream bloquea y se informa la latencia p95. |
+| `test_end_to_end_one_hallucination_blocks_while_a_general_improvement_is_recognised` | Con informes reales del gold: una alucinación bloquea y una mejora general se reconoce. |
+| `test_trials_are_blinded_crossed_and_skip_identical_answers` | Los ensayos A/B son ciegos, cruzan el orden y omiten respuestas idénticas. |
+| `test_blind_ab_recognises_a_consistent_judge_and_exposes_position_bias` | El A/B distingue un juez consistente de uno con sesgo de posición. |
+| `test_sign_test_matches_exact_binomial_values` | La prueba del signo coincide con valores binomiales exactos. |
+| `test_results_are_reused_and_missing_ones_run_in_a_temporary_worktree_with_the_new_harness` | Los resultados se reutilizan y los faltantes se ejecutan en un worktree temporal con el harness actual. |
+| `test_a_failing_run_still_removes_the_worktree` | Si la ejecución falla el worktree se elimina igual. |
+| `test_unknown_refs_fail_with_a_clear_message` | Un ref inexistente falla con un mensaje claro. |
+| `test_synthetic_baselines_are_published_as_not_measured_never_as_quality` | Las líneas base sintéticas se publican como no medidas. |
+| `test_real_systems_publish_aggregates_without_any_case_text` | Los sistemas reales publican agregados sin texto de casos. |
+| `test_published_file_round_trips_and_a_missing_file_is_reported_as_unpublished` | El archivo publicado se lee y escribe sin pérdida; si falta se informa como sin publicar. |
+| `test_the_checked_in_published_file_is_honest_about_what_was_measured` | El archivo publicado en el repositorio solo declara medido lo medido con un sistema real. |
+| `test_latest_comparison_picks_the_newest_report_and_ignores_broken_files` | El panel toma la comparación más reciente e ignora archivos rotos. |
+| `test_feedback_requires_an_anonymous_session` | El feedback exige una sesión. |
+| `test_a_thumbs_up_stores_only_labels_and_numbers` | Un 👍 guarda solo etiquetas y números. |
+| `test_text_is_stored_only_when_the_person_shares_it_with_a_thumbs_down` | El texto solo se guarda con 👎 y autorización expresa. |
+| `test_a_foreign_or_unreadable_conversation_never_leaks_text` | Una conversación ajena o ilegible nunca filtra texto. |
+| `test_invalid_feedback_is_rejected` | Se rechaza feedback sin motivo, con campos extra o valores inválidos. |
+| `test_one_vote_per_person_and_request_the_latest_wins` | Un voto por persona y petición; el último prevalece. |
+| `test_the_queue_requires_admin_and_decisions_never_touch_the_gold` | La cola exige administración y aceptar no toca el gold. |
+| `test_the_store_survives_a_restart_and_summarises_reasons` | El almacén sobrevive a un reinicio y resume los motivos. |
+| `test_published_metrics_are_public_and_default_to_unpublished` | Las métricas publicadas son públicas y por defecto indican que no hay publicación. |
+| `test_admin_overview_gathers_comparison_gold_queue_and_stream_without_secrets` | El panel reúne comparación, gold, cola y stream sin secretos. |
+| `test_published_metrics_are_read_from_the_repository_docs` | Sin rutas parcheadas, `/quality/published` lee `docs/quality/published.json` del repositorio y los resultados de `temp/harness`. |
+| `test_session_roles_are_read_from_a_real_access_token` | Con un JWT de acceso firmado de verdad (solo la base de datos es simulada) se leen los roles y se concede `/calidad/admin`; un usuario desconocido o un token de refresco no entran y cada consulta cierra su conexión. |
+| `test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not` | Una persona con rol admin entra sin la clave; el resto no y un fallo nunca concede acceso. |
+| un pulgar arriba se envía de inmediato con el contexto numérico y sin motivo | El 👍 se envía de inmediato. |
+| un pulgar abajo exige un motivo y por defecto no comparte el texto de la consulta | El 👎 exige motivo y no comparte texto por defecto. |
+| compartir el texto es una casilla explícita y la cola de revisión se avisa | Compartir el texto es una casilla explícita y se avisa de la cola. |
+| si el envío falla se explica y se puede reintentar sin perder lo escrito | Si falla el envío se explica y se conserva lo escrito. |
+| cancelar cierra el formulario y la barra existe en quechua | Cancelar cierra el formulario; existe en quechua. |
+| la terminal muestra la opinión solo con respuesta final, request_id y manejador | La terminal muestra la opinión solo con respuesta final, request_id y manejador. |
+| la página pública muestra avisos, lo medido con sus valores y lo no medido con su razón | /calidad muestra avisos, lo medido y lo no medido. |
+| la página pública cambia a quechua y se recupera de un error con un reintento | /calidad cambia a quechua y reintenta tras un error. |
+| el panel de administración muestra regresiones, bloqueos, colas de revisión, feedback y latencia | /calidad/admin muestra regresiones, bloqueos, colas, feedback y latencia. |
+| aceptar un candidato llama a la decisión y recarga el panel | Aceptar un candidato llama a la decisión y recarga. |
+| sin sesión o sin rol admin el panel no pide datos y explica el acceso | Sin sesión o sin rol admin no se piden datos. |
+| si el servidor responde 403 aunque el rol local diga admin, se muestra acceso restringido | El 403 del servidor prevalece sobre el rol local. |
+| un fallo del servidor ofrece reintentar y el panel existe en quechua | Un fallo ofrece reintentar; el panel existe en quechua. |
+| el request_id del evento meta queda en el mensaje para poder calificar la respuesta | El `request_id` del evento `meta` queda en el mensaje. |
+| la página pública /calidad muestra avisos, lo medido y lo no medido, y cambia de idioma | Navegador: /calidad. |
+| /calidad/admin muestra regresiones y colas a un administrador | Navegador: /calidad/admin para un administrador. |
+| /calidad/admin niega el acceso a quien no es administrador | Navegador: acceso restringido. |
+| el 👎 con motivo viaja a /feedback sin el texto de la consulta salvo que se autorice | Navegador: el 👎 viaja sin texto privado. |
+| harness-compare pasa --base y --head al comparador sin activar modelos reales | `harness-compare` pasa `--base` y `--head` al comparador sin activar modelos reales. |
+
+**Límites:** la comparación `legal_qa` necesita resultados de `harness-real` (o un cassette) en ambos refs; sin ellos el
+informe lo declara faltante y no inventa un veredicto. Los candidatos del feedback no entran al gold: los redactan y
+revisan abogados. El almacén de feedback es un archivo local (`FEEDBACK_DIR`); con disco efímero se pierde al reiniciar.
+
+### F6 — CI
+
+- **GitHub Actions** (`.github/workflows/`): `ci.yml` corre en cada pull request `pnpm test`, `pnpm test:harness` y los E2E
+  con API simulada, sin secretos ni proveedores; `harness-real.yml` corre `pnpm test:harness:real --run-model-evals` y
+  `pnpm test:harness:compare ... --ab` cada noche, con la etiqueta `eval` en un PR del propio repositorio o a mano.
+
+| Archivo | Qué verifica |
+|---|---|
+| [`scripts/unit/test_harness_automation_contract.py`](scripts/unit/test_harness_automation_contract.py) | Los workflows cumplen las reglas del plan: sin proveedores en los PR y evaluación real con puerta explícita. |
+
+| Caso | Qué verifica |
+|---|---|
+| `test_pull_request_ci_runs_the_offline_suites_and_never_touches_providers` | El CI de los PR ejecuta las suites offline y no usa secretos ni `--run-model-evals`. |
+| `test_real_evaluation_is_gated_by_schedule_label_or_manual_dispatch_and_always_confirms_cost` | La evaluación real solo corre por cron, etiqueta `eval` de un PR propio o a mano, siempre con `--run-model-evals`. |
+
+**Estado del CI:** `pnpm test` incluye hoy 4 pruebas de `test_google_oauth.py` y `dev-full.test.mjs` que fallan en la base
+(v8) por causas ajenas al harness; el CI las mostrará en rojo hasta que se corrijan.

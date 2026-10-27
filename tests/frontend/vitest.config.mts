@@ -11,6 +11,7 @@ export default defineConfig({
       react: fileURLToPath(new URL('../../node_modules/react', import.meta.url)),
       'react-dom': fileURLToPath(new URL('../../node_modules/react-dom', import.meta.url)),
       'lucide-react': fileURLToPath(new URL('../../frontend/node_modules/lucide-react/dist/esm/lucide-react.mjs', import.meta.url)),
+      'next/link': fileURLToPath(new URL('../../frontend/node_modules/next/link.js', import.meta.url)),
       'next/navigation': fileURLToPath(new URL('../../frontend/node_modules/next/navigation.js', import.meta.url)),
     },
   },

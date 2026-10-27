@@ -1,0 +1,68 @@
+# Pruebas offline en cada pull request: nada de proveedores, red de modelos ni secretos.
+# (Las evaluaciones reales viven en harness-real.yml.)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, v8]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: pnpm test + harness offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Dependencias
+        run: |
+          uv sync --frozen --extra dev
+          pnpm install --frozen-lockfile
+          pnpm --dir frontend install --frozen-lockfile
+      - name: Coherencia de dependencias
+        run: pnpm deps:check
+      - name: Suite offline (Python, Node y React)
+        run: pnpm test
+      - name: Harness offline (gold, métricas, cassettes, umbrales)
+        run: pnpm test:harness
+      - name: Informes del harness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-offline
+          path: temp/harness
+          if-no-files-found: ignore
+
+  e2e:
+    name: Navegador con API simulada
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Dependencias
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Playwright (API simulada, sin backend ni modelos)
+        run: pnpm test:e2e

@@ -6,10 +6,10 @@ import { ChatPage } from '../../../frontend/src/presentation/pages/ChatPage';
 import { server, API } from '../fixtures/server';
 import { conversation, payload } from '../fixtures/chat';
 vi.mock('../../../frontend/src/presentation/components/SandAnimation', () => ({ SandAnimation: ({ onComplete }: any) => {
-  const React = require('react'); React.useEffect(() => onComplete(), []); return null;
+  const React = require('react'); React.useEffect(() => { queueMicrotask(onComplete); }, []); return null;
 } }));
 vi.mock('../../../frontend/src/presentation/components/FloatingRadialHub', () => ({ FloatingRadialHub: () => null }));
-vi.mock('../../../frontend/src/presentation/components/AuthProvider', () => ({ useAuth: () => ({ isAuthenticated: false }) }));
+vi.mock('../../../frontend/src/presentation/components/AuthProvider', () => ({ useAuth: () => ({ isAuthenticated: true, mounted: true }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next-themes', () => ({ useTheme: () => ({ resolvedTheme: 'dark', setTheme: vi.fn() }) }));
 beforeEach(() => {

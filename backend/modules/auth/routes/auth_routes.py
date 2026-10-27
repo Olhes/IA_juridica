@@ -42,6 +42,7 @@ async def login(
         secure=False,  # False en desarrollo para HTTP
         samesite="lax",
         max_age=900,  # 15 minutos
+        path="/",
     )
 
     resp.set_cookie(
@@ -51,6 +52,7 @@ async def login(
         secure=False,
         samesite="lax",
         max_age=604800,  # 7 días
+        path="/",
     )
 
     return resp
@@ -87,7 +89,9 @@ async def refresh_token(request: Request, response: Response):
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(request: Request):
-    """Obtiene información del usuario actual desde el token JWT en cookie"""
+    """Obtiene información del usuario actual desde el token JWT en cookie con cache en Redis"""
+    from database.redis_adapter import redis_adapter
+
     # Obtener token de la cookie
     access_token = request.cookies.get("access_token")
     if not access_token:
@@ -104,10 +108,24 @@ async def get_current_user(request: Request):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    # Obtener usuario de la base de datos
+    user_id = payload.get("user_id")
+
+    # Intentar obtener de Redis cache primero
+    cache_key = f"user:{user_id}:profile"
+    try:
+        await redis_adapter.initialize()
+        cached_user = await redis_adapter.get_cache(cache_key)
+        if cached_user:
+            import json
+            user_data = json.loads(cached_user)
+            return UserResponse(**user_data)
+    except Exception as e:
+        logging.getLogger("ia_juridica.auth").warning(f"Redis cache miss: {e}")
+
+    # Si no está en cache, obtener de la base de datos
     db = PostgreSQLAdapter()
     await db.initialize()  # Asegurar que la conexión esté inicializada
-    user = await db.get_user_by_id(payload.get("user_id"))
+    user = await db.get_user_by_id(user_id)
 
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -115,7 +133,7 @@ async def get_current_user(request: Request):
     roles = await db.get_user_roles(user["id"])
     role_names = [r["name"] for r in roles]
 
-    return UserResponse(
+    user_response = UserResponse(
         id=user["id"],
         email=user["email"],
         username=user["username"],
@@ -125,6 +143,19 @@ async def get_current_user(request: Request):
         roles=role_names,
         is_active=user["is_active"],
     )
+
+    # Guardar en Redis cache por 5 minutos
+    try:
+        import json
+        await redis_adapter.set_cache(
+            cache_key,
+            json.dumps(user_response.model_dump()),
+            300  # 5 minutos
+        )
+    except Exception as e:
+        logging.getLogger("ia_juridica.auth").warning(f"Redis cache write failed: {e}")
+
+    return user_response
 
 
 @router.post("/logout")
@@ -234,7 +265,14 @@ async def google_callback(request: Request, code: str, state: str = None):
         # Crear o actualizar usuario en la base de datos
         db = PostgreSQLAdapter()
         await db.initialize()  # Asegurar que la conexión esté inicializada
-        user = await db.get_user_by_email(userinfo["email"])
+
+        try:
+            user = await db.get_user_by_email(userinfo["email"])
+        except Exception as e:
+            print(f"❌ Error en get_user_by_email: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error al buscar usuario: {str(e)}")
 
         if not user:
             # Crear nuevo usuario con Google OAuth (sin contraseña)
@@ -242,23 +280,35 @@ async def google_callback(request: Request, code: str, state: str = None):
             # Hash de "google_oauth_temp" con bcrypt
             temp_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5NU7bXqL0f1eS"
 
-            user = await db.create_user(
-                email=userinfo["email"],
-                username=userinfo["email"].split("@")[0],
-                password_hash=temp_hash,
-                full_name=userinfo.get("name", ""),
-                picture=userinfo.get("picture", ""),
-                role="user",
-            )
+            try:
+                user = await db.create_user(
+                    email=userinfo["email"],
+                    username=userinfo["email"].split("@")[0],
+                    password_hash=temp_hash,
+                    full_name=userinfo.get("name", ""),
+                    picture=userinfo.get("picture", ""),
+                    role="user",
+                )
+            except Exception as e:
+                print(f"❌ Error en create_user: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"Error al crear usuario: {str(e)}")
         else:
             # Actualizar usuario con datos de Google (picture, full_name)
-            await db.update_user(
-                user["id"],
-                {
-                    "full_name": userinfo.get("name", user.get("full_name", "")),
-                    "picture": userinfo.get("picture", user.get("picture", "")),
-                },
-            )
+            try:
+                await db.update_user(
+                    user["id"],
+                    {
+                        "full_name": userinfo.get("name", user.get("full_name", "")),
+                        "picture": userinfo.get("picture", user.get("picture", "")),
+                    },
+                )
+            except Exception as e:
+                print(f"❌ Error en update_user: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(status_code=500, detail=f"Error al actualizar usuario: {str(e)}")
 
         # Generar tokens JWT
         security_service = SecurityService()
@@ -280,6 +330,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             secure=False,  # False en desarrollo para HTTP
             samesite="lax",
             max_age=900,  # 15 minutos
+            path="/",
         )
 
         response.set_cookie(
@@ -289,6 +340,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             secure=False,
             samesite="lax",
             max_age=604800,  # 7 días
+            path="/",
         )
 
         return response

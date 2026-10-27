@@ -15308,5 +15308,405 @@
     "create_time": 1783976955,
     "update_time": 1783976955,
     "_id": "default:summary:8a4d0a8ce55ab0c2b1090629884112ff"
+  },
+  "mix:keywords:47dcbeac803e265d3ccb6133a3420355": {
+    "return": "{\"high_level_keywords\": [\"pension\", \"food\", \"tenancies\", \"guide\"], \"low_level_keywords\": [\"sonre\", \"pension\", \"alimentos\", \"tenencias\", \"trame\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Dime sonre la pension de alimentos y tenencias, una guia para ese tramite",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792805011,
+    "update_time": 1792805011,
+    "_id": "mix:keywords:47dcbeac803e265d3ccb6133a3420355"
+  },
+  "mix:keywords:cdb0dc950197ee57e8fda399f03b497d": {
+    "return": "{\"high_level_keywords\": [\"violencia\", \"tratamiento\"], \"low_level_keywords\": [\"casos\", \"pension de alimentos\", \"tenencias\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "expliame casos de violencia y como tratarlos\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806614,
+    "update_time": 1792806614,
+    "_id": "mix:keywords:cdb0dc950197ee57e8fda399f03b497d"
+  },
+  "mix:keywords:0ba2e65b56eee067876508e5824dc331": {
+    "return": "{\"high_level_keywords\": [\"visitation rights\", \"child custody\", \"parenting plan\"], \"low_level_keywords\": [\"visitation schedule\", \"parenting time\", \"child custody arrangement\", \"court order\", \"legal process\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué es el régimen de visitas y cómo funciona?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806682,
+    "update_time": 1792806682,
+    "_id": "mix:keywords:0ba2e65b56eee067876508e5824dc331"
+  },
+  "mix:keywords:96012576503dc8ade854de7669383499": {
+    "return": "{\"high_level_keywords\": [\"tenencia\", \"regimen de visitas\", \"pension de alimentos\", \"casos de violencia\"], \"low_level_keywords\": [\"hijos\", \"tiempo\", \"pension\", \"alimentos\", \"visitas\", \"violencia\", \"tratamiento\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Tenencia: ¿Cuáles son los tipos de tenencia de hijos según el tiempo?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos\n¿Qué es el régimen de visitas y cómo funciona?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806731,
+    "update_time": 1792806731,
+    "_id": "mix:keywords:96012576503dc8ade854de7669383499"
+  },
+  "mix:keywords:3f74fd6696fa2e978b853177f947ba4d": {
+    "return": "{\"high_level_keywords\": [\"visitation rights\", \"parenting plan\", \"child custody\"], \"low_level_keywords\": [\"visitation\", \"visitation rights\", \"parent\", \"compliance\", \"regime\", \"pension\", \"food support\", \"tenancies\", \"violence\", \"cases\", \"treatment\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué pasa si el padre no cumple con el régimen de visitas?\nContexto de preguntas anteriores:\nDime sonre la pension de alimentos y tenencias, una guia para ese tramite\nexpliame casos de violencia y como tratarlos\n¿Qué es el régimen de visitas y cómo funciona?\nTenencia: ¿Cuáles son los tipos de tenencia de hijos según el tiempo?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792806791,
+    "update_time": 1792806791,
+    "_id": "mix:keywords:3f74fd6696fa2e978b853177f947ba4d"
+  },
+  "mix:keywords:cb0a251c999799c1a972e7a00e784f57": {
+    "return": "{\"high_level_keywords\": [\"pension\", \"calculation\", \"food\"], \"low_level_keywords\": [\"Per\\u00fa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo se calcula la pensión de alimentos en Perú?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792807787,
+    "update_time": 1792807787,
+    "_id": "mix:keywords:cb0a251c999799c1a972e7a00e784f57"
+  },
+  "mix:keywords:277a7bb8b9e418de47e8ec216b90409e": {
+    "return": "{\"high_level_keywords\": [\"Per\\u00fa\", \"pension\", \"food\"], \"low_level_keywords\": [\"Imaynatataq\", \"wawa\", \"uyway\", \"yupasqa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynatataq Perú suyupi wawa uyway yupasqa?\nContexto de preguntas anteriores:\n¿Cómo se calcula la pensión de alimentos en Perú?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792807913,
+    "update_time": 1792807913,
+    "_id": "mix:keywords:277a7bb8b9e418de47e8ec216b90409e"
+  },
+  "mix:keywords:32802ec069f79de80ecb476391ea1213": {
+    "return": "{\"high_level_keywords\": [\"Peru\", \"language\", \"indigenous\"], \"low_level_keywords\": [\"Imaynatataq\", \"wawa\", \"uyway\", \"yupasqa\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynatataq Perú suyupi wawa uyway yupasqa?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792809104,
+    "update_time": 1792809104,
+    "_id": "mix:keywords:32802ec069f79de80ecb476391ea1213"
+  },
+  "mix:keywords:32bbfd6a94beb081ec91fde2db4a4e18": {
+    "return": "{\"high_level_keywords\": [\"language\", \"question\"], \"low_level_keywords\": [\"Imataq\", \"wasipi\", \"maqanakuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq wasipi maqanakuy?\nContexto de preguntas anteriores:\n¿Imaynatataq Perú suyupi wawa uyway yupasqa?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792810154,
+    "update_time": 1792810154,
+    "_id": "mix:keywords:32bbfd6a94beb081ec91fde2db4a4e18"
+  },
+  "mix:keywords:38c4cc3ef30a8d7189b2e78c5e210fcf": {
+    "return": "{\"high_level_keywords\": [\"question\", \"inquiry\"], \"low_level_keywords\": [\"Imataq\", \"wasipi\", \"maqanakuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq wasipi maqanakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792810687,
+    "update_time": 1792810687,
+    "_id": "mix:keywords:38c4cc3ef30a8d7189b2e78c5e210fcf"
+  },
+  "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9": {
+    "return": "{\"high_level_keywords\": [\"law\", \"Peru\"], \"low_level_keywords\": [\"30364\", \"Imaynatataq\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imataq Ley 30364?\nContexto de preguntas anteriores:\n¿Imaynatataq Perú suyupi wawa uyway yupasqa?\n¿Imataq wasipi maqanakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850068,
+    "update_time": 1792850068,
+    "_id": "mix:keywords:fdb00b0e06ee52c80d4b8c1bb3c87dc9"
+  },
+  "mix:keywords:f131457183e9bfebf10aa12d046066f3": {
+    "return": "{\"high_level_keywords\": [\"law\", \"regulation\"], \"low_level_keywords\": [\"Ley 30364\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Qué es la Ley 30364?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792850945,
+    "update_time": 1792850945,
+    "_id": "mix:keywords:f131457183e9bfebf10aa12d046066f3"
+  },
+  "mix:keywords:c31a463f9cbc3a38e6336d7f361cda67": {
+    "return": "{\"high_level_keywords\": [\"violence\", \"family\"], \"low_level_keywords\": [\"familiar\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Hola, me gustaría saber sobre violencia familiar.",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792854965,
+    "update_time": 1792854965,
+    "_id": "mix:keywords:c31a463f9cbc3a38e6336d7f361cda67"
+  },
+  "mix:keywords:2c17573595c3769c745faf76b6177d9b": {
+    "return": "{\"high_level_keywords\": [\"solicitar\", \"pasos\"], \"low_level_keywords\": []}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cuáles son los pasos exactos para solicitar?\nContexto de preguntas anteriores:\nHola, me gustaría saber sobre violencia familiar.",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792855639,
+    "update_time": 1792855639,
+    "_id": "mix:keywords:2c17573595c3769c745faf76b6177d9b"
+  },
+  "mix:keywords:c9550e001eac4049b933c6433b781e86": {
+    "return": "{\"high_level_keywords\": [\"legal process\", \"protection order\", \"family violence\", \"court procedure\", \"document requirements\"], \"low_level_keywords\": [\"Lima\", \"judiciary\", \"family court\", \"violence\", \"steps\", \"protection\", \"documents\", \"approval\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Hola, me gustaría saber los pasos exactos para solicitar una medida de protección contra la violencia familiar en el juzgado de familia de Lima y qué documentos debo presentar para que la medida sea aprobada rápidamente?\nContexto de preguntas anteriores:\nHola, me gustaría saber sobre violencia familiar.\n¿Cuáles son los pasos exactos para solicitar?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792856103,
+    "update_time": 1792856103,
+    "_id": "mix:keywords:c9550e001eac4049b933c6433b781e86"
+  },
+  "mix:keywords:1817055e9057441890656c2e3ec71d63": {
+    "return": "{\"high_level_keywords\": [\"contact\", \"personal\", \"instructions\"], \"low_level_keywords\": [\"personal\", \"contact\", \"instructions\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me pongo en contacto con el personal y qué quieres que haga?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792857203,
+    "update_time": 1792857203,
+    "_id": "mix:keywords:1817055e9057441890656c2e3ec71d63"
+  },
+  "mix:keywords:e9257398287f3becb1498e897aa4ae69": {
+    "return": "{\"high_level_keywords\": [\"food\", \"diet\", \"nutrition\"], \"low_level_keywords\": [\"Imaynataq\", \"wawaykunapaq\", \"alimentosta\", \"ma\\u00f1akuy\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Imaynataq wawaykunapaq alimentosta mañakuy?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792859464,
+    "update_time": 1792859464,
+    "_id": "mix:keywords:e9257398287f3becb1498e897aa4ae69"
+  },
+  "mix:keywords:0762b9f0531edbf5f68be0c20a6439e9": {
+    "return": "{\"high_level_keywords\": [\"contact\", \"communication\", \"instructions\"], \"low_level_keywords\": [\"personal\", \"staff\", \"tasks\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me pongo en contacto con el personal y qué quieren que haga?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792859661,
+    "update_time": 1792859661,
+    "_id": "mix:keywords:0762b9f0531edbf5f68be0c20a6439e9"
+  },
+  "mix:keywords:2ee084d1a746f8eec50f5949749300e5": {
+    "return": "{\"high_level_keywords\": [\"ansiedad\", \"deshacer\", \"hacer\"], \"low_level_keywords\": [\"c\\u00f3mo\", \"qu\\u00e9\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo me deshago de la ansiedad y qué hago al respecto?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792860013,
+    "update_time": 1792860013,
+    "_id": "mix:keywords:2ee084d1a746f8eec50f5949749300e5"
+  },
+  "mix:keywords:98b07ac5b7d800604c06c0d686991430": {
+    "return": "{\"high_level_keywords\": [\"anxiety management\", \"stress relief\"], \"low_level_keywords\": [\"how to\", \"get rid of\", \"ansiedad\"]}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "¿Cómo puedo deshacerme de la ansiedad?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1792860229,
+    "update_time": 1792860229,
+    "_id": "mix:keywords:98b07ac5b7d800604c06c0d686991430"
   }
 }

@@ -9,11 +9,17 @@ import {
   Square,
   Trash2,
   Users,
+  X,
+  FileText,
+  Image as ImageIcon,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { type KeyboardEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SupportedLanguage } from '../../../domain/legal/types';
 import { useAuth } from '../AuthProvider';
+import { useSpeechToText } from '../../../application/legal/use-cases/useSpeech';
 
 interface ChatInputProps {
   onSend: (query: string) => void;
@@ -23,6 +29,8 @@ interface ChatInputProps {
   onClearChat?: () => void;
   hasMessages?: boolean;
   language: SupportedLanguage;
+  attachedFile?: File | null;
+  onRemoveAttachment?: () => void;
 }
 
 const MAX_CHARS = 800;
@@ -68,12 +76,24 @@ export function ChatInput({
   onClearChat,
   hasMessages,
   language,
+  attachedFile,
+  onRemoveAttachment,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const t = i18n[language];
   const { isAuthenticated } = useAuth();
   const router = useRouter();
+
+  // Voice-to-text hook (solo español por ahora)
+  const { supported, listening, interim, start, stop } = useSpeechToText(
+    (spoken) =>
+      setText((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, MAX_CHARS)),
+  );
+
+  console.log('[ChatInput] supported:', supported);
+  console.log('[ChatInput] language:', language);
+  console.log('[ChatInput] listening:', listening);
 
   const trimmed = text.trim();
   const canSend = trimmed.length > 0 && !isLoading;
@@ -158,6 +178,27 @@ export function ChatInput({
 
       {/* ── Área de texto ── */}
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-3">
+        {/* Archivo adjunto */}
+        {attachedFile && (
+          <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800">
+            {attachedFile.type.startsWith('image/') ? (
+              <ImageIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            ) : (
+              <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            )}
+            <span className="text-sm text-indigo-700 dark:text-indigo-300 truncate max-w-[200px]">
+              {attachedFile.name}
+            </span>
+            <button
+              type="button"
+              onClick={onRemoveAttachment}
+              className="p-1 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors"
+            >
+              <X className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            </button>
+          </div>
+        )}
+
         <div className={`flex items-end gap-3
           bg-slate-50 dark:bg-gray-800
           border rounded-2xl px-4 py-3
@@ -187,6 +228,56 @@ export function ChatInput({
           />
 
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Debug info */}
+            <div className="text-xs text-red-500">
+              supported: {String(supported)}, lang: {language}, isLoading: {String(isLoading)}
+            </div>
+
+            {/* Micrófono (solo español) */}
+            {supported ? (
+              language === 'spanish' ? (
+                <button
+                  id="chat-mic-btn"
+                  type="button"
+                  onClick={() => {
+                    alert('Botón micrófono presionado');
+                    console.log('[ChatInput] Mic button clicked, listening:', listening);
+                    if (listening) stop();
+                    else start();
+                  }}
+                  disabled={isLoading}
+                  title={listening ? 'Detener' : 'Hablar'}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed ${
+                    listening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'bg-slate-200 dark:bg-gray-700 text-slate-600 dark:text-slate-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                  }`}
+                >
+                  {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              ) : (
+                <button
+                  id="chat-mic-btn-disabled"
+                  type="button"
+                  disabled
+                  title="Voz solo disponible en español"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm opacity-40 cursor-not-allowed bg-slate-200 dark:bg-gray-700 text-slate-400"
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+              )
+            ) : (
+              <button
+                id="chat-mic-btn-unsupported"
+                type="button"
+                disabled
+                title="Navegador no soporta voz (usa Chrome o Edge)"
+                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm opacity-40 cursor-not-allowed bg-slate-200 dark:bg-gray-700 text-slate-400"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Contador de caracteres */}
             {charPct >= 0.75 && (
               <span className={`text-xs font-mono tabular-nums ${charPct >= 1 ? 'text-red-500' : 'text-slate-400 dark:text-slate-500'}`}>

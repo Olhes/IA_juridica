@@ -9,7 +9,9 @@ interface FloatingRadialHubProps {
   onHistoryOpen?: () => void;
   onFileUpload?: () => void;
   onCameraOpen?: () => void;
-  onMicToggle?: () => void;
+  onMicStart?: () => void;
+  onMicEnd?: () => void;
+  voiceListening?: boolean;
 }
 
 export function FloatingRadialHub({
@@ -18,7 +20,9 @@ export function FloatingRadialHub({
   onHistoryOpen,
   onFileUpload,
   onCameraOpen,
-  onMicToggle,
+  onMicStart,
+  onMicEnd,
+  voiceListening = false,
 }: FloatingRadialHubProps) {
   const [rotation, setRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -134,14 +138,49 @@ export function FloatingRadialHub({
             {/* --- CUADRANTE 2: ARRIBA DERECHA (MICRÓFONO) --- */}
             <button
               aria-label="Activar micrófono"
-              onClick={() => {
+              onMouseDown={() => {
                 setShowSatellites(false);
-                onMicToggle?.();
+                onMicStart?.();
               }}
-              className="absolute top-0 right-0 w-1/2 h-1/2 rounded-tr-full bg-slate-900 flex items-center justify-center transition-all duration-300 ease-out group hover:z-30 hover:scale-110 hover:translate-x-1 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.8)] hover:bg-slate-800 active:scale-95"
+              onMouseUp={() => {
+                setShowSatellites(false);
+                onMicEnd?.();
+              }}
+              onMouseLeave={() => {
+                if (voiceListening) {
+                  setShowSatellites(false);
+                  onMicEnd?.();
+                }
+              }}
+              onTouchStart={() => {
+                setShowSatellites(false);
+                onMicStart?.();
+              }}
+              onTouchEnd={() => {
+                setShowSatellites(false);
+                onMicEnd?.();
+              }}
+              onKeyDown={(event) => {
+                if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+                  event.preventDefault();
+                  setShowSatellites(false);
+                  onMicStart?.();
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                  event.preventDefault();
+                  onMicEnd?.();
+                }
+              }}
+              className={`absolute top-0 right-0 w-1/2 h-1/2 rounded-tr-full flex items-center justify-center transition-all duration-300 ease-out group hover:z-30 hover:scale-110 hover:translate-x-1 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.8)] active:scale-95 ${
+                voiceListening
+                  ? 'bg-red-600 animate-pulse'
+                  : 'bg-slate-900 hover:bg-slate-800'
+              }`}
             >
               <div style={{ transform: `rotate(${-rotation}rad)` }} className="transition-transform group-hover:scale-110">
-                <Mic className="w-8 h-8 text-white stroke-[2.5]" />
+                <Mic className={`w-8 h-8 stroke-[2.5] ${voiceListening ? 'text-white' : 'text-white'}`} />
               </div>
             </button>
 

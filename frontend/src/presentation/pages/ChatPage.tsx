@@ -2,17 +2,23 @@
 
 import { Compass, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useChat } from '../../application/legal/use-cases/useChat';
 import { useChatSessions } from '../../application/legal/use-cases/useChatSessions';
+import { useAuth } from '../components/AuthProvider';
+import { sendFeedback } from '../../application/legal/services/qualityService';
+import { AuthModal } from '../components/AuthModal';
 import type { SupportedLanguage } from '../../domain/legal/types';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatSidebar, SidebarToggleButton } from '../components/sidebar/ChatSidebar';
 import { SandAnimation } from '../components/SandAnimation';
 import { FloatingRadialHub } from '../components/FloatingRadialHub';
-import { TerminalModal } from '../components/TerminalModal';
+import { TerminalModal, type TerminalMessage } from '../components/TerminalModal';
 import { HistoryPanel } from '../components/HistoryPanel';
+import { useSpeechToText } from '../../application/legal/use-cases/useSpeech';
 
 const LANGUAGE_KEY = 'preferredLanguage';
+const ANIMATION_COMPLETE_KEY = 'animationComplete';
 
 interface Point {
   x: number;
@@ -54,21 +60,54 @@ const landingI18n = {
 } as const;
 
 export function ChatPage() {
+  const router = useRouter();
+  const { isAuthenticated, mounted } = useAuth();
+  
   const [language, setLanguage] = useState<SupportedLanguage>('spanish');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [animationComplete, setAnimationComplete] = useState(false);
-  
+
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [terminalMessages, setTerminalMessages] = useState<Array<{ id: string; content: string; isUser: boolean }>>([]);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [terminalMessages, setTerminalMessages] = useState<TerminalMessage[]>([]);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [voiceInput, setVoiceInput] = useState('');
+  const [autoPlayTTS, setAutoPlayTTS] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const terminalButtonRef = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Voice-to-text hook (solo español)
+  const { supported: voiceSupported, listening: voiceListening, start: voiceStart, stop: voiceStop } = useSpeechToText(
+    (spoken) => setVoiceInput((prev) => ((prev ? prev + ' ' : '') + spoken).slice(0, 800)),
+    () => {
+      // Auto-enviar cuando termina la grabación
+      if (voiceInput.trim()) {
+        const textToSend = voiceInput.trim();
+        setAutoPlayTTS(true);
+        setVoiceInput(''); // Limpiar antes de enviar
+        handleSendTerminalMessage(textToSend);
+      }
+    },
+  );
 
   useEffect(() => {
     const saved = localStorage.getItem(LANGUAGE_KEY);
     if (saved === 'spanish' || saved === 'quechua') setLanguage(saved);
+
+    // Comentado temporalmente para que la animación siempre se muestre durante desarrollo
+    // const savedAnimation = localStorage.getItem(ANIMATION_COMPLETE_KEY);
+    // if (savedAnimation === 'true') {
+    //   setAnimationComplete(true);
+    // }
+
+    // SIEMPRE mostrar la animación en desarrollo
+    setAnimationComplete(false);
   }, []);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
@@ -223,6 +262,7 @@ export function ChatPage() {
     isLoading,
     isOnline,
     sendQuery,
+    retry,
     checkHealth,
   } = useChat({ sessionId: activeSessionId, language, onSessionUpdated });
 
@@ -233,6 +273,14 @@ export function ChatPage() {
         id: m.id,
         content: m.content || m.streamingContent || '',
         isUser: m.role === 'user',
+        isStreaming: m.isStreaming,
+        degraded: m.degraded,
+        stage: m.stage,
+        completedStages: m.completedStages,
+        errorInfo: m.errorInfo,
+        timings: m.apiResponse?.metadata?.timings,
+        apiResponse: m.apiResponse,
+        requestId: m.requestId,
       }));
       setTerminalMessages(formatted);
   }, [messages]);
@@ -241,6 +289,10 @@ export function ChatPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNewSession = async () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     await createSession(language);
     setShowLanding(false);
     setSidebarOpen(false);
@@ -248,6 +300,10 @@ export function ChatPage() {
   };
 
   const handleSelectSession = (id: string) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     setActiveSessionId(id);
     setShowLanding(false);
     setSidebarOpen(false);
@@ -256,9 +312,126 @@ export function ChatPage() {
 
   const handleStartChat = () => { void handleNewSession(); };
 
-  const handleSendTerminalMessage = (message: string) => {
+  const handleSendTerminalMessage = async (message: string) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
     setShowLanding(false);
-    sendQuery(message);
+
+    // Si hay un archivo adjunto, procesarlo primero
+    if (attachedFile) {
+      setIsUploadingDocument(true);
+      setUploadingFileName(attachedFile.name);
+
+      try {
+        const { apiService } = await import('../../application/legal/services/apiService');
+        const result = await apiService.queryDocument(attachedFile, message, language);
+
+        if (result.success && result.data) {
+          // Mostrar el documento en el chat como attachment
+          const userMessage = message || `[Documento: ${attachedFile.name}]`;
+          sendQuery(userMessage);
+        } else {
+          console.error('Error al procesar documento:', result.error);
+        }
+      } catch (error) {
+        console.error('Error al procesar documento:', error);
+      } finally {
+        setIsUploadingDocument(false);
+        setUploadingFileName(null);
+        setAttachedFile(null); // Limpiar el attachment después de procesar
+      }
+    } else {
+      // Solo enviar el mensaje si no hay archivo adjunto
+      sendQuery(message);
+    }
+  };
+
+  const handleRemoveAttachment = () => {
+    setAttachedFile(null);
+  };
+
+  const handleCameraOpen = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+  };
+
+  const handleMicStart = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+    if (language !== 'spanish') {
+      alert('Voz solo disponible en español');
+      return;
+    }
+    voiceStart();
+  };
+
+  const handleMicEnd = () => {
+    if (voiceListening) {
+      voiceStop();
+    }
+  };
+
+  const handleFileUpload = () => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+    // Abrir el selector de archivos
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Verificar tipo de archivo
+    const validTypes = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/tiff',
+      'image/webp',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ];
+
+    if (!validTypes.includes(file.type)) {
+      console.error('Formato no soportado:', file.type);
+      return;
+    }
+
+    // Verificar tamaño (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      console.error('Archivo demasiado grande:', file.size);
+      return;
+    }
+
+    // Verificar si hay una sesión activa
+    if (!activeSessionId) {
+      // Crear nueva sesión si no hay ninguna
+      await createSession(language);
+      setShowLanding(false);
+      setTerminalOpen(true);
+    }
+
+    // Almacenar el archivo como adjunto sin procesar
+    setAttachedFile(file);
+
+    // Limpiar el input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = 'http://localhost:8000/auth/google';
   };
 
   const showLandingScreen = showLanding && messages.length === 0;
@@ -280,7 +453,10 @@ export function ChatPage() {
       )}
 
       {/* Sand Animation */}
-      {showAnimation && <SandAnimation onComplete={() => setAnimationComplete(true)} />}
+      {showAnimation && <SandAnimation onComplete={() => {
+        setAnimationComplete(true);
+        localStorage.setItem(ANIMATION_COMPLETE_KEY, 'true');
+      }} />}
 
       {!showAnimation && (
         <>
@@ -314,7 +490,19 @@ export function ChatPage() {
             />
 
             <main className="flex-1 flex items-center justify-center p-4">
-              {showLandingScreen ? (
+              {isUploadingDocument ? (
+                <div className="flex flex-col items-center gap-4 p-8 rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-xl shadow-2xl">
+                  <div className="relative w-16 h-16">
+                    <div className="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-white font-semibold">Procesando documento</p>
+                    <p className="text-sm text-slate-300 mt-1">{uploadingFileName}</p>
+                    <p className="text-xs text-slate-400 mt-2">Esto puede tomar unos minutos...</p>
+                  </div>
+                </div>
+              ) : showLandingScreen ? (
                 <section className="max-w-3xl w-full p-8 rounded-3xl border border-white/10 bg-slate-900/60 backdrop-blur-xl shadow-2xl">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                     <Sparkles className="w-3.5 h-3.5" />
@@ -359,9 +547,11 @@ export function ChatPage() {
           terminalButtonRef={terminalButtonRef}
           onTerminalOpen={() => setTerminalOpen(true)}
           onHistoryOpen={() => setHistoryOpen(true)}
-          onFileUpload={() => {}}
-          onCameraOpen={() => {}}
-          onMicToggle={() => {}}
+          onFileUpload={handleFileUpload}
+          onCameraOpen={handleCameraOpen}
+          onMicStart={handleMicStart}
+          onMicEnd={handleMicEnd}
+          voiceListening={voiceListening}
         />
       )}
 
@@ -373,6 +563,16 @@ export function ChatPage() {
         onSend={handleSendTerminalMessage}
         messages={terminalMessages}
         isLoading={isLoading}
+        attachedFile={attachedFile}
+        onRemoveAttachment={handleRemoveAttachment}
+        language={language}
+        onRetry={retry}
+        onFeedback={(payload) =>
+          sendFeedback({ ...payload, language, conversation_id: activeSessionId ?? undefined })
+        }
+        voiceInput={voiceInput}
+        onVoiceInputChange={setVoiceInput}
+        autoPlayTTS={autoPlayTTS}
       />
 
       {/* Historial */}
@@ -387,6 +587,23 @@ export function ChatPage() {
         }))}
         onSelectSession={handleSelectSession}
         onDeleteSession={deleteSession}
+      />
+
+      {/* Modal de Autenticación */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onGoogleLogin={handleGoogleLogin}
+      />
+
+      {/* Input de archivo oculto */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.png,.jpg,.jpeg,.tiff,.webp,.docx,.doc,.pptx,.ppt"
+        onChange={handleFileSelected}
+        className="hidden"
+        aria-label="Subir documento"
       />
     </div>
   );

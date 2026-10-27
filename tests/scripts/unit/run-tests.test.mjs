@@ -57,6 +57,32 @@ test('quality selecciona solo las pruebas del modelo y reenvía opciones', () =>
   assert.ok(plan[0].args.includes('model_quality'));
 });
 
+test('harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1', () => {
+  const offline = testPlan('harness');
+  assert.equal(offline.length, 1);
+  assert.ok(offline[0].args.includes('tests/backend/harness'));
+  assert.ok(!offline[0].args.includes('--run-model-evals'));
+  assert.throws(() => testPlan('harness-real'), /--run-model-evals/);
+  const real = testPlan('harness-real', ['--run-model-evals']);
+  assert.deepEqual(real.map(task => task.args[task.args.indexOf('evaluation.harness.runner') + 1]),
+    ['legal_qa', 'retrieval', 'translation', 'stream']);
+  for (const task of real) {
+    assert.equal(task.env.EVAL_MODE, '1');
+    assert.ok(task.args.includes('--run-model-evals'));
+    assert.ok(task.args.includes('ragas==0.4.3'), 'RAGAS solo en la capa temporal de la corrida real');
+  }
+  assert.ok(real[0].args.includes('--judge') && real[0].args.includes('deepeval'));
+});
+
+test('harness-compare pasa --base y --head al comparador sin activar modelos reales', () => {
+  const plan = testPlan('harness-compare', ['--base', 'v8', '--head', 'HEAD', '--run-missing']);
+  assert.equal(plan.length, 1);
+  assert.ok(plan[0].args.includes('evaluation.harness.compare'));
+  assert.deepEqual(plan[0].args.slice(-5), ['--base', 'v8', '--head', 'HEAD', '--run-missing']);
+  assert.ok(!plan[0].args.includes('--run-model-evals'));
+  assert.ok(!plan[0].args.includes('ragas==0.4.3'));
+});
+
 test('quality-offline y modos inválidos no activan facturación', () => {
   assert.ok(!testPlan('quality-offline')[0].args.includes('--run-model-evals'));
   assert.throws(() => testPlan('invalid'), /Modo desconocido/);

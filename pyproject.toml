@@ -32,12 +32,14 @@ dependencies = [
   "rich>=14.3.2,<16",
   "click>=8.3.3,<9",
   "googletrans==4.0.2",
+  "deep-translator>=1.11.0",
   "neo4j==6.4.0",
   "email-validator==2.3.0",
   "pyjwt==2.15.1",
   "passlib[bcrypt]==1.7.4",
   "torch==2.14.1", "torchvision==0.29.1",
   "transformers>=5.10.0,<6", "accelerate==1.15.0",
+  "soundfile==0.12.1",
 ]
 
 [project.optional-dependencies]

@@ -84,3 +84,12 @@ models/
 # Pydantic request contracts are source code, not downloaded model weights.
 !/backend/models/
 !/backend/models/request_types.py
+
+# Cola de feedback local (puede contener texto autorizado por las personas)
+/backend/data/
+
+# Cassette de recuperación del harness real (~40 MB): se publica como artefacto de CI, no se versiona.
+/tests/backend/fixtures/gold/cassettes/retrieval.cassette.json
+
+# Datos locales del backend (feedback de usuarios): nunca se versionan.
+/data/

@@ -11,6 +11,8 @@
 > acciones, hashes y transacciones. No prueban la vigencia del derecho peruano
 > ni sustituyen este benchmark abogado. El catálogo oficial no es un corpus gold.
 
+> Implementación del harness que aplica esta norma al pipeline v8: [plan del harness](HARNESS-IMPLEMENTATION-PLAN.md).
+
 **Decisión:** Un corpus peruano seleccionado y etiquetado por abogados es el principal benchmark de lanzamiento. Los benchmarks externos de recuperación y los evaluadores automatizados son diagnósticos, no pruebas de vigencia temporal. Consulte el [plan de implementación](SAT-GRAPH-IMPLEMENTATION-PLAN.md) para conocer el orden de migración.
 
 ## Qué puede medirse actualmente

@@ -4,9 +4,9 @@ import { createRef } from 'react';
 import { FloatingRadialHub } from '../../../frontend/src/presentation/components/FloatingRadialHub';
 
 test('dial controla acciones y no expone adjuntos cerrados al teclado', () => {
-  const terminal = vi.fn(), history = vi.fn(), mic = vi.fn(), upload = vi.fn(), camera = vi.fn();
+  const terminal = vi.fn(), history = vi.fn(), mic = vi.fn(), micEnd = vi.fn(), upload = vi.fn(), camera = vi.fn();
   const ref = createRef<HTMLButtonElement>();
-  render(<FloatingRadialHub terminalButtonRef={ref} onTerminalOpen={terminal} onHistoryOpen={history} onMicToggle={mic} onFileUpload={upload} onCameraOpen={camera} />);
+  render(<FloatingRadialHub terminalButtonRef={ref} onTerminalOpen={terminal} onHistoryOpen={history} onMicStart={mic} onMicEnd={micEnd} onFileUpload={upload} onCameraOpen={camera} />);
   expect(ref.current).toBe(screen.getByRole('button', { name: 'Abrir terminal' }));
   expect(screen.queryByRole('button', { name: 'Adjuntar archivo' })).toBeNull();
   const toggle = screen.getByRole('button', { name: 'Mostrar adjuntos' });
@@ -18,8 +18,11 @@ test('dial controla acciones y no expone adjuntos cerrados al teclado', () => {
   expect(camera).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
   fireEvent.click(screen.getByRole('button', { name: 'Abrir historial' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Activar micrófono' }));
-  expect(terminal).toHaveBeenCalledTimes(1); expect(history).toHaveBeenCalledTimes(1); expect(mic).toHaveBeenCalledTimes(1);
+  const micButton = screen.getByRole('button', { name: 'Activar micrófono' });
+  fireEvent.mouseDown(micButton); fireEvent.mouseUp(micButton);
+  fireEvent.keyDown(micButton, { key: ' ' }); fireEvent.keyUp(micButton, { key: ' ' });
+  expect(terminal).toHaveBeenCalledTimes(1); expect(history).toHaveBeenCalledTimes(1);
+  expect(mic).toHaveBeenCalledTimes(2); expect(micEnd).toHaveBeenCalledTimes(2);
 });
 test('rotación por ratón y tacto se detiene al soltar y al desmontar', () => {
   const { container, unmount } = render(<FloatingRadialHub />);

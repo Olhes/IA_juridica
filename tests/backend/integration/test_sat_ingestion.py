@@ -12,6 +12,21 @@ from ingestion.conversion import ConversionArtifact
 from tests.backend.fixtures.uploads import configured_client, upload
 
 
+def test_non_pdf_upload_stays_outside_sat_and_pdf_endpoint_rejects_it(monkeypatch, tmp_path):
+    client, _ = configured_client(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", False)
+    processor = SimpleNamespace(process_document=AsyncMock(return_value="# Ficticio"))
+    monkeypatch.setattr(main.app.state, "document_processor", processor, raising=False)
+    header = {"X-API-Key": "test-admin-key-with-enough-entropy"}
+    payload = {"file": ("ficticio.txt", b"texto ficticio", "text/plain")}
+    result = client.post("/upload-document", headers=header, files=payload)
+    assert result.status_code == 200
+    assert result.json()["evidence_id"] is None and result.json()["sat_graph"] is None
+    assert not (tmp_path / "sat_graph.sqlite3").exists()
+    main.app.state.rag_engine.add_document.assert_awaited_once()
+    assert client.post("/upload-pdf", headers=header, files=payload).status_code == 400
+
+
 def test_sat_upload_and_batch_share_commit_and_skip_legacy_llm(monkeypatch, tmp_path):
     client, processor = configured_client(monkeypatch, tmp_path)
     monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", False)

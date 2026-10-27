@@ -151,3 +151,90 @@ test('PDF ausente MIME inválido y fallo de red no descargan ni dejan carga', as
   await act(async () => { await result.current.downloadPdf({ id: 'm', apiResponse: payload } as any); });
   expect(URL.createObjectURL).not.toHaveBeenCalled(); expect(result.current.downloadingPdfId).toBeNull();
 });
+test('contrato v1: etapas en vivo, texto validado y tiempos en el payload final', async () => {
+  const { result } = await hook();
+  const v1 = (seq: number, event: object) => JSON.stringify({ v: 1, seq, request_id: 'r', ...event }) + '\n';
+  const gate = deferred<void>();
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream({
+    async start(controller) {
+      const send = (text: string) => controller.enqueue(new TextEncoder().encode(text));
+      send(v1(0, { type: 'meta', data: {} }) + v1(1, { type: 'stage', stage: 'retrieval', status: 'start' }));
+      await gate.promise;
+      send(v1(2, { type: 'stage', stage: 'retrieval', status: 'end', elapsed_ms: 5 })
+        + v1(3, { type: 'final', data: { ...payload, metadata: { timings: { total_ms: 5, stages: { retrieval: 5 }, cache_hit: false } } } })
+        + v1(4, { type: 'done' }));
+      controller.close();
+    },
+  }))));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.sendQuery('q'); });
+  await waitFor(() => expect(result.current.messages[1].stage).toBe('retrieval'));
+  gate.resolve();
+  await act(async () => { await pending; });
+  expect(result.current.messages[1].stage).toBeUndefined();
+  expect(result.current.messages[1].content).toBe(payload.response.respuesta_espanol);
+  expect(result.current.messages[1].apiResponse?.metadata.timings?.stages.retrieval).toBe(5);
+});
+test('contrato v1: error con code se conserva y reintentar reenvía la misma consulta', async () => {
+  const { result } = await hook();
+  const error = JSON.stringify({ v: 1, seq: 1, request_id: 'r', type: 'error', code: 'TIMEOUT', message: 'x', retryable: true }) + '\n'
+    + JSON.stringify({ v: 1, seq: 2, request_id: 'r', type: 'done' }) + '\n';
+  const fetch = vi.fn(async () => streamResponse(error));
+  vi.stubGlobal('fetch', fetch);
+  await act(async () => { await result.current.sendQuery('consulta'); });
+  expect(result.current.messages[1].errorInfo).toEqual({ code: 'TIMEOUT', retryable: true });
+  expect(result.current.messages[1].isStreaming).toBe(false);
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(JSON.stringify({ type: 'final', data: payload }) + '\n')));
+  await act(async () => { result.current.retry(result.current.messages[1].id); });
+  await waitFor(() => expect(result.current.messages.map(m => m.content)).toEqual(['consulta', payload.response.respuesta_espanol]));
+  expect(result.current.messages[1].errorInfo).toBeUndefined();
+});
+
+test('stream sin final marca la respuesta como degradada y conserva el texto recibido', async () => {
+  const { result } = await hook();
+  const lines = [
+    { v: 1, seq: 0, request_id: '0123456789abcdef0123456789abcdef', type: 'meta', data: {} },
+    { v: 1, seq: 1, request_id: '0123456789abcdef0123456789abcdef', type: 'chunk', delta: 'Texto sin validar' },
+    { v: 1, seq: 2, request_id: '0123456789abcdef0123456789abcdef', type: 'done' },
+  ].map((event) => JSON.stringify(event)).join('\r\n') + '\r\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse('\ufeff' + lines, 7)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1]).toMatchObject({ content: 'Texto sin validar', degraded: true, isStreaming: false });
+  expect(result.current.messages[1].apiResponse).toBeUndefined();
+});
+test('una línea corrupta ya no tira la respuesta: se descarta y el final se conserva', async () => {
+  const { result } = await hook();
+  const id = '0123456789abcdef0123456789abcdef';
+  const text = ['{no es json', JSON.stringify({ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }),
+    JSON.stringify({ v: 1, seq: 1, request_id: id, type: 'final', data: payload }),
+    JSON.stringify({ v: 1, seq: 2, request_id: id, type: 'done' })].join('\n') + '\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1].content).toBe(payload.response.respuesta_espanol);
+  expect(result.current.messages[1].degraded).toBeUndefined();
+});
+test('al terminar envía telemetría solo numérica con sendBeacon cuando el servidor informa request_id', async () => {
+  const { result } = await hook();
+  const sent: string[] = [];
+  Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: (_url: string, body: Blob) => { sent.push(String(body.size)); return true; } });
+  try {
+    const id = '0123456789abcdef0123456789abcdef';
+    const text = [{ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }, { v: 1, seq: 1, request_id: id, type: 'final', data: payload },
+      { v: 1, seq: 2, request_id: id, type: 'done' }].map((event) => JSON.stringify(event)).join('\n') + '\n';
+    vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+    await act(async () => { await result.current.sendQuery('consulta privada'); });
+    expect(sent).toHaveLength(1);
+    expect(Number(sent[0])).toBeGreaterThan(0);
+  } finally {
+    delete (navigator as unknown as Record<string, unknown>).sendBeacon;
+  }
+});
+test('el request_id del evento meta queda en el mensaje para poder calificar la respuesta', async () => {
+  const { result } = await hook();
+  const id = '0123456789abcdef0123456789abcdef';
+  const text = [{ v: 1, seq: 0, request_id: id, type: 'meta', data: {} }, { v: 1, seq: 1, request_id: id, type: 'final', data: payload },
+    { v: 1, seq: 2, request_id: id, type: 'done' }].map((event) => JSON.stringify(event)).join('\n') + '\n';
+  vi.stubGlobal('fetch', vi.fn(async () => streamResponse(text)));
+  await act(async () => { await result.current.sendQuery('q'); });
+  expect(result.current.messages[1].requestId).toBe(id);
+});
