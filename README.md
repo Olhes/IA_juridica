@@ -12,7 +12,7 @@ y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por en
 
 ## Empezar en local
 
-Necesitas Python **3.12–3.13** (`.python-version`: 3.12.10), UV, Node **24**,
+Necesitas Python **3.12–3.13** (`.python-version`: 3.12.10), UV, Node **24.22.1 o posterior de la rama 24**,
 pnpm **10.30.2** y Docker Compose o el equivalente de Podman para los servicios.
 Los locks, no este documento, son la fuente de versiones reproducibles.
 
@@ -69,7 +69,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
 
 | Capa                 | Ubicación / contrato                                                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.3.8, React 19.3.0                           |
+| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.4.3, React 19.3.0                           |
 | Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies        |
 | API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                  |
 | Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada    |

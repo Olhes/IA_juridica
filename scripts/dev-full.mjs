@@ -118,7 +118,7 @@ async function startInfrastructure() {
   console.log("PostgreSQL and Redis are healthy. Starting backend...");
 }
 
-function startPnpmScript(script, {
+function startPnpm(args, {
   platform = process.platform,
   nodePath = process.execPath,
   pnpmExecPath = process.env.npm_execpath,
@@ -128,10 +128,17 @@ function startPnpmScript(script, {
     if (!pnpmExecPath) {
       throw new Error("pnpm did not provide npm_execpath for the Windows development launcher.");
     }
-    return spawnProcess(nodePath, [pnpmExecPath, "run", script], { stdio: "inherit" });
+    // El entrypoint puede cambiar a standalone también en procesos anidados.
+    return /\.exe$/i.test(pnpmExecPath)
+      ? spawnProcess(pnpmExecPath, args, { stdio: "inherit" })
+      : spawnProcess(nodePath, [pnpmExecPath, ...args], { stdio: "inherit" });
   }
 
-  return spawnProcess("pnpm", ["run", script], { stdio: "inherit" });
+  return spawnProcess("pnpm", args, { stdio: "inherit" });
+}
+
+export function startPnpmScript(script, options = {}) {
+  return startPnpm(["run", script], options);
 }
 
 export async function startFrontendAfterBackend({
@@ -142,12 +149,7 @@ export async function startFrontendAfterBackend({
   return startFrontend();
 }
 
-export function startHostProcesses({
-  platform = process.platform,
-  nodePath = process.execPath,
-  pnpmExecPath = process.env.npm_execpath,
-  spawnProcess = spawn,
-} = {}) {
+export function startHostProcesses(options = {}) {
   const concurrentlyArgs = [
     "exec",
     "concurrently",
@@ -160,22 +162,7 @@ export function startHostProcesses({
     "node scripts/dev-full.mjs frontend-after-backend",
   ];
 
-  if (platform === "win32") {
-    if (!pnpmExecPath) {
-      throw new Error("pnpm did not provide npm_execpath for the Windows development launcher.");
-    }
-
-    // pnpm puede proporcionar un ejecutable standalone o un entrypoint JS.
-    return /\.exe$/i.test(pnpmExecPath)
-      ? spawnProcess(pnpmExecPath, concurrentlyArgs, { stdio: "inherit" })
-      : spawnProcess(nodePath, [pnpmExecPath, ...concurrentlyArgs], { stdio: "inherit" });
-  }
-
-  return spawnProcess(
-    "pnpm",
-    concurrentlyArgs,
-    { stdio: "inherit" },
-  );
+  return startPnpm(concurrentlyArgs, options);
 }
 
 async function runFrontendGate() {

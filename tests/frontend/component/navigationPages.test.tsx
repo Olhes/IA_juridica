@@ -65,7 +65,8 @@ test('entrypoints y layout conservan idioma proveedores y metadatos', () => {
   const element = RootLayout({ children: 'Contenido' });
   expect(element.type).toBe('html');
   expect(element.props.lang).toBe('es');
-  expect(element.props.children.props.children.props.children.props.children).toBe('Contenido');
+  const body = React.Children.toArray(element.props.children).find((child: any) => child.type === 'body') as React.ReactElement<any>;
+  expect(body.props.children.props.children.props.children).toBe('Contenido');
   expect(metadata.title).toContain('IA Jurídica');
   expect(homeMetadata.description).toContain('Quechua');
   render(<HomePage />);

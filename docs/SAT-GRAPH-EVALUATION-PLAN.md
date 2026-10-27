@@ -1,5 +1,16 @@
 # Evaluar la recuperación jurídica peruana fundamentada en fuentes
 
+> **Actualización del 10 de octubre de 2026:** existe un
+> [harness reproducible de seis estrategias](SAT-GRAPH-EXPERIMENTS.md) con fixture
+> de ingeniería y proveedor Voyage opt-in. No es todavía el benchmark jurídico
+> descrito aquí ni una comparación con LightRAG; preparación, fallos de API y
+> métricas parciales se registran por separado.
+
+> **Actualización del 7 de octubre de 2026:** las pruebas sintéticas del
+> [núcleo de ingesta SAT](SAT-GRAPH-INGESTION.md) ya verifican versiones, intervalos,
+> acciones, hashes y transacciones. No prueban la vigencia del derecho peruano
+> ni sustituyen este benchmark abogado. El catálogo oficial no es un corpus gold.
+
 > Implementación del harness que aplica esta norma al pipeline v8: [plan del harness](HARNESS-IMPLEMENTATION-PLAN.md).
 
 **Decisión:** Un corpus peruano seleccionado y etiquetado por abogados es el principal benchmark de lanzamiento. Los benchmarks externos de recuperación y los evaluadores automatizados son diagnósticos, no pruebas de vigencia temporal. Consulte el [plan de implementación](SAT-GRAPH-IMPLEMENTATION-PLAN.md) para conocer el orden de migración.

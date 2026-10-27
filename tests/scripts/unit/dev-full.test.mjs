@@ -8,6 +8,7 @@ import {
   isServiceReady,
   startFrontendAfterBackend,
   startHostProcesses,
+  startPnpmScript,
   waitForBackendHealth,
 } from "../../../scripts/dev-full.mjs";
 
@@ -62,6 +63,35 @@ test("Windows executes standalone pnpm without passing an exe to Node", () => {
     spawnProcess: (...args) => { received = args; return {}; } });
   assert.equal(received[0], "C:\\pnpm\\pnpm.exe");
   assert.equal(received[1][0], "exec");
+});
+
+test("Windows nested frontend executes standalone pnpm directly", () => {
+  const pnpmExecPath = "C:\\Users\\developer name\\AppData\\Local\\pnpm\\@pnpm\\exe\\pnpm.EXE";
+  let received;
+  const child = {};
+  const result = startPnpmScript("frontend:dev", {
+    platform: "win32",
+    nodePath: "C:\\Program Files\\nodejs\\node.exe",
+    pnpmExecPath,
+    spawnProcess: (...args) => { received = args; return child; },
+  });
+  assert.equal(result, child);
+  assert.deepEqual(received, [pnpmExecPath, ["run", "frontend:dev"], { stdio: "inherit" }]);
+});
+
+test("Windows nested frontend uses Node for JavaScript pnpm entrypoints", () => {
+  const nodePath = "C:\\Program Files\\nodejs\\node.exe";
+  const pnpmExecPath = "C:\\Users\\developer name\\pnpm\\pnpm.cjs";
+  let received;
+  startPnpmScript("frontend:dev", {
+    platform: "win32", nodePath, pnpmExecPath,
+    spawnProcess: (...args) => { received = args; return {}; },
+  });
+  assert.deepEqual(received, [nodePath, [pnpmExecPath, "run", "frontend:dev"], { stdio: "inherit" }]);
+});
+
+test("Windows nested frontend requires pnpm's entrypoint", () => {
+  assert.throws(() => startPnpmScript("frontend:dev", { platform: "win32", pnpmExecPath: "" }), /npm_execpath/);
 });
 
 test("Windows requires pnpm's entrypoint", () => {

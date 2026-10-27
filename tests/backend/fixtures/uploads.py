@@ -13,6 +13,8 @@ def configured_client(monkeypatch, tmp_path):
     monkeypatch.setattr(main.limiter, "enabled", False)
     monkeypatch.setattr(settings, "ADMIN_ENDPOINTS_ENABLED", True)
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "test-admin-key-with-enough-entropy")
+    # Estas pruebas existentes cubren compatibilidad explícita con el legado.
+    monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", True)
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed\nArtículo único\n"))

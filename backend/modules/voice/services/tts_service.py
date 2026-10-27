@@ -132,11 +132,8 @@ class TTSService:
             return None
 
         try:
-            logger.info(f"[TTS] Texto original: {text[:100]}...")
-
             # Normalizar texto
             normalized_text = self.normalize_text_for_tts(text, language="qu")
-            logger.info(f"[TTS] Texto normalizado: {normalized_text[:100]}...")
 
             # Tokenizar
             logger.info("[TTS] Tokenizando...")
@@ -177,11 +174,11 @@ class TTSService:
                 logger.error("soundfile no disponible. Instala con: pip install soundfile")
                 return None
             except Exception as e:
-                logger.error(f"[TTS] Error escribiendo WAV: {e}")
+                logger.error("[TTS] Error escribiendo WAV: %s", type(e).__name__)
                 return None
 
         except Exception as e:
-            logger.error(f"[TTS] Error sintetizando quechua: {e}", exc_info=True)
+            logger.error("[TTS] Error sintetizando quechua: %s", type(e).__name__)
             return None
     
     def is_available(self, language: str) -> bool:

@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Optional, Dict, Any
+from pydantic import Field, SecretStr
+from typing import List, Optional, Dict, Any, Literal
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -64,6 +65,14 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-5-mini"
     OPENAI_MAX_COMPLETION_TOKENS: int = 1500
     OPENAI_TEMPERATURE: float = 0.7
+
+    # Recuperación SAT experimental: nunca sustituye Cohere implícitamente.
+    VOYAGE_API_KEY: SecretStr = SecretStr("")
+    VOYAGE_DIMENSION: Literal[256, 512, 1024, 2048] = 1024
+    VOYAGE_DAILY_REQUESTS: int = Field(default=100, ge=1, le=10000)
+    VOYAGE_DAILY_TOKEN_RESERVATION: int = Field(default=100000, ge=1)
+    VOYAGE_REQUESTS_PER_MINUTE: int = Field(default=3, ge=1)
+    VOYAGE_TOKEN_BOUND_PER_MINUTE: int = Field(default=9000, ge=1)
     
     # Configuración de Cohere (principal)
     COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
@@ -187,6 +196,10 @@ class Settings(BaseSettings):
     PDF_GENERATION_ENABLED: bool = True
     PDF_TEMPLATE_DIR: str = "./templates/pdf"
     PDF_OUTPUT_DIR: str = "./temp/pdfs"
+
+    # SAT no usa LLM en la ingesta. Solo habilitar para comparación con el legado
+    # después de aceptar su coste y su grafo no autoritativo.
+    SAT_INGESTION_LEGACY_RAG: bool = False
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -37,6 +37,10 @@ from security import (
 )
 from ingestion.pipeline import LegalIngestionPipeline
 from ingestion.source_evidence import persist_source_evidence
+from ingestion.conversion import convert_for_ingestion
+from ingestion.sat_graph.store import SATGraphStore, stage_document
+from retrieval.sat import SATRetriever, SearchPlan
+from retrieval.voyage import VoyageProvider, VoyageError
 from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
@@ -95,6 +99,11 @@ def _get_document_processor(app: FastAPI):
         processor = LegalDocumentProcessor()
         app.state.document_processor = processor
     return processor
+
+
+def _get_pdf_processor(app: FastAPI):
+    processor = getattr(app.state, "pdf_processor", None)
+    return processor if processor is not None else _get_document_processor(app)
 
 
 def _get_evaluation_suite(app: FastAPI):
@@ -534,7 +543,6 @@ async def query_document(
                 f"Formato no soportado: {file_ext}. "
                 f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
             )
-
         # Guardar archivo temporalmente
         temp_dir = BASE_DIR / "temp"
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -641,9 +649,11 @@ async def upload_document(
     """Sube y procesa un documento legal (PDF, imagen, DOCX, etc.) con Docling."""
     from ingestion.docling_processor import LegalDocumentProcessor
 
+    file_ext = ""
     raw_path: Optional[Path] = None
     processed_path: Optional[Path] = None
     processed_created = False
+    evidence_published = False
     try:
         original_name = (
             (file.filename or "upload").replace("\\", "/").rsplit("/", 1)[-1]
@@ -662,6 +672,9 @@ async def upload_document(
                 f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
             )
 
+        if file_ext == ".pdf" and file.content_type != "application/pdf":
+            raise HTTPException(400, "Invalid PDF media type")
+
         raw_directory = RAW_PDFS_DIR.resolve()
         raw_directory.mkdir(parents=True, exist_ok=True)
         server_name = f"{uuid.uuid4().hex}{file_ext}"
@@ -670,8 +683,12 @@ async def upload_document(
             raise HTTPException(400, "Invalid upload path")
 
         total_size = 0
+        first_chunk = True
         with raw_path.open("xb") as buffer:
             while chunk := await file.read(1024 * 1024):
+                if first_chunk and file_ext == ".pdf" and not chunk.startswith(b"%PDF-"):
+                    raise HTTPException(400, "Invalid PDF signature")
+                first_chunk = False
                 total_size += len(chunk)
                 if total_size > settings.MAX_FILE_SIZE:
                     raise HTTPException(413, "File exceeds maximum allowed size")
@@ -679,11 +696,13 @@ async def upload_document(
 
         if total_size == 0:
             raise HTTPException(400, "Empty file")
-
-        document_processor = _get_document_processor(app)
-        processed_content = await document_processor.process_document(
-            str(raw_path), write_output=False
-        )
+        if file_ext == ".pdf":
+            artifact = await convert_for_ingestion(_get_pdf_processor(app), str(raw_path))
+            processed_content = artifact.markdown
+        else:
+            processed_content = await _get_document_processor(app).process_document(
+                str(raw_path), write_output=False
+            )
 
         processed_directory = PROCESSED_DIR.resolve()
         processed_directory.mkdir(parents=True, exist_ok=True)
@@ -695,28 +714,35 @@ async def upload_document(
         # Determinar tipo de documento
         document_type = "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document"
 
-        # Publish before RAG; upload cleanup below does not delete published evidence.
-        evidence = persist_source_evidence(
-            raw_path,
-            processed_path,
-            processed_content,
-            PROCESSED_DIR.parent / "source_evidence",
-        )
+        evidence = sat_result = None
+        if file_ext == ".pdf":
+            # Solo PDF entran al almacén de evidencia SAT.
+            evidence = persist_source_evidence(
+                raw_path, processed_path, processed_content,
+                PROCESSED_DIR.parent / "source_evidence",
+            )
+            evidence_published = True
+            sat_result = await asyncio.to_thread(
+                stage_document, PROCESSED_DIR.parent / "sat_graph.sqlite3",
+                evidence, processed_content, artifact.docling_document,
+            )
 
-        await app.state.rag_engine.add_document(
-            processed_content,
-            {
-                "filename": server_name,
-                "original_filename": original_name,
-                "title": original_name,
-                "document_type": document_type,
-                "source": "upload-document",
-            },
-            server_name,
-        )
+        legacy_write = file_ext != ".pdf" or settings.SAT_INGESTION_LEGACY_RAG
+        if legacy_write:
+            await app.state.rag_engine.add_document(
+                processed_content,
+                {
+                    "filename": server_name,
+                    "original_filename": original_name,
+                    "title": original_name,
+                    "document_type": "legal_pdf" if file_ext == ".pdf" else document_type,
+                    "source": "upload-pdf" if file_ext == ".pdf" else "upload-document",
+                },
+                server_name,
+            )
 
         # Actualizar el CrossChecker con el nuevo documento [NUEVO]
-        if hasattr(app.state, "response_validator"):
+        if legacy_write and hasattr(app.state, "response_validator"):
             app.state.response_validator.cross_checker.update_documents(
                 app.state.rag_engine.documents
             )
@@ -726,23 +752,24 @@ async def upload_document(
             "filename": server_name,
             "original_filename": original_name,
             "file_type": document_type,
-            "evidence_id": evidence.evidence_id,
-            "graph_write_state": "unverified",
+            "evidence_id": evidence.evidence_id if evidence else None,
+            "graph_write_state": "unverified" if legacy_write else "pending_review",
+            "sat_graph": sat_result,
             "message": f"{document_type.capitalize()} procesado correctamente con Docling",
         }
     except HTTPException:
-        if raw_path:
+        if raw_path and not evidence_published:
             raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path:
+        if processed_created and processed_path and not evidence_published:
             processed_path.unlink(missing_ok=True)
         raise
     except Exception as error:
-        if raw_path:
+        if raw_path and not evidence_published:
             raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path:
+        if processed_created and processed_path and not evidence_published:
             processed_path.unlink(missing_ok=True)
         _log_failure("document_upload_failed", error, request)
-        raise HTTPException(500, "Document processing failed")
+        raise HTTPException(500, "PDF processing failed" if file_ext == ".pdf" else "Document processing failed")
     finally:
         await file.close()
 
@@ -756,6 +783,9 @@ async def upload_pdf(
     _auth: bool = Depends(verify_admin_api_key),
 ):
     """Sube y procesa un PDF legal con Docling (endpoint deprecado, usar /upload-document)."""
+    if Path((file.filename or "").replace("\\", "/")).suffix.lower() != ".pdf":
+        await file.close()
+        raise HTTPException(400, "Only PDFs are accepted by this endpoint")
     return await upload_document(request, file, _auth)
 
 
@@ -978,13 +1008,97 @@ async def generate_pdf_report(
 
 
 @app.get("/knowledge-graph")
-async def get_knowledge_graph(_auth: bool = Depends(verify_admin_api_key)):
+async def get_knowledge_graph(engine: str = "lightrag", _auth: bool = Depends(verify_admin_api_key)):
     try:
+        if engine == "sat":
+            graph_data = await asyncio.to_thread(
+                lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+            )
+            return {"success": True, "graph": graph_data}
+        if engine != "lightrag":
+            raise HTTPException(422, "Unknown graph engine")
         graph_data = await app.state.rag_engine.get_knowledge_graph()
         return {"success": True, "graph": graph_data}
+    except HTTPException:
+        raise
     except Exception as error:
         _log_failure("knowledge_graph_read_failed", error)
         raise HTTPException(500, "Failed to get knowledge graph")
+
+
+@app.get("/sat-graph/resolve")
+async def resolve_sat_version(resource_id: str, component: str, as_of: str,
+                              _auth: bool = Depends(verify_admin_api_key)):
+    """Lectura admin determinística; no cambia el recuperador del chat legado."""
+    try:
+        return await asyncio.to_thread(
+            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").resolve(
+                resource_id, component, as_of
+            )
+        )
+    except ValueError:
+        raise HTTPException(422, "Invalid SAT query")
+    except Exception as error:
+        _log_failure("sat_graph_read_failed", error)
+        raise HTTPException(500, "Failed to read SAT graph")
+
+
+@app.get("/sat-graph/structure")
+async def sat_candidate_structure(evidence_id: str, parse_id: str | None = None,
+                                  _auth: bool = Depends(verify_admin_api_key)):
+    """AST y layout candidatos, solo para revisión administrativa autorizada."""
+    try:
+        return await asyncio.to_thread(
+            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").structure(evidence_id, parse_id)
+        )
+    except ValueError:
+        raise HTTPException(422, "Missing or ambiguous SAT structure; specify a valid parse_id")
+    except Exception as error:
+        _log_failure("sat_structure_read_failed", error)
+        raise HTTPException(500, "Failed to read SAT structure")
+
+
+@app.post("/sat-graph/search")
+@limiter.limit(settings.ADMIN_RATE_LIMIT)
+async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool = False,
+                           _auth: bool = Depends(verify_admin_api_key)):
+    """Ruta experimental admin. Egreso Voyage solo con opt-in explícito por consulta."""
+    def retrieve():
+        provider = None
+        if use_voyage:
+            provider = VoyageProvider(
+                settings.VOYAGE_API_KEY.get_secret_value(),
+                PROCESSED_DIR.parent / "voyage_cache.sqlite3",
+                dimension=settings.VOYAGE_DIMENSION,
+                daily_requests=settings.VOYAGE_DAILY_REQUESTS,
+                daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,
+                requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
+                token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
+            )
+        graph = SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+        return SATRetriever(graph).search(plan, provider=provider)
+
+    try:
+        return await asyncio.to_thread(retrieve)
+    except VoyageError:
+        raise HTTPException(503, "Voyage unavailable or local budget exhausted")
+    except ValueError:
+        raise HTTPException(422, "Invalid SAT retrieval parameters")
+    except Exception as error:
+        _log_failure("sat_graph_search_failed", error, request)
+        raise HTTPException(500, "Failed to search SAT graph")
+
+
+@app.get("/sat-graph/history")
+async def sat_graph_history(resource_id: str, component: str,
+                            _auth: bool = Depends(verify_admin_api_key)):
+    try:
+        return await asyncio.to_thread(lambda: SATRetriever(
+            SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+        ).history(resource_id, component))
+    except Exception as error:
+        _log_failure("sat_graph_history_failed", error)
+        raise HTTPException(500, "Failed to read SAT history")
 
 
 class TTSRequest(BaseModel):
@@ -1007,7 +1121,7 @@ async def synthesize_speech(
     """
     try:
         language_code = "qu" if payload.language == "quechua" else "es"
-        
+
         # Para español, usar Web Speech API en el frontend
         if language_code == "es":
             return {
@@ -1017,21 +1131,21 @@ async def synthesize_speech(
                 "message": "Use Web Speech API in the browser for Spanish",
                 "text": payload.text,
             }
-        
+
         # Para quechua, usar MMS-TTS
         tts_service = TTSService()
-        
+
         if not tts_service.is_available(language_code):
             raise HTTPException(
-                503, 
+                503,
                 f"TTS not available for language: {payload.language}"
             )
-        
+
         audio_bytes = await tts_service.synthesize_quechua(payload.text)
-        
+
         if audio_bytes is None:
             raise HTTPException(500, "Failed to synthesize audio")
-        
+
         return Response(
             content=audio_bytes,
             media_type="audio/wav",
@@ -1040,7 +1154,7 @@ async def synthesize_speech(
                 "Cache-Control": "no-store",
             },
         )
-        
+
     except HTTPException:
         raise
     except Exception as error:

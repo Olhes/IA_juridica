@@ -91,7 +91,8 @@ def test_batch_matches_upload_identity_and_keeps_legacy_result(tmp_path, monkeyp
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed\nArtículo único\n"))
     pipeline = LegalIngestionPipeline(
-        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "source_evidence"
+        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "source_evidence",
+        legacy_rag_write=True,
     )
     pipeline.raw_dir = tmp_path / "batch-raw"
     pipeline.processed_dir = tmp_path / "batch-processed"
@@ -116,7 +117,8 @@ def test_batch_fails_closed_on_markdown_or_evidence_failure(tmp_path):
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed"))
     pipeline = LegalIngestionPipeline(
-        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence"
+        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
+        legacy_rag_write=True,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"
@@ -146,7 +148,8 @@ def test_batch_divergent_retry_preserves_existing_markdown_and_evidence(tmp_path
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# First conversion"))
     pipeline = LegalIngestionPipeline(
-        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence"
+        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
+        legacy_rag_write=True,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"
@@ -175,7 +178,8 @@ def test_batch_retry_with_processor_output_alias_preserves_original(tmp_path):
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = LegalPDFProcessor.__new__(LegalPDFProcessor)
     pipeline = LegalIngestionPipeline(
-        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence"
+        rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
+        legacy_rag_write=True,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"

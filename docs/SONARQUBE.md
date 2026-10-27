@@ -27,7 +27,7 @@ La instalación existente está en:
 Ejecuta este comando en PowerShell. Selecciona Java 21 para ese arranque, sin cambiar el Java predeterminado del equipo:
 
 ```powershell
-rtk proxy cmd.exe /d /c 'set SONAR_JAVA_PATH=C:\Herramientas\jdk-21\bin\java.exe&&call D:\Installations\sonarqube-26.9.0.129388\sonarqube-26.9.0.129388\bin\windows-x86-64\StartSonar.bat'
+cmd.exe /d /c 'set SONAR_JAVA_PATH=C:\Herramientas\jdk-21\bin\java.exe&&call D:\Installations\sonarqube-26.9.0.129388\sonarqube-26.9.0.129388\bin\windows-x86-64\StartSonar.bat'
 ```
 
 Mantén abierta esa consola y espera el mensaje `SonarQube is operational`. Desde otra consola, comprueba:

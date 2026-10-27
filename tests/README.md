@@ -1,5 +1,138 @@
 # Guía única de tests
 
+## Recuperación SAT y experimentos Voyage (2026-10-10)
+
+Estos casos usan legislación **inventada**, SQLite temporal y `httpx.MockTransport`.
+No consumen APIs ni prueban calidad jurídica. El benchmark real se ejecuta
+manualmente con `--voyage`, fuera de la suite offline. Guía y limitaciones:
+`D:\Web\IA_juridica\docs\SAT-GRAPH-EXPERIMENTS.md`.
+
+### `backend/unit/test_sat_retrieval.py`
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_plan_fails_closed_on_ambiguous_constraints` | Rechaza fechas implícitas/epoch/datetime, campos extra, alcance y límites ambiguos. |
+| `test_temporal_gate_precedes_every_strategy` | Las cinco estrategias eligen la CTV correcta en el límite semiabierto; offline declara que no ejecutó embeddings. |
+| `test_no_soft_relaxation_of_resource_component_or_coverage` | Nunca relaja norma, componente ni cobertura temporal ante falta de hits. |
+| `test_candidates_and_conflicting_versions_never_enter_retrieval` | Candidatos y versiones concurrentes ambiguas no se vuelven evidencia por ranking. |
+| `test_snapshot_and_revision_are_isolated_from_external_mutations` | Mutar el export original no cambia el snapshot ni su fingerprint en una consulta. |
+| `test_subchunks_roundtrip_unicode_and_global_offsets` | Ventanas conservan texto Unicode completo, offsets globales, hash y metadatos. |
+| `test_context_budget_does_not_truncate_canonical_text` | Presupuesto UTF-8 respeta spans, no corta texto canónico para hacerlo caber. |
+| `test_history_reconstructs_causal_edges` | Historial reconstruye versiones/Action y fuentes; ausentes se abstienen. |
+| `test_ppr_expands_only_eligible_memberships` | PPR usa únicamente membresías elegibles y conserva masa. |
+| `test_rank_math_is_deterministic_and_rejects_bad_vectors` | BM25, RRF y coseno tienen desempates/contratos explícitos. |
+
+### `backend/unit/test_voyage_provider.py`
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_context_cache_covers_group_order_type_and_dimension` | Contexto completo ordenado, tipo y dimensión forman contrato/caché; no guarda texto ni clave. |
+| `test_rerank_index_mapping_and_cache` | Mapea índices al documento correcto y reutiliza resultado idéntico. |
+| `test_errors_redact_provider_body_and_do_not_retry` | Con retry desactivado, 401/429/500 no filtran cuerpo remoto; fallos conservan reserva. |
+| `test_invalid_embeddings_are_not_cached` | Contratos ausentes, grupos incompletos, NaN y dimensiones inválidas fallan cerrados. |
+| `test_invalid_rerank_index_fails_closed` | Un índice ajeno al lote nunca llega al contexto. |
+| `test_persistent_request_and_token_quota` | Cuota persiste tras reinicio; cache hit no consume otra llamada. |
+| `test_concurrent_identical_requests_make_one_network_call` | Consultas idénticas concurrentes no duplican la petición de red. |
+| `test_invalid_configuration` | Clave ausente, dimensión o cuota inválida se rechazan antes de red. |
+| `test_persistent_rpm_and_tpm_pacing_without_real_sleep` | Reloj simulado prueba ambos límites, reinicio y cache sin esperas reales. |
+| `test_explicit_429_honors_retry_after_and_counts_each_attempt` | Un 429 explícito permite retry acotado; espera y ledger incluyen cada intento. |
+| `test_timeout_is_not_retried_and_long_cooldown_survives_restart` | Timeout ambiguo nunca se repite; cooldown remoto largo persiste sin espera ilimitada. |
+| `test_context_cache_reuses_unchanged_groups_and_batches_under_tpm` | Reutiliza CTV no modificada aunque cambie el lote; respeta cota y no divide contexto silenciosamente. |
+
+### `backend/unit/test_sat_benchmark.py`
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_metric_denominators_and_deduplication` | IDs distintos, n/a, abstención y nDCG@k penalizan evidencia faltante. |
+| `test_bootstrap_is_seeded_and_preserves_paired_sample_size` | Intervalo pareado reproducible; no inventa observaciones independientes. |
+| `test_invalid_gold_dataset_fails` | Gold inexistente, contradictorio, duplicado y dataset vacío se rechazan. |
+| `test_offline_ablation_is_paired_and_keeps_heldout_unread` | Seis estrategias comparan mismos 12 casos sin proveedor ni heldout. |
+| `test_heldout_requires_explicit_selection` | La partición reservada exige selección explícita. |
+| `test_api_failure_preserves_baselines_and_is_not_scored_as_abstention` | Fallo del proveedor deja baselines y checkpoint; informe incompleto, sin falso score. |
+| `test_prewarm_uses_eligibility_not_gold_and_records_preparation_separately` | Agrupa embeddings por elegibilidad, separa preparación y reutiliza rerank entre estrategias. |
+
+### `backend/integration/test_sat_search.py`
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_search_and_history_require_admin_and_abstain_on_empty_corpus` | Rutas HTTP reales exigen admin, sin lifespan/red; corpus vacío se abstiene. |
+| `test_search_rejects_ambiguous_date_and_unknown_fields` | Fecha, componente ambiguo y relajación desconocida devuelven 422. |
+| `test_voyage_opt_in_without_credentials_returns_sanitized_503` | Opt-in sin clave falla sin revelar configuración privada. |
+
+`backend/fixtures/sat_experiment.py` genera el dataset sintético versionado; no es
+una ley ni contiene etiquetas aprobadas por un abogado. Comando focalizado:
+
+```powershell
+.venv\Scripts\python.exe -X utf8 -m pytest tests/backend/unit/test_sat_retrieval.py tests/backend/unit/test_voyage_provider.py tests/backend/unit/test_sat_benchmark.py tests/backend/integration/test_sat_search.py -q
+```
+
+Los resultados de suites históricas en las secciones siguientes no incluyen esta
+ampliación. Verificar la ejecución actual antes de usar sus recuentos.
+
+Verificación del 10/10/2026: `pnpm sonar` pasó **419 Python + 23 Node + 95
+frontend**, con 3 evaluaciones reales omitidas y 2 xfail heredados. Los nuevos
+casos focalizados suman **50 aprobados**. El scanner falló por acceso denegado a
+`backend/.pytest_cache` antes de analizar: **no hay Quality Gate aprobado**.
+Los experimentos reales Voyage se guardan separados en `temp/sat-experiments`;
+no forman parte de estas pruebas offline ni validan legislación.
+
+## Ingesta SAT-Graph (2026-10-07)
+
+`backend/unit/test_sat_graph.py` prueba el store real SQLite con textos
+**sintéticos** y directorios temporales. No valida leyes peruanas, no descarga
+fuentes, no usa modelos ni modifica la base local del piloto.
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_sat_catalog_is_official_scoped_and_not_authoritative` | Catálogo de temas del piloto con enlaces oficiales; cero CTV aprobadas por catalogar. |
+| `test_sat_catalog_rejects_unsafe_or_ambiguous_entries` | Rechaza IDs repetidos, dominios impostores, HTTP y esquema desconocido. |
+| `test_sat_article_spans_preserve_exact_unicode_without_overlap` | Artículos largos, español y emojis conservan texto/rangos/hash sin truncar ni duplicar; fallback sin artículos. |
+| `test_sat_stage_is_idempotent_concurrent_and_survives_restart` | Escritores concurrentes y reinicio producen el mismo grafo; candidatos nunca se convierten automáticamente en normas. |
+| `test_sat_stage_rejects_divergent_hash_or_identity` | Detecta conversión/hash/identidad/procedencia en conflicto sin cambios parciales. |
+| `test_sat_review_resolves_half_open_intervals_and_abstains` | Inclusión de inicio, exclusión de fin, idioma/alcance ausentes y fechas inválidas; citas exactas e idempotencia revisada. |
+| `test_sat_review_never_extrapolates_past_verified_coverage` | Un fin abierto no permite afirmar vigencia más allá de la fecha comprobada. |
+| `test_sat_review_rejects_bad_evidence_without_partial_writes` | Hash del PDF, rangos, fuente no normativa, duplicados y solapamientos revierten toda la revisión. |
+| `test_sat_review_contract_requires_explicit_human_review` | Responsable, zona horaria, fundamento y cobertura coherentes; campos inesperados rechazados. |
+| `test_sat_amendment_closes_old_version_with_causal_evidence` | La reforma cierra CTV anterior, abre nueva y registra fuente causal en aristas. |
+| `test_sat_invalid_action_rolls_back_versions_and_closures` | Fechas/IDs/texto/objetivos/tipo de Action inválidos no dejan cierres ni versiones parciales. |
+| `test_sat_structure_supports_explicit_unchanged_child_reuse` | Dos versiones padre reutilizan la misma CTV hija sin copiar texto. |
+| `test_sat_structure_rejects_invalid_parent_and_membership` | Autoparentesco, padres inexistentes y cobertura temporal inválida no se publican. |
+| `test_sat_cli_draft_cannot_be_promoted_without_review` | CLI entrega borrador con datos jurídicos nulos: debe completarse, no puede aprobarse por accidente. |
+| `test_sat_enactment_and_pure_repeal_preserve_audit` | Promulgación y derogación sin texto nuevo conservan cadena causal; la fecha final excluye la disposición. |
+| `test_sat_closing_child_requires_consistent_existing_parent_version` | Cerrar un hijo no puede invalidar silenciosamente la membresía de un padre ya publicado. |
+| `test_sat_rejects_multinode_structural_cycles` | Una reforma con ciclo entre dos Work revierte todas las nuevas relaciones y cierres. |
+| `test_sat_cli_writes_utf8_without_overwriting_review_files` | Exportar JSON UTF-8 funciona en Windows y no sobrescribe un manifiesto/archivo preexistente. |
+
+`backend/integration/test_sat_ingestion.py` ejecuta rutas HTTP reales con parser
+PDF/legado simulados y SQLite real, sin lifespan/red. Es la frontera operativa de
+esta ampliación, no una prueba de calidad jurídica ni de producción.
+
+| Caso | Qué verifica / por qué existe |
+| --- | --- |
+| `test_sat_upload_and_batch_share_commit_and_skip_legacy_llm` | Upload y batch comparten ID/commit SAT; el default evita add_document/rebuild de pago. |
+| `test_sat_upload_failure_keeps_published_evidence_for_recovery` | Tras publicar evidencia, un fallo SAT conserva PDF/Markdown para recuperación y oculta detalles internos. |
+| `test_sat_admin_graph_export_and_temporal_abstention` | Catálogo exportable y resolución administrativa requieren API key; fecha/motor inválido produce 422. |
+| `test_sat_batch_storage_failure_never_acknowledges_success` | Fallo SQLite da archivo fallido, nunca éxito/commit falso ni llamada RAG; conserva artefactos. |
+
+Compatibilidad: los casos previos de upload/evidencia que esperan llamadas a
+LightRAG activan **explícitamente** `SAT_INGESTION_LEGACY_RAG=true`; no cambian el
+default SAT. Los xfail temporales del recuperador legado siguen siendo xfail:
+aprobar el selector SAT aislado no implementa la ruta temporal del chat.
+
+Desde la raíz: `uv run --no-sync python -m pytest -q tests/backend/unit/test_sat_graph.py tests/backend/integration/test_sat_ingestion.py`.
+Guía/limitaciones: `D:\Web\IA_juridica\docs\SAT-GRAPH-INGESTION.md`.
+Rollback de código: núcleo SAT, flag e integración upload/batch/API; no se borran
+datos heredados. Rollback de datos: backup consistente, no eliminación selectiva.
+
+Verificación de esta ampliación: suite Python completa **369 aprobados**, 3
+evaluaciones reales omitidas (no hubo llamadas de pago), 2 xfail previos del
+recuperador legado y 20 warnings de dependencias. `git diff --check` y Black
+sobre archivos SAT/nuevos tests sin errores. Smoke de CLI real: **28 recursos,
+0 CTV revisadas**, con SQLite persistente local. No se probó calidad jurídica,
+OCR real ni frontend/navegador: no se cambió la recuperación del chat ni la UI.
+Suite focalizada SAT: **41 aprobados**; `--cov=ingestion.sat_graph` reporta **92%**
+combinando líneas/ramas del paquete (store **95%**), no cobertura global del repo.
+
 Todas las pruebas del proyecto viven en **`tests/`**, separadas primero por
 **backend**, **frontend** y **scripts**, y después por tipo. Este
 documento es la referencia única de ejecución, alcance y catálogo de casos;
@@ -876,7 +1009,7 @@ Recuperación sin corte en 50 candidatos, chunks reales, ausencia de evidencia, 
 | `test_no_evidence_abstains_even_if_self_correction_invents`         | no evidence abstains even if self correction invents         |
 | `test_provider_failure_is_redacted_not_success`                     | provider failure is redacted not success                     |
 | `test_translation_provider_exception_does_not_leak_payload`         | translation provider exception does not leak payload         |
-| `test_deepeval4_native_score_direction_without_judge`               | deepeval4 native score direction without judge               |
+| `test_deepeval4_native_score_direction_without_judge`               | deepeval 4 native score direction without judge               |
 
 </details>
 
@@ -1068,16 +1201,19 @@ Fechas UTC explícitas sin depender de la zona horaria del equipo. No requiere R
 |---|---|
 | `servicios reales recuperan historial después de caída temporal` | Con flag y servicios locales, interrupción temporal de listado se recupera al reintentar. |
 | `consulta real sintética persiste al recargar y se limpia al terminar` | Una consulta sintética comprueba final no vacío y persistencia tras refresh; limpia solo su conversación. |
-| `servicios reales aíslan principales anónimos en dos contextos` | Dos contextos tienen principales/cookies aislados; otro usuario recibe404 al leer la conversación ajena. |
+| `servicios reales aíslan principales anónimos en dos contextos` | Dos contextos tienen principales/cookies aislados; otro usuario recibe 404 al leer la conversación ajena. |
 
 </details>
 
 <details>
-<summary>frontend/integration/ChatPage.test.tsx — 3 escenarios</summary>
+<summary>frontend/integration/ChatPage.test.tsx — 6 escenarios</summary>
 
 | Caso | Qué verifica |
 |---|---|
 | `pantalla principal crea sesión antes de enviar y muestra respuesta final` | Monta pantalla/hooks/API real del frontend con red MSW: crea sesión antes de consultar y muestra final. |
+| `animación que termina inmediatamente no bloquea la pantalla` | La finalización síncrona muestra la interfaz sin regresar a la animación. |
+| `la pantalla aparece si la animación se queda detenida` | Un límite de cuatro segundos permite continuar si la animación no termina. |
+| `la animación se puede omitir sin esperar` | El botón permite acceder al contenido inmediatamente. |
 | `nueva sesión no conserva mensajes del terminal anterior` | Nueva sesión limpia mensajes del terminal anterior, sin confundir el preview persistido del sidebar. |
 | `pantalla recupera historial tras fallo con reintento sin borrar datos` | API de listado 503 expone acción de reintento y al recuperarse elimina el alert. |
 
@@ -1180,7 +1316,7 @@ Hidratación sin borrar conversación ni sendBeacon; un fallo preserva sesiones 
 ### Scripts y estructura
 
 <details>
-<summary>scripts/unit/dev-full.test.mjs — 8 escenarios base</summary>
+<summary>scripts/unit/dev-full.test.mjs — 11 escenarios base</summary>
 
 Arranque Docker solo PostgreSQL/Redis, healthchecks, argumentos seguros en Windows, npm_execpath y espera del backend antes del frontend.
 
@@ -1241,7 +1377,7 @@ Exigir componente y tipo dentro del árbol único, impedir suites dispersas y ma
 
 Vitest 5.0.3 / cobertura V8 5.0.3, jsdom 29.1.1 (Node local 24.13.1),
 Testing Library React 16.3.3 y MSW 2.15.0. MSW 3 no satisface el peer del mocker
-de Vitest; jsdom 30 requiere Node24.15+, por eso no se instalan esas versiones.
+de Vitest; jsdom 30 requiere Node 24.15+, por eso no se instalan esas versiones.
 React de tests coincide en versión con producto y usa una instancia única;
 Lucide usa su entrada ESM para respetar aliases. No se cambia el tipo global
 del frontend ni sus configs CommonJS. Los cuatro casos antiguos se conservan.
@@ -1415,7 +1551,7 @@ media queries simuladas; comprueba clases del documento, no estilos/píxeles.
 | Caso | Qué comprueba |
 |---|---|
 | `tema guardado aplica clase oscura sin esconder hijos` | Con preferencia `dark` en localStorage comprueba clase oscura del documento, conservación de la preferencia y visibilidad del contenido hijo. |
-| `tema del sistema sigue cambios y libera listener al desmontar` | Con tema `system` simula cambio de media query de claro a oscuro y comprueba las clases correspondientes; al desmontar verifica eliminación del listener registrado. |
+| `tema guardado puede cambiarse y persistirse` | Comprueba que el tema elegido se refleja en la clase del documento y se conserva en almacenamiento local. |
 
 
 ### `frontend/integration/legacyChatHooks.test.tsx`
@@ -1578,6 +1714,169 @@ no se cambian contratos OAuth ni se revierten migraciones o datos de usuarios.
 No se recalculó cobertura ni se ejecutaron E2E contra Google: las cifras de
 cobertura de la ampliación transversal anterior siguen siendo históricas.
 El harness HTTP usa las rutas reales de auth con dependencias externas simuladas.
+
+## Benchmark documental de PDF oficiales (investigación aislada)
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_non_pdf_upload_stays_outside_sat_and_pdf_endpoint_rejects_it` | Un documento no PDF permanece en la ruta heredada sin identidad ni nodos SAT; `/upload-pdf` lo rechaza. |
+| `test_tts_failure_does_not_log_private_input_or_exception` (`backend/unit/test_tts_privacy.py`) | Un fallo de síntesis de voz no registra el texto privado ni el mensaje de excepción. |
+
+### `backend/unit/test_documentary.py`
+
+Los PDF/textos de estos tests son **ficticios**, generados localmente. No hay
+descargas, llamadas API, abogado revisor ni afirmación de que la URL declarada
+certifique el contenido. Se verifica integridad/reproducibilidad del bundle.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_documentary_snapshot_is_hash_bound_and_has_no_legal_versions` | Snapshot determinista ligado a artefactos, cero CTV/reviewed; el retriever SAT público se abstiene ante nodos documentales IA. |
+| `test_documentary_bundle_rejects_nonofficial_stale_or_promoted_data` | 22 defectos parametrizados: NotebookLM/host impostor/HTTP, identidad/hash PDF/Markdown/Docling, no-PDF, resumen reescrito, rango/hash/páginas/booleanos, fundamento, fecha/revisor, autoridad añadida, duplicados, snapshot alterado y referencias faltantes/divergentes. |
+| `test_documentary_search_preserves_offsets_and_requires_explicit_edition` | Conserva fragmentos y hashes exactos; exige edición/source_ids, no admite as_of jurídico y devuelve estado documental sin fechas normativas. |
+| `test_documentary_benchmark_is_labeled_and_pairs_all_rankers` | Seis rankers, repeticiones estables y cobertura de referencias, etiquetados como revisión IA documental, sin API. |
+| `test_docling_paragraph_correction_is_metadata_only_and_traceable` | Siete escenarios: reclasificación válida de lista sin marcador y rechazo de texto alterado, marcador real, hash divergente, duplicado, ausencia de original y fundamento vacío. Conserva los bytes originales. |
+| `test_documentary_windows_preserve_exact_bounded_unicode_partition` | Diez combinaciones fixed/paragraph: vacío, whitespace, Unicode compuesto/emoji/CRLF, texto sin separadores y párrafos; partición íntegra, contigua y acotada sin overlap. |
+| `test_paragraph_policy_prevents_known_reference_boundary_loss` | La política natural conserva una referencia partida por la ventana rígida, exige opt-in y no altera proveniencia ni elegibilidad documental. |
+| `test_documentary_windows_reject_invalid_policy` | Rechaza tamaño cero y política desconocida. |
+
+### Casos adicionales de `backend/unit/test_sat_benchmark.py`
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_metric_top_k_excludes_late_gold_consistently` | Precision/recall/nDCG usan los mismos IDs únicos dentro de top-k; no acredita gold tardío. |
+| `test_benchmark_entrypoint_exit_status` | Dos estados: CLI devuelve 0 al completar y 1 cuando el informe es incomplete. |
+| `test_reference_coverage_requires_correct_edition_and_complete_span` | No confunde artículo recuperado con fragmento gold cubierto; exige edición correcta y contención del intervalo completo. |
+
+El experimento documental real en `temp/corpus-review/documentary-*.json` no es
+fixture de CI ni gold experto. Los artefactos originales y corregidos coexisten.
+No se cambia el endpoint SAT, la ruta de chat ni la base canónica. **Rollback:**
+retirar el adaptador `research/documentary.py`, su integración en el harness y
+sus tests; conservar las correcciones independientes top-k/exit-status y toda
+la evidencia original. No borrar corpus ni resultados previos.
+
+Verificación final del 11/10/2026: **59 casos focalizados** y suite Python completa
+**506 aprobados, 3 skipped opt-in, 2 xfail previos, 20 warnings**. Los benchmarks PDF
+reales y el contraste heldout se ejecutaron aparte; sus resultados no son tests
+de CI ni certificación legal. La política natural sigue siendo opt-in de investigación.
+
+## Parser jurídico candidato y evidencia Docling
+
+### `backend/unit/test_legal_structure.py`
+
+Fixtures ficticios, sin API, OCR ni revisión jurídica. Comprueban contratos de
+estructura, offsets y persistencia, no exactitud sobre todo el corpus peruano.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_legal_parser_preserves_exact_unicode_partition` | Vacío, whitespace, CRLF, Unicode compuesto/descompuesto y emoji: partición íntegra, hashes y determinismo sin normalizar evidencia. |
+| `test_legal_parser_uses_legal_hierarchy_not_markdown_depth` | Título/capítulo/artículo/numeral/inciso/subinciso siguen jerarquía jurídica candidata aunque los niveles Markdown sean contradictorios. |
+| `test_legal_parser_separates_instruments_and_contextual_lists` | Instrumentos independientes y listas solo dentro de contexto jurídico; un numeral sin prefijo padre no se atribuye a otro numeral. |
+| `test_legal_parser_detects_grouped_and_single_dispositions` | Grupos finales y disposición transitoria única no se confunden con artículos. |
+| `test_legal_parser_isolates_quotes_fences_tables_and_toc` | Citas, blockquotes, código, tablas y entradas con puntos de índice no generan artículos host; la reforma citada no contamina el artículo siguiente. |
+| `test_legal_parser_keeps_unclosed_quotes_non_authoritative` | Tres tipos de comillas sin cierre conservan payload y diagnóstico, sin adjudicar artículos posteriores automáticamente. |
+| `test_legal_parser_flags_unquoted_amendment_and_duplicate_headers` | Diagnósticos de repetición y de límites inciertos de reforma sin comillas; no decide dónde acaba esa reforma. |
+| `test_legal_parser_does_not_truncate_after_fifty_articles` | Conserva 150 artículos candidatos, también en el adaptador detallado Docling. |
+| `test_docling_alignment_requires_unique_exact_text_and_keeps_local_provenance` | Alineación exacta única, ambigüedad por repetición en ambos lados y texto escapado no alineable; charspan/prov permanecen locales y sin modificación. |
+| `test_docling_alignment_rejects_invalid_json_contract` | Rechaza raíz/lista texts inválidas y NaN no reproducible. |
+| `test_sat_structure_is_immutable_concurrent_and_not_reviewed` | Reintentos concurrentes, copia JSON independiente, IDs/aristas coherentes y ausencia de promoción/resolve autoritativo. |
+| `test_sat_structure_requires_explicit_parse_on_ambiguity_and_detects_tampering` | Dos parses requieren parse_id; selección incorrecta y alteración directa del artefacto son rechazadas. |
+| `test_sat_invalid_layout_writes_no_partial_candidate_graph` | Layout inválido no publica nodos ni documentos parciales. |
+| `test_sat_structure_cli_round_trips_docling_json` | Stage/structure CLI conservan JSON y exportan un archivo UTF-8 nuevo. |
+| `test_docling_artifact_converts_once_without_output_side_effects` | Un único conversor produce ambos formatos sin escribir Markdown; PDF ausente falla. |
+| `test_conversion_adapter_supports_legacy_processors_without_inventing_layout` | Conserva adaptadores antiguos y no inventa métodos/layout de mocks; rechaza contrato nuevo incorrecto. |
+
+### Casos adicionales de `backend/integration/test_sat_ingestion.py`
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_sat_upload_and_batch_preserve_same_docling_artifact` | Upload HTTP y batch real publican el mismo JSON/parse_id con conversor simulado y sin segunda conversión ni llamadas RAG. |
+| `test_sat_structure_http_requires_admin_and_explicit_ambiguous_parse` | Lectura HTTP protegida, deshabilitación 404, ambigüedad 422 y selección explícita; no cambia configuración del servicio en ejecución. |
+
+## Revisión documental de límites de instrumentos
+
+### `backend/unit/test_structure_review.py`
+
+Fixtures ficticios; no son un corpus oficial ni revisión jurídica. Un sidecar
+documental identifica al revisor IA/persona, sus razones y los hashes exactos.
+No añade fechas, CTV ni aprobación normativa. No llama a proveedores externos.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_documentary_boundary_separates_merged_tuo_without_rewriting_evidence` | Separa un título de anexo fusionado con una firma, con Unicode/CRLF y partición íntegra; artículos de cada instrumento no comparten padre. |
+| `test_documentary_boundary_rejects_stale_or_invalid_corrections` | Siete defectos: Markdown divergente, hash, rango, duplicado, fundamento vacío, fecha sin zona y campo de autoridad no permitido. |
+| `test_documentary_boundary_cannot_turn_protected_payload_into_instrument` | Cita entre comillas, blockquote y código no pueden promoverse a instrumento mediante corrección. |
+| `test_documentary_review_persists_separate_parse_without_promotion` | Conserva parse original y corregido, exige selección explícita y mantiene cero CTV/pending_review. |
+| `test_documentary_review_cli_preserves_sidecar_and_source_bytes` | CLI stage guarda el sidecar reproducible, no cambia Markdown/PDF y no aprueba vigencia. |
+
+Verificación del 11 de octubre de 2026: **36** casos de parser/revisión,
+**74** casos adicionales de SAT/HTTP y suite Python completa **457 aprobados,
+3 omitidos opt-in, 2 xfail previos**. Prueba documental real separada en
+`temp/corpus-review/tuo-review-result.json`, no requerida por CI.
+
+## Ablación independiente y replay sin API
+
+Los casos siguientes usan fixtures ficticios/MockTransport, sin acceso externo.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_cache_only_replays_without_key_network_or_writes` | Embeddings documentales/query y rerank se reutilizan sin clave, red, cuota ni modificación de bytes/ledger; SQLite rechaza escrituras y TPM de red no limita hits. |
+| `test_cache_only_miss_is_explicit_and_does_not_spend_or_write` | Tres operaciones: miss específico, mensaje sin texto privado, cero cambios. |
+| `test_cache_only_rejects_missing_or_incompatible_database_without_initializing` | Base ausente, vacía o corrupta: no crea directorios/esquema ni altera archivo. |
+| `test_rank_stages_are_independent_and_accounted` | Veinte combinaciones: dense/rerank independientes en cinco estrategias; elegibilidad previa, uso desglosado y política por defecto conservados. |
+| `test_rank_stage_contract_rejects_coercion_and_unknown_flags` | Flags booleanos estrictos; rechaza coerción y claves desconocidas. |
+| `test_weighted_rrf_preserves_default_and_excludes_zero_weight_candidates` | El peso PPR conserva el comportamiento anterior con 1, pondera con 0,25 y excluye candidatos aportados únicamente por una señal con peso cero. |
+| `test_rerank_only_cache_misses_are_case_local_and_unscored` | No llama embedding/prewarm; misses solo del caso afectado, no falsos scores/abstenciones ni circuit breaker global. |
+| `test_cache_miss_in_prewarm_does_not_disable_cached_queries` | Preparación incompleta conserva resultados cacheados por consulta; estado global incomplete. |
+| `test_cache_only_cli_does_not_load_credentials_and_records_stage_mode` | CLI real sin .env ni API, modo/flags/ejecución registrados; live y cache-only son excluyentes. |
+
+Verificación 11/10/2026: **133 focalizadas; 539 Python aprobadas, 3 skipped opt-in,
+2 xfail previos, 20 warnings**. Runtime CLI separado sobre PDF oficiales: lexical,
+dense-only y combinado completos; rerank-only incompleto por 22 misses explícitos.
+Cero llamadas nuevas y caché/ledger idénticos. Evidencia y rollback en
+`docs/SAT-GRAPH-EXPERIMENTS.md`, sección «Ablación independiente de etapas».
+
+### Regresión del launcher anidado en Windows (2026-10-26)
+
+En `scripts/unit/dev-full.test.mjs`:
+
+| Caso | Qué comprueba |
+|---|---|
+| `Windows nested frontend executes standalone pnpm directly` | El segundo arranque ejecuta `pnpm.exe` directamente, con rutas con espacios y extensión en mayúsculas, sin pasarlo a Node. |
+| `Windows nested frontend uses Node for JavaScript pnpm entrypoints` | Los entrypoints `.cjs` siguen ejecutándose con Node y argumentos separados. |
+| `Windows nested frontend requires pnpm's entrypoint` | Un `npm_execpath` ausente falla explícitamente también en el arranque anidado. |
+
+## Seguridad del runtime y las dependencias Node (2026-10-26)
+
+Archivo: [`scripts/unit/security-runtime.test.mjs`](scripts/unit/security-runtime.test.mjs).
+Ejecutar con `pnpm test:node` o `pnpm test`, sin llamadas a modelos reales.
+
+| Caso | Qué comprueba |
+|---|---|
+| `el runtime ejecutado contiene el parche y mantiene Brotli funcional` | Node >=24.22.1 <25, constante del parche y compresión/descompresión normal, sin exploits. |
+| `ambos proyectos exigen Node 24 con el parche de Brotli` | Engines, `.nvmrc`, `.node-version` y rechazo de instalaciones incompatibles mediante ambos `.npmrc`. |
+| `ambas etapas Docker usan una base Node parcheada` | Builder y runtime fijan `node:24.22.1-alpine`. |
+| `Next y las transitivas de desarrollo conservan sus parches de seguridad` | Next 16.4.3 y overrides acotados de shell-quote y undici. |
+
+## Membresías documentales verificables
+
+Fixtures ficticios, sin PDF oficial descargado ni API en CI. No validan vigencia.
+
+| Caso | Qué comprueba |
+|---|---|
+| `test_documentary_memberships_bind_exact_nested_spans_and_preserve_v1_defaults` | Defaults conservan snapshot; artículo → inciso → numeral con contención exacta, PPR propaga solo con aristas habilitadas y elegibles; filtro de componente no se relaja. |
+| `test_documentary_memberships_reject_unverifiable_structure` | Diez defectos: padre ausente, otra fuente/recurso, fuera/idéntico rango, hermanos superpuestos, hijo sin padre, artículo subordinado, ruta o tipo inválidos. |
+| `test_documentary_root_metrics_deduplicate_children_but_require_actual_span` | Evaluación explícita por raíz no duplica crédito; conserva IDs raw y exige que el fragmento real contenga el span, no basta pertenecer al artículo. Gold hijo se rechaza en este modo. |
+| `test_documentary_root_mapping_rejects_ambiguous_or_cyclic_graph` | Rechaza ciclo, múltiples padres y enlace entre ediciones. |
+
+`test_invalid_gold_dataset_fails` añade niveles desconocidos y evaluación por
+raíz sobre corpus sintético como contratos rechazados. Los ensayos reales se
+ejecutan aparte sobre artefactos oficiales y no equivalen a gold experto.
+
+Verificación v5: **150 focalizadas; 556 Python aprobadas, 3 skipped opt-in, 2 xfail
+previos, 20 warnings**. Nueve ensayos CLI oficiales completed/exit 0, sin API nueva;
+snapshot v1 compatible exacto. El grafo propaga pero PPR regresa en desarrollo:
+esto es resultado experimental, no un motivo para escribir tests que exijan
+scores altos. Evidencia/rollback en `docs/SAT-GRAPH-EXPERIMENTS.md`.
 
 ## Harness de evaluación — v8, 2026-10-22
 

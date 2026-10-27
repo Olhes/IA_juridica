@@ -4,6 +4,8 @@ from docling.datamodel.base_models import InputFormat
 from pathlib import Path
 from typing import Dict, Any, Optional
 import asyncio
+from ingestion.conversion import ConversionArtifact
+from ingestion.legal_structure import parse_legal_structure
 
 class LegalDocumentProcessor:
     """Procesador de documentos legales usando Docling 2.133.0
@@ -107,6 +109,20 @@ class LegalDocumentProcessor:
             }
         }
 
+    async def process_pdf_artifact(self, pdf_path: str) -> ConversionArtifact:
+        """Una sola conversión; Markdown y JSON provienen del mismo documento.
+
+        No escribe archivos: upload/batch publican evidencia tras sus controles.
+        El fallback sin JSON permite adaptadores antiguos y queda diagnosticado.
+        """
+        path = Path(pdf_path)
+        if not path.exists():
+            raise FileNotFoundError(f"PDF no encontrado: {path}")
+        result = await asyncio.get_running_loop().run_in_executor(None, self.converter.convert, path)
+        document = result.document
+        layout = document.export_to_dict(mode="json") if hasattr(document, "export_to_dict") else None
+        return ConversionArtifact(document.export_to_markdown(), layout)
+
     # Alias para mantener compatibilidad con código existente
     async def process_pdf(self, pdf_path: str, *, write_output: bool = True) -> str:
         """Alias para process_document (compatibilidad)"""
@@ -117,21 +133,12 @@ class LegalDocumentProcessor:
         return await self.process_document_detailed(pdf_path)
     
     def _extract_legal_structure(self, document) -> Dict[str, Any]:
-        """Extrae estructura legal del documento"""
-        structure = {
-            "articles": [],
-            "sections": [],
-            "definitions": []
-        }
-        
-        # Extraer texto y buscar patrones legales
-        text = document.export_to_markdown()
-        
-        # Buscar artículos (Artículo 1, Art. 2, etc.)
-        import re
-        articles = re.findall(r'(Art[íi]culo\s+\d+[°º]?[\.\-\:]?\s*[^\n]+)', text, re.IGNORECASE)
-        structure["articles"] = articles[:50]  # Limitar a 50
-        
+        """Compatibilidad detallada sin el antiguo truncamiento a 50 artículos."""
+        layout = document.export_to_dict(mode="json") if hasattr(document, "export_to_dict") else None
+        structure = parse_legal_structure(document.export_to_markdown(), layout)
+        structure["articles"] = [n["label"] for n in structure["nodes"] if n["kind"] == "article"]
+        structure["sections"] = [n["label"] for n in structure["nodes"] if n["kind"] in {"seccion", "subseccion"}]
+        structure["definitions"] = []  # No inferir definiciones jurídicas automáticamente.
         return structure
     
     def _to_legal_markdown(self, document, structure: Dict) -> str:
@@ -146,3 +153,7 @@ articulos_encontrados: {len(structure.get('articles', []))}
 
 """
         return header + markdown
+
+
+# Compatibilidad con la ruta de ingesta PDF y sus integraciones existentes.
+LegalPDFProcessor = LegalDocumentProcessor

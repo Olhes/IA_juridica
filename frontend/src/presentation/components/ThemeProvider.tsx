@@ -13,15 +13,14 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light');
-  const [mounted, setMounted] = useState(false);
+  const [theme, setThemeState] = useState<Theme>('dark');
 
   useEffect(() => {
-    setMounted(true);
     // Cargar tema del localStorage, default a dark
     const savedTheme = localStorage.getItem('ia-juridica-theme') as Theme;
     const themeToUse = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
     setThemeState(themeToUse);
+    document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(themeToUse);
   }, []);
 
@@ -35,10 +34,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
   };
-
-  if (!mounted) {
-    return <>{children}</>;
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>

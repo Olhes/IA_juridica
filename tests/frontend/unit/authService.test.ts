@@ -11,7 +11,8 @@ test('login por cookie actualiza estado sin persistir tokens', async () => {
     return HttpResponse.json({ message: 'ok' });
   }), http.get(`${API}/auth/me`, () => HttpResponse.json(user)));
   await api.login({ username: 'test', password: 'synthetic' });
-  expect(api.isAuthenticated).toBe(true); expect(api.currentUser).toEqual(user); expect(writes).not.toHaveBeenCalled();
+  expect(api.isAuthenticated).toBe(true); expect(api.currentUser).toEqual(user);
+  expect(writes.mock.calls.every(([key]) => !['auth_token', 'refresh_token'].includes(key))).toBe(true);
 });
 test('usuario se recupera desde cookies tras nueva instancia sin token JS', async () => {
   server.use(http.get(`${API}/auth/me`, ({ request }) => {

@@ -160,6 +160,19 @@ export function FloatingRadialHub({
                 setShowSatellites(false);
                 onMicEnd?.();
               }}
+              onKeyDown={(event) => {
+                if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+                  event.preventDefault();
+                  setShowSatellites(false);
+                  onMicStart?.();
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                  event.preventDefault();
+                  onMicEnd?.();
+                }
+              }}
               className={`absolute top-0 right-0 w-1/2 h-1/2 rounded-tr-full flex items-center justify-center transition-all duration-300 ease-out group hover:z-30 hover:scale-110 hover:translate-x-1 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.8)] active:scale-95 ${
                 voiceListening
                   ? 'bg-red-600 animate-pulse'

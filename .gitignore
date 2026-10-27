@@ -45,12 +45,18 @@ requerimientos.md
 /backend/docs/processed/**
 /backend/docs/knowledge_graph/**
 /backend/docs/failed/**
+/backend/docs/source_evidence/**
+/backend/docs/sat_graph.sqlite3*
+/backend/docs/voyage_cache.sqlite3*
+/backend/docs/sat_reviews/**
 kv_store_llm_response_cache.json
 !/backend/docs/raw_pdfs/.gitkeep
 !/backend/docs/processed/.gitkeep
 !/backend/docs/knowledge_graph/.gitkeep
 !/backend/docs/failed/.gitkeep
 /temp
+/logs/*-runtime*.log
+/logs/sonar-start*.log
 /backend/temp/**
 # production
 /build
