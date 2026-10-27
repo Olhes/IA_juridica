@@ -57,6 +57,12 @@ def publish_suite(suite: str, report: Optional[dict]) -> dict:
         systems = {name: _metrics(metrics, RETRIEVAL_METRICS) for name, metrics in report.get("main", {}).items()
                    if any(_value(m) is not None for m in metrics.values())}
         note = "Motor local sin LightRAG ni reranker de Cohere." if report.get("source") == "offline" else None
+        if report.get("ndcg_definition") == "binary_unique_segments_tie_averaged_v1":
+            note = ((note + " ") if note else "") + (
+                "nDCG@k evalúa k segmentos únicos con empates promediados; "
+                "las métricas de cobertura y precisión usan k fragmentos. "
+                "No comparar este nDCG con informes anteriores sin recalcularlos."
+            )
         return {**base, "n_cases": report.get("n_cases"), "systems": systems, "note": note,
                 "index_audit": {k: (report.get("index_audit") or {}).get(k) for k in ("indexed_chunks", "segment_coverage", "gold_segments", "gold_segments_covered")},
                 "spaced_ocr_documents": len((report.get("corpus_quality") or {}).get("spaced_documents", []))}

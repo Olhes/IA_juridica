@@ -15708,5 +15708,25 @@
     "create_time": 1792860229,
     "update_time": 1792860229,
     "_id": "mix:keywords:98b07ac5b7d800604c06c0d686991430"
+  },
+  "mix:keywords:6bcc9028648b2422b2025ec5c361fc2f": {
+    "return": "{\"high_level_keywords\": [\"law\", \"protection\", \"woman\", \"vulnerable populations\"], \"low_level_keywords\": []}",
+    "cache_type": "keywords",
+    "chunk_id": null,
+    "original_prompt": "Que dice la ley sobre las proteccion hacia la mujer y poblaciones vulnerables?",
+    "queryparam": {
+      "mode": "mix",
+      "response_type": "Multiple Paragraphs",
+      "top_k": 50,
+      "chunk_top_k": 50,
+      "max_entity_tokens": 6000,
+      "max_relation_tokens": 8000,
+      "max_total_tokens": 30000,
+      "user_prompt": "",
+      "enable_rerank": true
+    },
+    "create_time": 1793074628,
+    "update_time": 1793074628,
+    "_id": "mix:keywords:6bcc9028648b2422b2025ec5c361fc2f"
   }
 }

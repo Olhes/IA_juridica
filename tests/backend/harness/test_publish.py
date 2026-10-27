@@ -63,6 +63,17 @@ def test_published_file_round_trips_and_a_missing_file_is_reported_as_unpublishe
     assert quality_reports.load_published(path)["status"] == "sin_publicar"
 
 
+def test_retrieval_publication_explains_the_ndcg_unit_and_version():
+    report = {"meta": {"answer_source": "offline_engine"}, "source": "offline",
+              "ndcg_definition": "binary_unique_segments_tie_averaged_v1",
+              "main": {"lexical": {"ndcg@5": metric(1.0)}}}
+    entry = publish.publish_suite("retrieval", report)
+    assert "sin LightRAG" in entry["note"]
+    assert "segmentos únicos" in entry["note"]
+    assert "sin recalcularlos" in entry["note"]
+    assert entry["systems"]["lexical"]["ndcg@5"]["macro"] == 1.0
+
+
 def test_the_checked_in_published_file_is_honest_about_what_was_measured():
     published = quality_reports.load_published()
     assert published["status"] in {"preliminar", "sin_publicar"}

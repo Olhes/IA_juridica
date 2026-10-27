@@ -1,6 +1,7 @@
 """Evaluación de recuperación: regla de solapamiento, métricas de evidencia y sistemas por etapa."""
 
 import json
+import math
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -68,6 +69,35 @@ def test_recall_precision_mrr_ndcg_follow_the_sat_definitions():
     assert 0 < m.ndcg(ranked, relevant, 4).value < 1
 
 
+def test_ndcg_uses_unique_segments_for_both_ranking_and_ideal():
+    assert m.ndcg([["a"], ["a"]], ["a"], 5).value == pytest.approx(1.0)
+    assert m.ndcg([["a"], ["a"], ["b"]], ["a", "b"], 3).value == pytest.approx(1.0)
+    assert m.ndcg([["a", "b"]], ["a", "b"], 3).value == pytest.approx(1.0)
+    assert m.ndcg([["a", "b"], ["a"], ["b"]], ["a", "b"], 3).value == pytest.approx(1.0)
+    assert m.ndcg([["x"], ["a"], ["a"]], ["a", "a"], 3).value == pytest.approx(1 / math.log2(3))
+    assert m.ndcg([["a"], ["b"]], ["a", "b"], 1).value == 1
+    assert m.ndcg([["x"]], ["a"], 5).value == 0
+    assert m.ndcg([], ["a"], 5).value == 0
+
+
+def test_ndcg_ideal_includes_missing_evidence_and_respects_segment_cutoff():
+    assert m.ndcg([["a"]], ["a", "b"], 5).value == pytest.approx(1 / (1 + 1 / math.log2(3)))
+    assert m.ndcg([["x", "y"], ["a"]], ["a"], 2).value == 0
+    assert m.ndcg([["x", "y"], ["a"]], ["a"], 3).value == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("ranked", [[["a", "x"]], [["x", "a"]], [["a", "a", "x"], ["a"]]])
+def test_ndcg_averages_ties_without_gold_based_ordering(ranked):
+    assert m.ndcg(ranked, ["a"], 1).value == pytest.approx(0.5)
+    assert m.ndcg(ranked, ["a"], 2).value == pytest.approx((1 + 1 / math.log2(3)) / 2)
+
+
+@pytest.mark.parametrize("k", [0, -1])
+def test_ndcg_rejects_nonpositive_cutoff(k):
+    with pytest.raises(ValueError, match="k debe ser positivo"):
+        m.ndcg([["a"]], ["a"], k)
+
+
 def test_every_retrieval_metric_is_na_without_a_denominator():
     for score in (
         m.evidence_recall([["a"]], [], 3), m.evidence_precision([["a"]], [], 3), m.mrr([["a"]], []),
@@ -117,6 +147,7 @@ def oracle_bundle(case, corpus, extra=None):
 def test_oracle_retrieval_is_perfect_and_unavailable_systems_are_na_with_reason(retrieval_cases, corpus, matcher):
     bundles = {c.id: oracle_bundle(c, corpus) for c in retrieval_cases}
     report = evaluate_retrieval(retrieval_cases, bundles, matcher, systems=("lexical", "lightrag_naive"))
+    assert report["ndcg_definition"] == "binary_unique_segments_tie_averaged_v1"
     lexical = report["main"]["lexical"]
     assert lexical["evidence_recall@5"]["macro"]["value"] == pytest.approx(1.0)
     assert lexical["mrr"]["macro"]["value"] == 1.0 and lexical["chunk_precision@5"]["macro"]["value"] == 1.0

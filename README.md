@@ -67,17 +67,17 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
 ```
 
 
-| Capa                 | Ubicación / contrato                                                                              |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.4.3, React 19.3.0                           |
-| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies        |
-| API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                  |
-| Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada    |
-| RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                          |
-| Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática |
-| Persistencia         | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos                 |
-| Voz (STT/TTS)       | `frontend/src/application/legal/use-cases/useSpeech.ts`, `backend/modules/voice/services/tts_service.py` |
-| Tests                | Solo `tests/<backend                                                                               |
+| Capa                 | Ubicación / contrato                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.4.3, React 19.3.0                                 |
+| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies              |
+| API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                        |
+| Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada          |
+| RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                                |
+| Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática       |
+| Persistencia         | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos                       |
+| Voz (STT/TTS)        | `frontend/src/application/legal/use-cases/useSpeech.ts`, `backend/modules/voice/services/tts_service.py` |
+| Tests                | Solo `tests/<backend                                                                                     |
 
 El NDJSON transporta contenido **después** de la validación; no publica borradores
 provisionales del modelo. Sin documentos recuperados se devuelve abstención explícita.
@@ -91,6 +91,7 @@ heredadas, no el flujo de inicio actual.
 El sistema soporta entrada y salida de voz en español y quechua:
 
 **Speech-to-Text (STT) - Español:**
+
 - Usa Web Speech API del navegador (nativo)
 - Micrófono estilo WhatsApp: mantener presionado para grabar, soltar para enviar
 - Animación visual roja pulsante mientras graba
@@ -98,6 +99,7 @@ El sistema soporta entrada y salida de voz en español y quechua:
 - Requiere autenticación
 
 **Text-to-Speech (TTS):**
+
 - **Español:** Web Speech API del navegador (voz nativa)
 - **Quechua:** MMS-TTS del backend (`facebook/mms-tts-quz`)
 - Reproducción automática de respuestas del asistente
@@ -106,6 +108,7 @@ El sistema soporta entrada y salida de voz en español y quechua:
 - Requiere autenticación
 
 **Limitaciones:**
+
 - STT solo funciona en español (Web Speech API no tiene soporte para quechua)
 - TTS en quechua requiere el modelo MMS-TTS cargado (~145MB)
 - Respuestas en quechua pueden tener calidad variable dependiendo del modelo de traducción
@@ -177,4 +180,4 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 | Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
 | Consultar antecedentes, no capacidades actuales | [Migración Cohere](CHANGELOG_MIGRACION_COHERE.md), [auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
 | Revisar propuestas aún no implementadas        | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md)               |
-| Seguir el plan del harness de evaluación        | [Plan del harness](docs/HARNESS-IMPLEMENTATION-PLAN.md)                                                   |
+| Seguir el plan del harness de evaluación       | [Plan del harness](docs/HARNESS-IMPLEMENTATION-PLAN.md)                                                   |
