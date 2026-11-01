@@ -102,7 +102,11 @@ class Settings(BaseSettings):
     PROCESSED_DIR: str = "../docs/processed"
     KNOWLEDGE_GRAPH_DIR: str = "../docs/knowledge_graph"
     FAILED_DIR: str = "../docs/failed"
-    
+
+    # Configuración de carga de documentos (Contexto Largo vs RAG)
+    MAX_UPLOAD_TOKENS: int = int(os.getenv("MAX_UPLOAD_TOKENS", "5000"))  # Umbral para contexto largo
+    ENABLE_UPLOAD_RAG_FALLBACK: bool = os.getenv("ENABLE_UPLOAD_RAG_FALLBACK", "true").lower() == "true"
+
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
     EMBEDDING_MODEL: str = "embed-multilingual-v3.0"

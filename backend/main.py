@@ -565,6 +565,24 @@ async def query_document(
             str(temp_path), write_output=False
         )
 
+        # Verificar tamaño del documento y decidir: Contexto Largo vs RAG
+        import tiktoken
+
+        try:
+            encoding = tiktoken.encoding_for_model("command-r-plus-08-2024")
+            token_count = len(encoding.encode(markdown_content))
+        except Exception:
+            # Fallback si tiktoken no tiene el modelo específico
+            encoding = tiktoken.get_encoding("cl100k_base")
+            token_count = len(encoding.encode(markdown_content))
+
+        use_rag_fallback = token_count > settings.MAX_UPLOAD_TOKENS and settings.ENABLE_UPLOAD_RAG_FALLBACK
+
+        if use_rag_fallback:
+            logger.info(f"Documento grande ({token_count} tokens > {settings.MAX_UPLOAD_TOKENS}), usando RAG temporal")
+        else:
+            logger.info(f"Documento pequeño ({token_count} tokens <= {settings.MAX_UPLOAD_TOKENS}), usando contexto largo")
+
         # Preparar prompt para Cohere con el contenido del documento
         from agents.pydantic_agents import LegalAgent
 
@@ -575,7 +593,95 @@ async def query_document(
 
         from agents.pydantic_agents import GLOBAL_SYSTEM_PROMPT, SYSTEM_PROMPT_GUARDRAILS
 
-        system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
+        if use_rag_fallback:
+            # Fallback: Usar RAG temporal para documentos grandes
+            logger.info("Iniciando RAG temporal para documento grande")
+
+            # Crear directorio temporal para RAG
+            temp_rag_dir = temp_dir / f"temp_rag_{uuid.uuid4().hex}"
+            temp_rag_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # Inicializar RAG temporal
+                from modules.rag.services.lightrag_engine import LegalRAGEngine
+                temp_rag = LegalRAGEngine(working_dir=str(temp_rag_dir))
+                temp_rag._ensure_initialized()
+
+                # Inicializar storages
+                await temp_rag.initialize_storages()
+
+                # Agregar documento al RAG temporal
+                await temp_rag.add_document(
+                    content=markdown_content,
+                    metadata={"filename": original_name, "source": "temp_upload"},
+                    document_id="temp_doc"
+                )
+
+                # Realizar consulta con RAG
+                rag_result = await temp_rag.query_with_rerank(query, top_k=5, rerank_candidates=20)
+
+                # Construir prompt con el contexto recuperado del RAG
+                retrieved_context = rag_result.get("answer", "No se encontró información relevante")
+
+                system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
+
+{SYSTEM_PROMPT_GUARDRAILS}
+
+INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS GRANDES:
+1. El documento proporcionado es muy grande, por lo que se recuperaron fragmentos relevantes usando búsqueda semántica
+2. Basa tu respuesta SOLO en los fragmentos recuperados proporcionados
+3. Si la información necesaria no está en los fragmentos, indica explícitamente que no está disponible
+4. Cita la fuente específica cuando sea posible
+5. Organiza la respuesta en secciones claras con encabezados
+6. Mantén el tono profesional y técnico pero accesible
+
+Responde en {language}."""
+
+                user_message = f"""FRAGMENTOS RECUPERADOS DEL DOCUMENTO:
+{retrieved_context}
+
+PREGUNTA:
+{query}
+
+Responde en {language}."""
+
+                # Llamar a Cohere con contexto del RAG
+                response = await legal_agent.cohere_client.chat(
+                    model="command-r-plus-08-2024",
+                    message=user_message,
+                    preamble=system_prompt,
+                    chat_history=[],
+                    temperature=0.3,
+                )
+
+                # Limpiar directorio temporal RAG
+                import shutil
+                shutil.rmtree(temp_rag_dir, ignore_errors=True)
+
+            except Exception as e:
+                logger.error(f"Error en RAG temporal: {e}")
+                # Fallback adicional: usar contexto largo truncado
+                logger.warning("RAG temporal falló, usando contexto largo truncado")
+                truncated_content = markdown_content[:10000]  # Truncar a ~10k caracteres
+                user_message = f"""DOCUMENTO (TRUNCADO):
+{truncated_content}
+
+[Nota: El documento es muy grande y se ha truncado. Esta respuesta puede no incluir toda la información.]
+
+PREGUNTA:
+{query}
+
+Responde en {language}."""
+                response = await legal_agent.cohere_client.chat(
+                    model="command-r-plus-08-2024",
+                    message=user_message,
+                    preamble=system_prompt,
+                    chat_history=[],
+                    temperature=0.3,
+                )
+        else:
+            # Contexto largo para documentos pequeños
+            system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
 
 {SYSTEM_PROMPT_GUARDRAILS}
 
@@ -590,7 +696,7 @@ INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS:
 
 Responde en {language}."""
 
-        user_message = f"""DOCUMENTO:
+            user_message = f"""DOCUMENTO:
 {markdown_content}
 
 PREGUNTA:
@@ -598,26 +704,27 @@ PREGUNTA:
 
 Responde en {language}."""
 
-        # Llamar a Cohere
-        try:
-            response = await legal_agent.cohere_client.chat(
-                model="command-r-plus-08-2024",
-                message=user_message,
-                preamble=system_prompt,
-                chat_history=[],
-                temperature=0.3,
-            )
-        except AttributeError as e:
-            import traceback
-            error_details = f"AttributeError: {str(e)}\n{traceback.format_exc()}"
-            logging.getLogger("ia_juridica.api").error(f"Cohere client error: {error_details}")
-            raise HTTPException(500, f"Cohere client error: {str(e)}")
-        except Exception as e:
-            import traceback
-            error_details = f"Error: {str(e)}\n{traceback.format_exc()}"
-            logging.getLogger("ia_juridica.api").error(f"Cohere API error: {error_details}")
-            raise HTTPException(500, f"Cohere API error: {str(e)}")
+            # Llamar a Cohere
+            try:
+                response = await legal_agent.cohere_client.chat(
+                    model="command-r-plus-08-2024",
+                    message=user_message,
+                    preamble=system_prompt,
+                    chat_history=[],
+                    temperature=0.3,
+                )
+            except AttributeError as e:
+                import traceback
+                error_details = f"AttributeError: {str(e)}\n{traceback.format_exc()}"
+                logging.getLogger("ia_juridica.api").error(f"Cohere client error: {error_details}")
+                raise HTTPException(500, f"Cohere client error: {str(e)}")
+            except Exception as e:
+                import traceback
+                error_details = f"Error: {str(e)}\n{traceback.format_exc()}"
+                logging.getLogger("ia_juridica.api").error(f"Cohere API error: {error_details}")
+                raise HTTPException(500, f"Cohere API error: {str(e)}")
 
+        # Retornar respuesta
         return {
             "success": True,
             "query": query,
@@ -625,6 +732,8 @@ Responde en {language}."""
             "language": language,
             "document_type": "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document",
             "original_filename": original_name,
+            "processing_method": "rag_fallback" if use_rag_fallback else "long_context",
+            "token_count": token_count,
         }
 
     except HTTPException:
