@@ -168,6 +168,7 @@ def evaluate_retrieval(cases, bundles, matcher, *, systems=SYSTEMS, ks=KS, main_
     }
     return {
         "suite": "retrieval",
+        "ndcg_definition": "binary_unique_segments_tie_averaged_v1",
         "ks": list(ks),
         "main_k": main_k,
         "n_cases": len(cases),
