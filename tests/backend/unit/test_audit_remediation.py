@@ -45,6 +45,34 @@ def translator(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("output,success", [("", False), ("Texto legal", False), ("Legal text", True)])
+async def test_translation_provider_rejects_unchanged_output_without_caching(
+    translator, monkeypatch, output, success
+):
+    monkeypatch.setattr(
+        translator, "_translate_with_google",
+        TranslationService._translate_with_google.__get__(translator),
+    )
+    provider = SimpleNamespace(translate=AsyncMock(return_value=SimpleNamespace(text=output)))
+    monkeypatch.setattr(translator, "google_translator", provider)
+    result = await translator.translate("Texto legal", "es", "qu")
+    assert result["success"] is success
+    assert bool(translator.translation_cache) is success
+    if success:
+        assert result["translated_text"] == output
+    else:
+        assert result["original_text"] == "Texto legal"
+        assert result["complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_translation_preserves_reference_only_segments_without_provider(translator):
+    result = await translator.translate("[4]\n\n123.", "es", "qu")
+    assert result["success"] and result["translated_text"] == "[4]\n\n123."
+    translator._translate_with_google.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_long_translation_preserves_tail_structure_and_references(translator):
     original = (
         "Texto legal largo. " * 550 + "\n\n1. Artículo 42 de Ley 1234 [2]\n"

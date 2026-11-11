@@ -190,18 +190,8 @@ uv run --no-sync python -m pytest -q tests/backend/unit/test_sat_graph.py tests/
 uv run --no-sync python -m pytest -q
 ```
 
-Los casos están explicados en `D:\Web\IA_juridica\tests\README.md`.
-Verificación realizada: **369 tests Python aprobados**, 3 omitidos de modelos
-reales y 2 xfail anteriores de la recuperación temporal heredada. Smoke local
-de CLI: 28 recursos / 0 versiones jurídicas revisadas. No hubo llamadas LLM
-de pago, ni evaluación jurídica, OCR real o prueba de interfaz de usuario.
-Suite SAT focalizada: **41 casos aprobados**, cobertura combinada de líneas/ramas
-del paquete SAT **92%** (store **95%**); no es cobertura global del proyecto.
-Unidades separables para revisión (sin crear commits ni PR automáticamente):
-
-1. Contratos/store y catálogo: identidad, tiempo, causalidad y pruebas offline.
-2. Integración upload/batch/API: confirmaciones, compatibilidad y recuperación.
-3. Guías/corpus: verificación jurídica y siguiente fase de lanzamiento.
+Consulta la [guía de pruebas](../tests/README.md) para seleccionar casos. Estas
+pruebas verifican el software, no la validez jurídica del corpus.
 
 ## Estructura jurídica candidata y reutilización de parsers
 
@@ -215,3 +205,19 @@ El borrador `draft` conserva su contrato anterior y no autopromueve el AST.
 Docling como base existente, Bluebell/Cobalt para marcado AKN e interoperabilidad,
 adaptación PE acotada. La jerarquía nativa con alias solo está en pruebas; el AST
 actual sigue siendo un prototipo de reglas candidatas, no un parser universal.
+
+## Antes de activar SAT en el chat
+
+El chat sigue usando el recuperador heredado. La búsqueda administrativa y
+los [experimentos opt-in](SAT-GRAPH-EXPERIMENTS.md) no habilitan SAT en producción.
+
+| Paso | Condición de avance |
+|---|---|
+| Asegurar el acceso | Verificar autorización de carga y chat, aislamiento por propietario y protección de los endpoints nuevos. |
+| Preparar el corpus | Usar fuentes oficiales trazables y revisadas. Verificar página, límites de artículos, modificaciones y alcance; no inferir vigencia a partir de la fecha de ingesta. |
+| Verificar publicación y reintentos | Mantener el índice heredado separado; demostrar idempotencia y conciliación tras fallos parciales antes de cualquier migración. |
+| Comparar en sombra | Filtrar por fecha, jurisdicción y alcance antes de ordenar resultados. Medir citas, vigencia, abstención y latencia; no presentar resultados heredados como confirmación jurídica. |
+| Activar gradualmente | Cumplir el [protocolo de evaluación](SAT-GRAPH-EVALUATION-PLAN.md), aprobar revisión jurídica y probar reversión por bandera. |
+
+El resultado esperado es citar disposiciones con fuente y versión aplicable o
+abstenerse si la fecha, el alcance o la procedencia no se pueden resolver.

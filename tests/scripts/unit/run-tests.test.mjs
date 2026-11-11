@@ -1,7 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { loadSonarToken, runPlan, testPlan } from '../../../scripts/run-tests.mjs';
+import { ensureSonarReady, loadSonarToken, runPlan, testPlan } from '../../../scripts/run-tests.mjs';
+
+test('sonar reutiliza el servidor operativo sin iniciar otro', async () => {
+  let launches = 0;
+  await ensureSonarReady({ probe: async () => 'UP', launch: () => { launches++; } });
+  assert.equal(launches, 0);
+});
+
+test('sonar inicia una sola vez y espera hasta UP', async () => {
+  const states = ['ABSENT', 'ABSENT', 'STARTING', 'UP'];
+  let launches = 0;
+  await ensureSonarReady({ probe: async () => states.shift(), launch: () => { launches++; }, sleep: async () => {} });
+  assert.equal(launches, 1);
+});
+
+test('sonar no duplica un servidor que ya está iniciando', async () => {
+  const states = ['STARTING', 'UP'];
+  await ensureSonarReady({ probe: async () => states.shift(), launch: () => assert.fail('No debe iniciar otro'), sleep: async () => {} });
+});
+
+test('sonar informa errores y agota el tiempo de espera', async () => {
+  await assert.rejects(ensureSonarReady({ probe: async () => 'DOWN' }), /requiere atención/);
+  await assert.rejects(ensureSonarReady({ probe: async () => 'ABSENT', launch: () => { throw new Error('sin lanzador'); } }), /sin lanzador/);
+  await assert.rejects(ensureSonarReady({ probe: async () => 'STARTING', now: () => 1, timeoutMs: 0 }), /no estuvo listo/);
+});
 
 function capturedOutput() {
   return { errors: [], logs: [], error(message) { this.errors.push(message); },

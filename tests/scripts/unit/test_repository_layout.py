@@ -1,6 +1,5 @@
-"""La carpeta única y su catálogo no deben volver a dispersarse."""
+"""Protege la estructura de pruebas y la configuración de cobertura."""
 
-import ast
 import configparser
 import os
 from pathlib import Path
@@ -38,21 +37,6 @@ def test_test_suites_are_confined_to_single_tree():
                 assert component == "scripts", path
 
 
-def test_every_automated_case_is_catalogued_in_test_guide():
-    """Cada archivo y nombre de caso debe constar en el documento dedicado."""
-    guide = (TESTS / "README.md").read_text(encoding="utf-8")
-    for path in sorted(TESTS.rglob("test_*.py")):
-        assert path.relative_to(TESTS).as_posix() in guide
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
-                assert f"`{node.name}`" in guide, (path, node.name)
-    for glob in ("*.test.mjs", "*.test.mts", "*.test.ts", "*.test.tsx", "*.spec.js", "*.spec.ts"):
-        for path in sorted(TESTS.rglob(glob)):
-            assert path.relative_to(TESTS).as_posix() in guide
-            for match in re.finditer(r"^test\((['\"])(.*?)\1,", path.read_text(encoding="utf-8"), re.MULTILINE):
-                assert match[2] in guide, (path, match[2])
-
-
 def test_pytest_and_sonar_share_the_same_test_root():
     """Pytest y Sonar reconocen tests y no conservan una segunda configuración."""
     config = configparser.ConfigParser()
@@ -66,6 +50,7 @@ def test_pytest_and_sonar_share_the_same_test_root():
     assert sonar["sources"] == "backend,frontend/src,frontend/app"
     assert sonar["javascript"]["lcov"]["reportPaths"] == "temp/sonar-reports/frontend-coverage/lcov.info"
     assert "tests/backend/manual/**" in sonar["test"]["exclusions"]
+    assert "**/.pytest_cache/**" in sonar["exclusions"]
 
 
 def test_manual_diagnostics_and_quality_dataset_are_documented():

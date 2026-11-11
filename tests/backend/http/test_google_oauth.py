@@ -282,7 +282,7 @@ def test_google_callback_requires_provider_token_and_email(google_oauth, stage, 
     "operation", ["initialize", "get_user_by_email", "create_user", "update_user"]
 )
 def test_google_callback_database_failures_do_not_issue_session(
-    google_oauth, operation
+    google_oauth, operation, caplog
 ):
     oauth = google_oauth
     if operation == "update_user":
@@ -292,6 +292,14 @@ def test_google_callback_database_failures_do_not_issue_session(
     )
     response = oauth.client.get("/auth/google/callback?code=valid")
     assert_no_session(oauth, response, 500, "OAuth callback failed")
+    records = [record for record in caplog.records if record.name == "ia_juridica.auth"]
+    assert len(records) == 1
+    assert f"stage={operation}" in records[0].getMessage()
+    assert "error_type=RuntimeError" in records[0].getMessage()
+    assert "synthetic-private-database-detail" not in caplog.text
+    assert oauth.profile["email"] not in caplog.text
+    assert "synthetic-google-token" not in caplog.text
+    assert records[0].exc_info is None
     if operation in {"initialize", "get_user_by_email"}:
         oauth.db.create_user.assert_not_awaited()
         oauth.db.update_user.assert_not_awaited()

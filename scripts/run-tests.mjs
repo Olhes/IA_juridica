@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +69,7 @@ export function testPlan(mode, extra = []) {
     if (mode !== 'scripts') tasks.push(...testPlan(mode === 'coverage' || mode === 'sonar' ? 'frontend-coverage' : 'frontend'));
   }
   if (mode === 'sonar') {
+    // Si falla una suite, un informe anterior podría seguir en disco.
     tasks.push({ name: 'SonarQube / análisis', command: process.platform === 'win32' ? 'uv.exe' : 'uv',
       args: ['run', '--frozen', '--group', 'sonar', '--inexact', 'pysonar'], requiresSuccess: true });
   }
@@ -94,6 +95,49 @@ export function loadSonarToken(env = process.env, read = readFileSync) {
   return token;
 }
 
+export async function ensureSonarReady({
+  probe = async () => {
+    try {
+      const response = await fetch('http://localhost:9000/api/system/status', { signal: AbortSignal.timeout(2000) });
+      if (!response.ok) throw new Error(`El puerto 9000 respondió HTTP ${response.status}.`);
+      const body = await response.json();
+      if (!['UP', 'STARTING', 'RESTARTING', 'DOWN', 'DB_MIGRATION_NEEDED', 'DB_MIGRATION_RUNNING'].includes(body.status)) {
+        throw new Error('El servicio del puerto 9000 no identifica un estado válido de SonarQube.');
+      }
+      return body.status;
+    } catch (error) {
+      if (['ECONNREFUSED', 'ENOTFOUND'].includes(error.cause?.code)) return 'ABSENT';
+      throw error;
+    }
+  },
+  launch = async () => {
+    if (process.platform !== 'win32') throw new Error('El arranque automático local requiere Windows; inicia SonarQube manualmente.');
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolve(root, 'scripts/start-sonarqube.ps1')];
+    const check = spawnSync('powershell.exe', [...args, '-Check'], { windowsHide: true, encoding: 'utf8' });
+    if (check.status !== 0) throw new Error('No se encontró Java o el lanzador de SonarQube; consulta docs/SONARQUBE.md.');
+    const child = spawn('powershell.exe', args, { detached: true, windowsHide: true, stdio: 'ignore' });
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+    child.unref();
+  },
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  timeoutMs = 180000,
+  now = Date.now,
+} = {}) {
+  const deadline = now() + timeoutMs;
+  let status = await probe();
+  if (status === 'ABSENT') {
+    console.log('Iniciando SonarQube local...');
+    await launch();
+  }
+  while (status !== 'UP') {
+    if (['DOWN', 'DB_MIGRATION_NEEDED'].includes(status)) throw new Error(`SonarQube requiere atención: ${status}.`);
+    if (now() >= deadline) throw new Error('SonarQube no estuvo listo a tiempo; revisa sus logs.');
+    await sleep(2000);
+    status = await probe();
+  }
+  console.log('SonarQube está listo.');
+}
+
 export function runPlan(tasks, run = spawnSync, output = console) {
   let failed = false;
   for (const task of tasks) {
@@ -115,13 +159,22 @@ export function runPlan(tasks, run = spawnSync, output = console) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const main = async () => {
   try {
     const mode = process.argv[2] ?? 'offline';
     const plan = testPlan(mode, process.argv.slice(3));
-    if (mode === 'sonar') plan.at(-1).env = { SONAR_TOKEN: loadSonarToken() };
+    if (mode === 'sonar') {
+      plan.at(-1).env = { SONAR_TOKEN: loadSonarToken() };
+      if (process.env.SONAR_HOST_URL && !/^https?:\/\/(localhost|127\.0\.0\.1)(:9000)?\/?$/i.test(process.env.SONAR_HOST_URL)) {
+        throw new Error('SONAR_HOST_URL no apunta al servidor local; inicia y verifica ese servidor manualmente.');
+      }
+      await ensureSonarReady();
+    }
     process.exitCode = runPlan(plan);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 2;
   }
+  };
+  await main();
 }

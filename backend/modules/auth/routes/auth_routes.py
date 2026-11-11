@@ -240,6 +240,8 @@ async def google_callback(request: Request, code: str, state: str = None):
             status_code=400, detail="No se recibió código de autorización"
         )
 
+    # Esta etapa va al log: usa solo etiquetas fijas, nunca datos del proveedor.
+    stage = "provider_token"
     try:
         # Intercambiar el código por tokens de acceso
         token_data = {
@@ -258,6 +260,7 @@ async def google_callback(request: Request, code: str, state: str = None):
             tokens = token_response.json()
 
             # Obtener información del usuario
+            stage = "provider_profile"
             userinfo_response = await client.get(
                 settings.GOOGLE_USERINFO_URL,
                 headers={"Authorization": f"Bearer {tokens['access_token']}"},
@@ -266,56 +269,44 @@ async def google_callback(request: Request, code: str, state: str = None):
             userinfo = userinfo_response.json()
 
         # Crear o actualizar usuario en la base de datos
+        stage = "initialize"
         db = PostgreSQLAdapter()
         await db.initialize()  # Asegurar que la conexión esté inicializada
 
-        try:
-            user = await db.get_user_by_email(userinfo["email"])
-        except Exception as e:
-            print(f"❌ Error en get_user_by_email: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Error al buscar usuario: {str(e)}")
+        stage = "get_user_by_email"
+        user = await db.get_user_by_email(userinfo["email"])
 
         if not user:
             # Crear nuevo usuario con Google OAuth (sin contraseña usable).
             # bcrypt directo (passlib falla con bcrypt>=5) sobre un secreto aleatorio
             # descartado: nadie puede entrar por /auth/login con esta cuenta.
+            stage = "prepare_user"
             temp_hash = bcrypt.hashpw(
                 secrets.token_urlsafe(32).encode(), bcrypt.gensalt()
             ).decode()
 
-            try:
-                user = await db.create_user(
-                    email=userinfo["email"],
-                    username=userinfo["email"].split("@")[0],
-                    password_hash=temp_hash,
-                    full_name=userinfo.get("name", ""),
-                    picture=userinfo.get("picture", ""),
-                    role="user",
-                )
-            except Exception as e:
-                print(f"❌ Error en create_user: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                raise HTTPException(status_code=500, detail=f"Error al crear usuario: {str(e)}")
+            stage = "create_user"
+            user = await db.create_user(
+                email=userinfo["email"],
+                username=userinfo["email"].split("@")[0],
+                password_hash=temp_hash,
+                full_name=userinfo.get("name", ""),
+                picture=userinfo.get("picture", ""),
+                role="user",
+            )
         else:
             # Actualizar usuario con datos de Google (picture, full_name)
-            try:
-                await db.update_user(
-                    user["id"],
-                    {
-                        "full_name": userinfo.get("name", user.get("full_name", "")),
-                        "picture": userinfo.get("picture", user.get("picture", "")),
-                    },
-                )
-            except Exception as e:
-                print(f"❌ Error en update_user: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                raise HTTPException(status_code=500, detail=f"Error al actualizar usuario: {str(e)}")
+            stage = "update_user"
+            await db.update_user(
+                user["id"],
+                {
+                    "full_name": userinfo.get("name", user.get("full_name", "")),
+                    "picture": userinfo.get("picture", user.get("picture", "")),
+                },
+            )
 
         # Generar tokens JWT
+        stage = "create_session"
         security_service = SecurityService()
         access_token = security_service.create_access_token(
             {"user_id": user["id"], "email": user["email"]}
@@ -356,7 +347,8 @@ async def google_callback(request: Request, code: str, state: str = None):
         # Provider exceptions may contain authorization codes or token payloads.
         # Keep only safe diagnostics, never exception text or traceback.
         logging.getLogger("ia_juridica.auth").error(
-            "oauth_callback_failed request_id=%s error_type=%s",
+            "oauth_callback_failed stage=%s request_id=%s error_type=%s",
+            stage,
             getattr(request.state, "request_id", "unknown"),
             type(e).__name__,
         )

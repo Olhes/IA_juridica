@@ -54,6 +54,11 @@ Interfaz: `http://localhost:3000`. API: `http://localhost:8000`.
 Swagger/OpenAPI se habilitan por defecto en desarrollo, no en producción.
 No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin backup.
 
+Si PostgreSQL local no conecta, revisa `docker compose ps postgres` y
+`docker compose logs --tail 50 postgres`. Usa `localhost:5433` desde el host o
+`postgres:5432` desde Compose; `DATABASE_URL` prevalece sobre `DATABASE_*`.
+No borres volúmenes para diagnosticar la conexión.
+
 ## Arquitectura que está activa
 
 ```text
@@ -85,6 +90,10 @@ La caché de respuestas es exacta, con SHA-256 sobre consulta, idioma, propietar
 historial/contexto, conversación y revisión del corpus; no es una caché semántica.
 `LegalAssistantPage`, `useBackendChat` y `usePersistentChat` son alternativas
 heredadas, no el flujo de inicio actual.
+
+La configuración de modelos, embeddings y reranking de Cohere está centralizada
+en [settings.py](backend/config/settings.py); usa sus valores vigentes en vez de
+copiar versiones de la migración histórica.
 
 ## Capacidades de voz (STT/TTS)
 
@@ -121,8 +130,8 @@ pnpm test:coverage        # Mismo alcance + XML Python y LCOV frontend
 pnpm deps:check           # Locks y requirements exportados
 ```
 
-La [guía única de tests](tests/README.md) contiene comandos por componente,
-catálogo por caso, E2E y limitaciones. Las pruebas de navegador son separadas:
+La [guía de pruebas](tests/README.md) explica cómo ejecutar y descubrir casos.
+Las pruebas de navegador son separadas:
 `pnpm test:e2e` usa API simulada, no acredita integración real con modelos.
 
 **Evaluaciones facturables requieren opt-in:**
@@ -172,12 +181,11 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 | Usar la API y entender errores/permisos         | [API](API_DOC.md)                                                                                         |
 | Ejecutar y ampliar tests                        | [Guía única](tests/README.md)                                                                           |
 | Entender el frontend activo                     | [Arquitectura frontend](frontend/README_ARCHITECTURE.md)                                                  |
-| Preparar despliegue                             | [Render / checklist](DEPLOY_RENDER.md), [plantilla de entorno](env.production.example)                    |
+| Operar el despliegue actual                     | [Next.js en Vercel y backend Docker en una VM de Azure](deploy/azure/README.md), [plantilla de entorno](env.production.example) |
 | Cargar/revisar corpus y grafo                   | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md)                                                               |
 | Entender validación y abstención              | [Pipeline](backend/VALIDATION_GUIDE.md)                                                                   |
 | Configurar OAuth local                          | [OAuth](OAUTH_SETUP.md)                                                                                   |
-| Diagnosticar PostgreSQL sin perder datos        | [Conexión PostgreSQL](POSTGRES_CONNECTION_ISSUES.md)                                                     |
 | Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
-| Consultar antecedentes, no capacidades actuales | [Migración Cohere](CHANGELOG_MIGRACION_COHERE.md), [auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
-| Revisar propuestas aún no implementadas        | [PDF cloud](CLOUD_PDF_PIPELINE.md), [plan SAT/Graph](docs/SAT-GRAPH-IMPLEMENTATION-PLAN.md)               |
+| Consultar antecedentes, no capacidades actuales | [Auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
+| Revisar trabajo pendiente                       | [PDF cloud](CLOUD_PDF_PIPELINE.md), [pendientes SAT-Graph](docs/SAT-GRAPH-INGESTION.md#antes-de-activar-sat-en-el-chat) |
 | Seguir el plan del harness de evaluación       | [Plan del harness](docs/HARNESS-IMPLEMENTATION-PLAN.md)                                                   |

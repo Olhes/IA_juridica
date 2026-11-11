@@ -81,6 +81,7 @@ class AuthService:
             # Crear nuevo payload con roles actualizados
             new_payload = {
                 "sub": str(user['id']),  # Usar user_id (UUID) como sub
+                "user_id": str(user['id']),
                 "email": user['email'],
                 "username": user['username'],
                 "role": role_names[0] if role_names else user.get('role', 'user'),

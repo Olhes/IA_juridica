@@ -9,20 +9,19 @@ ROOT = Path(__file__).resolve().parents[3]
 GUIDES = [
     "README.md",
     "API_DOC.md",
-    "DEPLOY_RENDER.md",
     "KNOWLEDGE_GRAPH_SETUP.md",
     "OAUTH_SETUP.md",
-    "POSTGRES_CONNECTION_ISSUES.md",
     "backend/VALIDATION_GUIDE.md",
     "frontend/README_ARCHITECTURE.md",
 ]
 
 
 def test_current_guides_identify_branch_date_and_existing_local_links():
-    for name in GUIDES:
+    for name in [*GUIDES, "tests/README.md"]:
         path = ROOT / name
         content = path.read_text(encoding="utf-8")
-        assert "v8" in content and "2026-10-06" in content, name
+        if name in GUIDES:
+            assert "v8" in content and "2026-10-06" in content, name
         for link in re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", content):
             if "://" in link or link.startswith("#"):
                 continue
@@ -36,10 +35,10 @@ def test_documented_frontend_versions_and_root_commands_match_manifests():
     assert frontend["dependencies"]["next"] in guide
     assert frontend["dependencies"]["react"] in guide
     assert root["packageManager"].split("@")[1] in guide
-    for name in GUIDES:
+    for name in [*GUIDES, "tests/README.md"]:
         content = (ROOT / name).read_text(encoding="utf-8")
         for command in re.findall(r"\bpnpm (?!-)([\w:-]+)", content):
-            assert command in root["scripts"] or command == "install", (name, command)
+            assert command in root["scripts"] or command in {"exec", "install"}, (name, command)
 
 
 def test_api_documented_explicit_routes_exist_in_current_source():

@@ -13,7 +13,7 @@
 
 > Implementación del harness que aplica esta norma al pipeline v8: [plan del harness](HARNESS-IMPLEMENTATION-PLAN.md).
 
-**Decisión:** Un corpus peruano seleccionado y etiquetado por abogados es el principal benchmark de lanzamiento. Los benchmarks externos de recuperación y los evaluadores automatizados son diagnósticos, no pruebas de vigencia temporal. Consulte el [plan de implementación](SAT-GRAPH-IMPLEMENTATION-PLAN.md) para conocer el orden de migración.
+**Decisión:** Un corpus peruano seleccionado y etiquetado por abogados es el principal benchmark de lanzamiento. Los benchmarks externos de recuperación y los evaluadores automatizados son diagnósticos, no pruebas de vigencia temporal. Consulte los [prerrequisitos de activación](SAT-GRAPH-INGESTION.md#antes-de-activar-sat-en-el-chat).
 
 ## Qué puede medirse actualmente
 

@@ -161,8 +161,7 @@ class TranslationService:
 
         Paragraph whitespace and legal references are protected verbatim. Coverage
         checks do not certify semantic accuracy: specialist review remains necessary.
-        
-        Para quechua, usa NLLB (Meta) para mejor calidad (Google Translate no lo soporta bien).
+        Los segmentos sin texto traducible se conservan sin llamar al proveedor.
         """
         import hashlib
         import re
@@ -174,11 +173,6 @@ class TranslationService:
             "warning": "Traducción no disponible o incompleta; se conserva el texto original.",
         }
 
-        # Para quechua, usar MyMemoryTranslator (funciona mejor que Cohere)
-        if target_lang in ["qu", "quy", "quz", "qul"] or source_lang in ["qu", "quy", "quz", "qul"]:
-            logger.info("Using MyMemoryTranslator for Quechua translation")
-            return await self._translate_with_mymemory(text, source_lang, target_lang)
-        
         if not self._is_translation_supported(source_lang, target_lang):
             return {**failure, "error": "Unsupported translation pair"}
         if not self.google_translate_available:
@@ -198,6 +192,7 @@ class TranslationService:
         protected = []
 
         def protect(match):
+            # Usa marcadores para que el proveedor no reescriba citas ni enlaces.
             protected.append(match.group())
             return f"ZXQREF{len(protected)-1}QXZ"
 
@@ -233,6 +228,10 @@ class TranslationService:
                     suffix = segment[len(segment.rstrip()) :]
                     body = segment.strip()
                     if not body:
+                        translated_parts.append(segment)
+                        continue
+                    unprotected = re.sub(r"ZXQREF\d+QXZ", "", body)
+                    if not any(char.isalpha() for char in unprotected):
                         translated_parts.append(segment)
                         continue
                     result = await self._translate_with_google(
@@ -385,23 +384,12 @@ class TranslationService:
             # googletrans 4.0.2 tiene método asíncrono
             result = await self.google_translator.translate(text, src=src_lang, dest=tgt_lang)
             
-            # Verificar si la traducción fue exitosa (no devuelve el mismo texto)
-            if result.text == text or not result.text.strip():
-                logger.warning("google_translate_no_change - Google Translate no tradujo el texto, usando fallback")
-                # Para quechua, usar directamente traducción por reglas
-                if target_lang in ["qu", "quy", "quz", "qul"]:
-                    return await self._translate_with_rules(text, source_lang, target_lang)
-                # Para otros idiomas, retornar el texto original con warning
-                return {
-                    "success": True,
-                    "translated_text": text,
-                    "source_language": source_lang,
-                    "target_language": target_lang,
-                    "model_used": "none",
-                    "confidence": 0.0,
-                    "method": "none",
-                    "warning": f"Google Translate no pudo traducir de {source_lang} a {target_lang}",
-                }
+            if not result.text or not result.text.strip():
+                return {"success": False, "error": "Translation provider returned empty output"}
+            # Unchanged text may be valid for names or loanwords, but cannot be
+            # certified as a translation; fail closed rather than cache it as one.
+            if src_lang != tgt_lang and result.text.strip() == text.strip():
+                return {"success": False, "error": "Translation provider returned unchanged text"}
 
             return {
                 "success": True,
@@ -414,9 +402,8 @@ class TranslationService:
             }
 
         except Exception as e:
-            logger.error("translation_provider_failed error_type={} error={}", type(e).__name__, str(e))
-            # Alternativa basada en reglas
-            return await self._translate_with_rules(text, source_lang, target_lang)
+            logger.error("translation_provider_failed error_type={}", type(e).__name__)
+            return {"success": False, "error": "Translation provider failed"}
 
     async def _translate_with_cohere(
         self, text: str, source_lang: str, target_lang: str

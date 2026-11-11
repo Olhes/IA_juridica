@@ -53,4 +53,4 @@ documentos/preguntas con referencias, pipeline real de retrieval y métricas com
 Context Precision/Recall de RAGAS. No está implementado por añadir unitarios.
 Los casos reales actuales usan DeepEval y el generador, con opt-in explícito
 `pnpm test:quality --run-model-evals`; tampoco acreditan por sí solos todo el RAG.
-[Guía única y catálogo](../tests/README.md).
+[Guía de pruebas](../tests/README.md).

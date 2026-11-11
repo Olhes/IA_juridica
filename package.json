@@ -17,6 +17,7 @@
     "test:e2e:real": "node scripts/run-tests.mjs e2e-real",
     "test:coverage": "node scripts/run-tests.mjs coverage",
     "sonar": "node scripts/run-tests.mjs sonar",
+    "sonar:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-sonarqube.ps1",
     "test:all": "node scripts/run-tests.mjs all",
     "test:quality": "node scripts/run-tests.mjs quality",
     "test:quality:offline": "node scripts/run-tests.mjs quality-offline",
