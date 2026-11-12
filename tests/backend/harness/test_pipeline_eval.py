@@ -15,7 +15,6 @@ from .conftest import oracle_answer
 
 pytestmark = pytest.mark.harness
 
-
 async def run(cases, corpus, answer_for, **kwargs):
     async def answer_fn(case, sample):
         return answer_for(case, sample)

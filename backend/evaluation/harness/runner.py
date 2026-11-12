@@ -32,6 +32,7 @@ from evaluation.harness.pipeline_eval import evaluate_gold
 ROOT = Path(__file__).resolve().parents[3]
 RESULTS_DIR = ROOT / "temp" / "harness"
 DEFAULT_CASSETTE = ROOT / "tests" / "backend" / "fixtures" / "gold" / "cassettes" / "legal_qa.cassette.json"
+NVIDIA_CASSETTE = ROOT / "temp" / "harness" / "nvidia_voyage.cassette.json"
 
 
 def _git(*args):
@@ -98,7 +99,7 @@ async def enter_app(main):
     return context
 
 
-def cassette_answer_fn(cassette: Cassette, live_fn=None):
+def cassette_answer_fn(cassette: Cassette, live_fn=None, *, checkpoint=False):
     """Respuesta desde el cassette; con modo de grabación, completa con ``live_fn``."""
 
     async def answer(case, sample) -> Answer:
@@ -108,7 +109,10 @@ def cassette_answer_fn(cassette: Cassette, live_fn=None):
         async def produce():
             return (await live_fn(case, sample)).to_json()
 
-        return answer_from_json(await cassette.call(material, produce))
+        result = answer_from_json(await cassette.call(material, produce))
+        if checkpoint:
+            cassette.save()
+        return result
 
     return answer
 
@@ -148,23 +152,55 @@ def apply_eval_mode():
     settings.COHERE_TEMPERATURE = 0.0
 
 
-async def run_legal_qa(*, splits=None, samples=1, judge_name="none", cassette_path=DEFAULT_CASSETTE, real=False, eval_mode=False, results_dir=RESULTS_DIR):
+async def run_legal_qa(*, splits=None, samples=1, judge_name="none", cassette_path=DEFAULT_CASSETTE, real=False, eval_mode=False, results_dir=RESULTS_DIR, provider="application", limit=None, delay_seconds=0):
     corpus = Corpus.load()
     cases = load_gold(corpus=corpus, splits=splits)
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("El límite debe ser positivo")
+        if provider == "nvidia-voyage":
+            # Intercalar casos respondibles y de abstención evita medir solo una clase.
+            negative = [c for c in cases if c.must_abstain]
+            positive = [c for c in cases if not c.must_abstain]
+            cases = [case for i in range(max(len(negative), len(positive)))
+                     for group in (negative, positive) for case in group[i:i + 1]]
+        cases = cases[:limit]
+    if provider == "nvidia-voyage" and (judge_name != "none" or Path(cassette_path).resolve() == DEFAULT_CASSETTE.resolve()):
+        raise ValueError("NVIDIA/Voyage requiere juez none y cassette separado")
     judge = make_judge(judge_name)
     cassette = Cassette(cassette_path, RECORD_MISSING if real else REPLAY)
+    if provider == "nvidia-voyage":
+        identity = {"provider": provider, "corpus_revision": corpus.revision(), "pipeline": "nvidia-voyage-v1"}
+        if cassette.entries and any(cassette.meta.get(k) != v for k, v in identity.items()):
+            raise ValueError("Cassette incompatible con NVIDIA/Voyage")
+        cassette.meta.update(identity)
     live = None
     if real:
-        if eval_mode:
-            apply_eval_mode()
-        live = await build_live_answer_fn()
+        if provider == "nvidia-voyage":
+            from evaluation.harness.nvidia_voyage import build_answer_fn
+            live = build_answer_fn(corpus, ROOT / "temp" / "harness" / "voyage-cache.sqlite", delay_seconds=delay_seconds)
+        else:
+            if eval_mode:
+                apply_eval_mode()
+            live = await build_live_answer_fn()
     try:
-        report = await evaluate_gold(cases, cassette_answer_fn(cassette, live), corpus=corpus, judge=judge, samples=samples)
+        report = await evaluate_gold(cases, cassette_answer_fn(cassette, live, checkpoint=real and provider == "nvidia-voyage"), corpus=corpus, judge=judge, samples=samples)
     finally:
         cassette.save()
         if live is not None:
             await live.close()
     meta = collect_metadata(corpus=corpus, judge=judge, samples=samples, eval_mode=eval_mode, cassette=cassette)
+    if provider == "nvidia-voyage":
+        import hashlib
+        from evaluation.harness.nvidia_voyage import ragas_string_similarity
+        try:
+            report["ragas_non_llm_string_similarity"] = await ragas_string_similarity(cases, report["answers"])
+        except Exception as error:
+            report["ragas_non_llm_string_similarity"] = {"available": False, "reason": type(error).__name__, "value": None, "n": 0}
+        meta["models"] = {"llm": "nvidia/nemotron-3-ultra-550b-a55b", "embed": "voyage-context-4", "rerank": "rerank-3-lite"}
+        meta["pipeline_scope"] = "experimental_nvidia_voyage_not_application"
+        meta["prompt_digest"] = hashlib.sha256((Path(__file__).parent / "nvidia_voyage.py").read_bytes()).hexdigest()[:16]
+        meta["answer_source"] = "nvidia_voyage_record_or_replay" if real else "nvidia_voyage_cassette"
     return write_result(report, meta, "legal_qa", results_dir), report
 
 
@@ -355,14 +391,21 @@ def main(argv=None):
     parser.add_argument("--split", action="append", choices=["dev", "holdout"])
     parser.add_argument("--samples", type=int, default=None)
     parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
-    parser.add_argument("--cassette", default=str(DEFAULT_CASSETTE))
+    parser.add_argument("--cassette", default=None)
+    parser.add_argument("--provider", choices=["application", "nvidia-voyage"], default="application")
     parser.add_argument("--source", default="offline", choices=["offline", "cassette"], help="retrieval: motor local o cassette")
     parser.add_argument("--retrieval-cassette", default=str(DEFAULT_RETRIEVAL_CASSETTE))
     parser.add_argument("--translation-cassette", default=str(DEFAULT_TRANSLATION_CASSETTE))
-    parser.add_argument("--results-dir", default=str(RESULTS_DIR), help="carpeta base de temp/harness/<sha>/")
-    parser.add_argument("--limit", type=int, default=None, help="stream: mide solo los primeros N casos (coste acotado)")
+    parser.add_argument("--results-dir", default=None, help="carpeta base de resultados")
+    parser.add_argument("--limit", type=int, default=None, help="limita los casos en stream o nvidia-voyage")
+    parser.add_argument("--delay-seconds", type=float, default=0, help="pausa entre casos nuevos en nvidia-voyage")
     parser.add_argument("--run-model-evals", action="store_true")
     args = parser.parse_args(argv)
+    if args.provider == "nvidia-voyage" and (args.suite != "legal_qa" or args.judge != "none" or args.limit is None or args.limit < 1):
+        parser.error("nvidia-voyage requiere legal_qa, --judge none y --limit positivo")
+    if not 0 <= args.delay_seconds <= 300 or (args.delay_seconds and args.provider != "nvidia-voyage"):
+        parser.error("--delay-seconds requiere nvidia-voyage y un valor entre 0 y 300")
+    args.results_dir = args.results_dir or str(RESULTS_DIR / "nvidia-voyage" if args.provider == "nvidia-voyage" else RESULTS_DIR)
     if args.run_model_evals:
         # `config.settings` lee `.env` relativo al directorio actual; run-tests.mjs corre desde la raíz.
         # Las variables ya definidas (p. ej. secretos de CI) tienen prioridad.
@@ -370,7 +413,7 @@ def main(argv=None):
 
         load_dotenv(ROOT / "backend" / ".env", override=False)
     eval_mode =os.getenv("EVAL_MODE") == "1" or args.run_model_evals
-    samples = args.samples or (3 if args.run_model_evals else 1)
+    samples = args.samples or (3 if args.run_model_evals and args.provider == "application" else 1)
     if args.suite == "stream":
         path, report = asyncio.run(run_stream_suite(source="live" if args.run_model_evals else "offline", results_dir=args.results_dir,
                                                        splits=args.split, limit=args.limit))
@@ -392,8 +435,11 @@ def main(argv=None):
         print(f"lexical@{report['main_k']}: {recall}")
         return 0
     path, report = asyncio.run(
-        run_legal_qa(splits=args.split, samples=samples, judge_name=args.judge, cassette_path=args.cassette,
-                     real=args.run_model_evals, eval_mode=eval_mode, results_dir=args.results_dir)
+        run_legal_qa(splits=args.split, samples=samples, judge_name=args.judge,
+                     cassette_path=args.cassette or (NVIDIA_CASSETTE if args.provider == "nvidia-voyage" else DEFAULT_CASSETTE),
+                     real=args.run_model_evals, eval_mode=eval_mode, results_dir=args.results_dir,
+                     provider=args.provider, limit=args.limit if args.provider == "nvidia-voyage" else None,
+                     delay_seconds=args.delay_seconds)
     )
     headline = {k: v["macro"]["value"] for k, v in report["metrics"].items() if k in ("legal_factuality", "abstention_recall")}
     print(f"legal_qa: {report['n_cases']} casos, {report['n_errors']} errores -> {path}\n{headline}")

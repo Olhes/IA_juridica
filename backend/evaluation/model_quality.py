@@ -21,7 +21,6 @@ class QualityCase:
     context: list[str]
     language: str = "spanish"
 
-
 def load_cases(path=DATASET):
     cases = [
         QualityCase(**item)

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -106,16 +106,21 @@ def _get_pdf_processor(app: FastAPI):
     return processor if processor is not None else _get_document_processor(app)
 
 
-def _get_evaluation_suite(app: FastAPI):
-    if not settings.EVALUATION_ENABLED:
-        return None
-    suite = getattr(app.state, "evaluation_suite", None)
-    if suite is None:
-        from evaluation.deepeval_tests import LegalEvaluationSuite
+async def _evaluate_harness(provider="application", limit=None):
+    """Ejecuta el harness offline sin sobrescribir informes de evaluaciones reales."""
+    import tempfile
+    from evaluation.harness.runner import DEFAULT_CASSETTE, NVIDIA_CASSETTE, run_legal_qa
 
-        suite = LegalEvaluationSuite()
-        app.state.evaluation_suite = suite
-    return suite
+    cassette = NVIDIA_CASSETTE if provider == "nvidia-voyage" else DEFAULT_CASSETTE
+    if not cassette.is_file():
+        raise FileNotFoundError("Cassette de evaluación no disponible")
+
+    with tempfile.TemporaryDirectory(prefix="legal-qa-eval-") as directory:
+        kwargs = {"judge_name": "none", "real": False, "samples": 1, "results_dir": directory}
+        if provider == "nvidia-voyage":
+            kwargs.update(provider=provider, limit=limit, cassette_path=cassette)
+        _, report = await run_legal_qa(**kwargs)
+    return report
 
 
 # ── Modelos de request/response ────────────────────────────────────────────────
@@ -1274,16 +1279,36 @@ async def synthesize_speech(
 @app.post("/evaluate-system")
 @limiter.limit(settings.ADMIN_RATE_LIMIT)
 async def evaluate_system(
-    request: Request, _auth: bool = Depends(verify_admin_api_key)
+    request: Request, _auth: bool = Depends(verify_admin_api_key),
+    provider: Literal["application", "nvidia-voyage"] = "application",
+    limit: Optional[int] = Query(default=None, ge=1, le=1000),
 ):
     try:
-        evaluation_suite = _get_evaluation_suite(app)
-        if evaluation_suite is None:
+        if not settings.EVALUATION_ENABLED:
             raise HTTPException(503, "Evaluación deshabilitada por configuración")
-        evaluation_results = await evaluation_suite.run_full_evaluation()
-        return {"success": True, "results": evaluation_results}
+        if provider == "nvidia-voyage" and limit is None:
+            raise HTTPException(422, "Indica el límite usado al grabar el cassette")
+        report = await _evaluate_harness(provider, limit) if provider == "nvidia-voyage" else await _evaluate_harness()
+        # No divulgar respuestas del cassette ni presentar reproducción como evaluación del modelo actual.
+        return {
+            "success": report["n_cases"] > 0 and report["n_errors"] == 0,
+            "results": {
+                "evaluation_scope": "recorded_responses_not_live_model",
+                "provider": provider,
+                "judge": report["judge"],
+                "n_cases": report["n_cases"],
+                "n_errors": report["n_errors"],
+                "metrics": report["metrics"],
+                "gold": report["gold"],
+                **({"ragas_non_llm_string_similarity": report["ragas_non_llm_string_similarity"]}
+                   if "ragas_non_llm_string_similarity" in report else {}),
+            },
+        }
     except HTTPException:
         raise
+    except (FileNotFoundError, ImportError) as error:
+        _log_failure("evaluation_unavailable", error, request)
+        raise HTTPException(503, "Harness de evaluación no disponible") from None
     except Exception as error:
         _log_failure("evaluation_failed", error, request)
         raise HTTPException(500, "Evaluation failed")

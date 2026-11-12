@@ -25,7 +25,12 @@ La documentación interactiva está deshabilitada por defecto en producción.
 | `/chat/*` | Principal anónimo, excepto health | Conversaciones, mensajes y caché del propietario |
 | `POST /upload-pdf`, `POST /batch-process` | Admin | Ingesta documental |
 | `GET /documents`, `GET /knowledge-graph`, `GET /validation-stats` | Admin | Inspección de corpus/validación |
-| `POST /evaluate-system` | Admin | Evaluación del sistema; puede consumir proveedores |
+| `POST /evaluate-system` | Admin | Harness de respuestas grabadas, sin LLM juez; no evalúa respuestas nuevas |
+
+La evaluación requiere el corpus, gold y cassette `legal_qa` disponibles en el
+backend; si faltan, responde 503. La imagen actual no copia los fixtures de
+`tests/`. Con cassette parcial, `success` es `false`; no inicia llamadas reales.
+Para reproducir el cassette experimental NVIDIA/Voyage usa `?provider=nvidia-voyage&limit=1`; el límite debe coincidir con los casos grabados.
 
 Las operaciones admin requieren **ambos** `ADMIN_ENDPOINTS_ENABLED=true` y
 `X-API-Key: <ADMIN_API_KEY>`. No uses `SECRET_KEY` ni hay bypass de desarrollo.

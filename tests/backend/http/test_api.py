@@ -96,6 +96,96 @@ def test_admin_gate_precedes_document_access(api):
     ).json() == {"success": True, "documents": []}
 
 
+def test_evaluate_system_runs_only_recorded_harness_without_judge(api, monkeypatch):
+    client, main, _ = api
+    monkeypatch.setattr(main.settings, "EVALUATION_ENABLED", True)
+    report = {
+        "n_cases": 1, "n_errors": 0, "judge": {"name": "none"},
+        "metrics": {"legal_factuality": {"value": 1}},
+        "gold": {"total": 1}, "answers": [{"answer": "private text"}],
+    }
+    runner = AsyncMock(return_value=report)
+    monkeypatch.setattr(main, "_evaluate_harness", runner)
+    assert client.post("/evaluate-system").status_code == 403
+    runner.assert_not_awaited()
+    response = client.post("/evaluate-system", headers={"X-API-Key": "offline-admin-key"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["results"]["evaluation_scope"] == "recorded_responses_not_live_model"
+    assert data["results"]["judge"]["name"] == "none"
+    assert "private text" not in response.text
+    runner.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize("failure", [FileNotFoundError("private path"), ImportError("private module")])
+def test_evaluate_system_reports_unavailable_harness_without_leaking_details(api, monkeypatch, failure):
+    client, main, _ = api
+    monkeypatch.setattr(main.settings, "EVALUATION_ENABLED", True)
+    monkeypatch.setattr(main, "_evaluate_harness", AsyncMock(side_effect=failure))
+    response = client.post("/evaluate-system", headers={"X-API-Key": "offline-admin-key"})
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Harness de evaluación no disponible"}
+
+
+def test_evaluate_system_reports_incomplete_recordings(api, monkeypatch):
+    client, main, _ = api
+    monkeypatch.setattr(main.settings, "EVALUATION_ENABLED", True)
+    monkeypatch.setattr(main, "_evaluate_harness", AsyncMock(return_value={
+        "n_cases": 0, "n_errors": 2, "judge": {"name": "none"}, "metrics": {}, "gold": {},
+    }))
+    response = client.post("/evaluate-system", headers={"X-API-Key": "offline-admin-key"})
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+
+
+def test_evaluate_system_replays_nvidia_voyage_with_explicit_limit(api, monkeypatch):
+    client, main, _ = api
+    monkeypatch.setattr(main.settings, "EVALUATION_ENABLED", True)
+    harness = AsyncMock(return_value={"n_cases": 1, "n_errors": 0, "judge": {"name": "none"}, "metrics": {}, "gold": {}})
+    monkeypatch.setattr(main, "_evaluate_harness", harness)
+    headers = {"X-API-Key": "offline-admin-key"}
+    assert client.post("/evaluate-system?provider=nvidia-voyage", headers=headers).status_code == 422
+    response = client.post("/evaluate-system?provider=nvidia-voyage&limit=1", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["results"]["provider"] == "nvidia-voyage"
+    harness.assert_awaited_once_with("nvidia-voyage", 1)
+    response = client.post("/evaluate-system?provider=nvidia-voyage&limit=107", headers=headers)
+    assert response.status_code == 200
+    harness.assert_awaited_with("nvidia-voyage", 107)
+
+
+@pytest.mark.asyncio
+async def test_harness_helper_uses_replay_without_judge_in_temporary_directory(monkeypatch, tmp_path):
+    from pathlib import Path
+    import main
+    from evaluation.harness import runner
+
+    harness = AsyncMock(return_value=(None, {"n_cases": 1}))
+    monkeypatch.setattr(runner, "run_legal_qa", harness)
+    cassette = tmp_path / "recorded.json"
+    cassette.write_text('{}', encoding='utf-8')
+    monkeypatch.setattr(runner, "DEFAULT_CASSETTE", cassette)
+    assert await main._evaluate_harness() == {"n_cases": 1}
+    kwargs = harness.await_args.kwargs
+    assert kwargs["judge_name"] == "none"
+    assert kwargs["real"] is False and kwargs["samples"] == 1
+    assert not Path(kwargs["results_dir"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_harness_helper_rejects_missing_cassette_without_running(monkeypatch, tmp_path):
+    import main
+    from evaluation.harness import runner
+
+    harness = AsyncMock()
+    monkeypatch.setattr(runner, "run_legal_qa", harness)
+    monkeypatch.setattr(runner, "DEFAULT_CASSETTE", tmp_path / "missing.json")
+    with pytest.raises(FileNotFoundError):
+        await main._evaluate_harness()
+    harness.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "payload",
     [
