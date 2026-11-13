@@ -8,15 +8,6 @@ from io import BytesIO
 
 logger = logging.getLogger("ia_juridica.tts")
 
-try:
-    from transformers import VitsModel, AutoTokenizer
-    import torch
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    logger.warning("transformers no disponible. MMS-TTS no estará disponible.")
-    TRANSFORMERS_AVAILABLE = False
-
-
 class TTSService:
     """Servicio de Text-to-Speech para Quechua (MMS-TTS) y español (Web Speech API)"""
     
@@ -37,27 +28,27 @@ class TTSService:
         self.mms_model = None
         self.mms_tokenizer = None
         self.mms_available = False
+        self._torch = None
         
-        # Cargar modelo MMS-TTS para Quechua Cusqueño (quz)
-        if TRANSFORMERS_AVAILABLE:
-            try:
-                logger.info("Cargando modelo MMS-TTS para Quechua Cusqueño...")
-                self.mms_model = VitsModel.from_pretrained("facebook/mms-tts-quz")
-                self.mms_tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-quz")
-                
-                # Mover a GPU si está disponible
-                if torch.cuda.is_available():
-                    self.mms_model = self.mms_model.to("cuda")
-                    logger.info("✅ MMS-TTS cargado en GPU")
-                else:
-                    logger.info("✅ MMS-TTS cargado en CPU")
-                
-                self.mms_available = True
-            except Exception as e:
-                logger.error(f"Error cargando MMS-TTS: {e}")
-                self.mms_available = False
-        else:
+        # VITS es opcional; no importar su implementación al arrancar el chat.
+        try:
+            import torch
+            from transformers import AutoTokenizer, VitsModel
+
+            logger.info("Cargando modelo MMS-TTS para Quechua Cusqueño...")
+            self.mms_model = VitsModel.from_pretrained("facebook/mms-tts-quz").eval()
+            self.mms_tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-quz")
+            if torch.cuda.is_available():
+                self.mms_model = self.mms_model.to("cuda")
+                logger.info("✅ MMS-TTS cargado en GPU")
+            else:
+                logger.info("✅ MMS-TTS cargado en CPU")
+            self._torch = torch
+            self.mms_available = True
+        except ImportError:
             logger.warning("⚠️  Transformers no disponible, MMS-TTS deshabilitado")
+        except Exception as e:
+            logger.error("Error cargando MMS-TTS: %s", type(e).__name__)
         
         TTSService._initialized = True
         logger.info("✅ TTSService inicializado")
@@ -144,8 +135,8 @@ class TTSService:
             loop = asyncio.get_event_loop()
 
             def _synthesize(inputs_dict):
-                with torch.no_grad():
-                    if torch.cuda.is_available():
+                with self._torch.inference_mode():
+                    if self._torch.cuda.is_available():
                         inputs_dict = {k: v.to("cuda") for k, v in inputs_dict.items()}
                     output = self.mms_model(**inputs_dict).waveform
                     return output
