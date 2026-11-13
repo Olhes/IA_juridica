@@ -5,12 +5,49 @@ import {
   CORE_SERVICES,
   BACKEND_HEALTH_URL,
   composeUpArgs,
+  developmentProfile,
+  profileEnvironment,
   isServiceReady,
   startFrontendAfterBackend,
   startHostProcesses,
   startPnpmScript,
   waitForBackendHealth,
 } from "../../../scripts/dev-full.mjs";
+
+test("both retrieval engines use the same local ports", () => {
+  assert.deepEqual(developmentProfile([]), developmentProfile(["--lightrag"]));
+  assert.deepEqual(developmentProfile([]), {
+    RAG_ENGINE: "lightrag", DEV_BACKEND_PORT: "8000", DEV_FRONTEND_PORT: "3000",
+  });
+  assert.deepEqual(developmentProfile(["--sat"]), {
+    RAG_ENGINE: "sat", DEV_BACKEND_PORT: "8000", DEV_FRONTEND_PORT: "3000",
+  });
+  assert.deepEqual(developmentProfile(["--", "--sat"]), developmentProfile(["--sat"]));
+  assert.throws(() => developmentProfile(["--sat", "--lightrag"]));
+});
+
+test("both retrieval engines retain the existing Google OAuth callback", () => {
+  for (const args of [[], ["--sat"]]) {
+    const env = profileEnvironment(developmentProfile(args));
+    assert.equal(env.GOOGLE_REDIRECT_URI, "http://localhost:8000/auth/google/callback");
+    assert.equal(env.GOOGLE_FRONTEND_CALLBACK_URI, "http://localhost:3000/auth/callback");
+    assert.equal(env.NEXT_PUBLIC_API_URL, "http://localhost:8000");
+  }
+});
+
+test("readiness checks the selected backend rather than the default", async () => {
+  const url = BACKEND_HEALTH_URL;
+  const engines = ["lightrag", "sat"];
+  await waitForBackendHealth({
+    url, engine: "sat", sleepFn: async () => {}, fetchImpl: async (actual) => {
+      assert.equal(actual, url);
+      const rag_engine = engines.shift();
+      return { ok: true, json: async () => ({ rag_engine }) };
+    },
+    timeoutMs: 1_000,
+  });
+  assert.deepEqual(engines, []);
+});
 
 test("development startup targets only PostgreSQL and Redis", () => {
   assert.deepEqual(CORE_SERVICES, ["postgres", "redis"]);

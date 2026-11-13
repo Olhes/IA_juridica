@@ -208,6 +208,57 @@ async def test_answer_without_documents_has_no_citations_or_evidence():
     assert metadata["evidence_status"] == "insufficient_evidence"
     assert metadata["citations"] == [] and metadata["evidence"] == []
 
+async def test_answer_uses_selected_sat_retriever():
+    state = make_state()
+    sat = AsyncMock(return_value={"documents": [{"content": "Registro de alimentos",
+                     "metadata": {"title": "Ley 28970", "retrieval_origin": "sat"}}],
+                     "method": "sat", "sat_as_of": "2026-11-12", "sat_warning": "corte"})
+    state.query_retriever = SimpleNamespace(query_with_rerank=sat)
+    result = await answer_query(state, "Consulta", "spanish")
+    sat.assert_awaited_once()
+    state.rag_engine.query_with_rerank.assert_not_awaited()
+    assert result["metadata"]["retrieval_method"] == "sat"
+    assert result["metadata"]["sat_as_of"] == "2026-11-12"
+    assert result["metadata"]["evidence"][0]["origin"] == "sat"
+
+
+async def test_sat_exact_enumeration_is_not_rewritten_by_generation_or_validation():
+    state = make_state()
+    citation = "Artículo 8 de la Ley 30364, inciso d)"
+    text = f"**{citation}:**\n\n1. Alfa\n2. Beta"
+    state.query_retriever = SimpleNamespace(query_with_rerank=AsyncMock(return_value={
+        "method": "sat", "sat_reference": {"citation": citation, "status": "exact"},
+        "verbatim_answer": text, "documents": [
+            {"content": "d) Supuestos\n1. Alfa\n2. Beta", "metadata": {"citation": citation}},
+        ],
+    }))
+    state.response_validator.validate.return_value.answer_data = {"respuesta_espanol": "Texto distinto"}
+    result = await answer_query(state, "Enumera los supuestos", "spanish")
+    state.legal_agent.respond_general.assert_not_awaited()
+    assert result["response"]["respuesta_espanol"] == text
+    assert all(c["status"] == "verified" for c in result["metadata"]["citations"])
+    assert len(result["metadata"]["citations"]) == 2
+
+
+async def test_sat_section_consolidates_citations_without_truncating_source():
+    state = make_state()
+    title = "Artículo 7 del Decreto Supremo 024-2021-MIMP, numeral 7.2"
+    section = {"title": title, "path": ["Decreto Supremo 024-2021-MIMP", "Artículo 7", "Numeral 7.2"],
+               "version_id": "ctv:test", "source_url": "https://example.org"}
+    content = "- 7.2 Deberes\n- a. " + "Texto completo. " * 30 + "\n- e. Último literal."
+    state.query_retriever = SimpleNamespace(query_with_rerank=AsyncMock(return_value={
+        "method": "sat", "sat_reference": {"citation": title, "status": "exact"},
+        "documents": [{"content": content, "metadata": {
+            "retrieval_origin": "sat", "citation": title, "sat_section": section,
+        }}],
+    }))
+    state.response_validator.validate.return_value.answer_data = {
+        "respuesta_espanol": f"{title}. También se menciona la Ley 99999.",
+    }
+    citation, other = (await answer_query(state, "Consulta", "spanish"))["metadata"]["citations"]
+    assert citation["sat_section"] == {**section, "text": content}
+    assert citation["status"] == "verified"
+    assert other["key"] == "ley:99999" and other["status"] == "unverified"
 
 async def test_evidence_reports_retrieval_origin_and_cited_jurisprudence():
     graph = {"content": "Resolvió la Casación 2154-2018, Arequipa.", "metadata": {"title": "Grafo", "retrieval_origin": "lightrag"}, "relevance_score": 0.7}

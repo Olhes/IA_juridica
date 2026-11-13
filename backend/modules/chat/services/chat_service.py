@@ -414,7 +414,8 @@ class ChatService:
         from main import app
         from optimization.query_cache import answer_cache_key
         from services.legal_queries import answer_query, response_text
-        revision = app.state.rag_engine.get_cache_revision()
+        retriever = getattr(app.state, "query_retriever", None) or app.state.rag_engine
+        revision = retriever.get_cache_revision()
         cache_key = answer_cache_key(query_for_processing, original_language, user_id,
             request.context, history, conversation_id, revision, "query") if revision else None
         result = await answer_query(app.state, query_for_processing, original_language,

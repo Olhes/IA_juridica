@@ -53,6 +53,24 @@ test('sin citas no se dibuja el bloque de citas', () => {
   expect(container).toBeEmptyDOMElement();
 });
 
+test('una cita SAT expande la sección íntegra con ruta y enlace original', async () => {
+  const user = userEvent.setup();
+  const title = 'Artículo 7 del Decreto Supremo 024-2021-MIMP, numeral 7.2';
+  const sat_section = {
+    title, path: ['Decreto Supremo 024-2021-MIMP', 'Artículo 7', 'Numeral 7.2'],
+    version_id: 'ctv:test', source_url: 'https://example.org/source',
+    text: '- a. Primer literal.\n- e. Último literal completo.',
+  };
+  render(<CitationChips language="spanish" apiResponse={withMetadata({
+    citations: [{ key: 'sat-section:ctv:test', text: title, status: 'verified', sat_section }],
+  })} />);
+  await user.click(screen.getByText(title));
+  expect(screen.getByText('Decreto Supremo 024-2021-MIMP → Artículo 7 → Numeral 7.2')).toBeVisible();
+  expect(screen.getByText(/Último literal completo/)).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Abrir fuente original' })).toHaveAttribute('href', sat_section.source_url);
+  expect(screen.queryByText(/No se encontró/)).toBeNull();
+});
+
 test('panel de confianza resume solo lo medido: fuentes, validador, riesgo, citas y aviso', async () => {
   const user = userEvent.setup();
   render(<TrustPanel language="spanish" apiResponse={withMetadata({ citations, evidence })} />);

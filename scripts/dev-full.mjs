@@ -1,10 +1,49 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 
 export const CORE_SERVICES = ["postgres", "redis"];
 export const BACKEND_HEALTH_URL = "http://localhost:8000/ready";
 const READINESS_TIMEOUT_MS = 120_000;
 const READINESS_POLL_MS = 1_000;
+
+export function developmentProfile(args) {
+  // pnpm may forward the option separator literally; npm consumes it.
+  if (args[0] === "--") args = args.slice(1);
+  const sat = args.includes("--sat");
+  if (args.some((arg) => arg !== "--sat" && arg !== "--lightrag") ||
+      (sat && args.includes("--lightrag"))) {
+    throw new Error("Use dev:full [--sat | --lightrag].");
+  }
+  return {
+    RAG_ENGINE: sat ? "sat" : "lightrag",
+    DEV_BACKEND_PORT: "8000",
+    DEV_FRONTEND_PORT: "3000",
+  };
+}
+
+export function profileEnvironment(profile) {
+  const api = `http://localhost:${profile.DEV_BACKEND_PORT}`;
+  const frontend = `http://localhost:${profile.DEV_FRONTEND_PORT}`;
+  return {
+    ...profile,
+    PYTHONIOENCODING: "utf-8",
+    NEXT_PUBLIC_API_URL: api,
+    BACKEND_URL: api,
+    GOOGLE_REDIRECT_URI: `${api}/auth/google/callback`,
+    GOOGLE_FRONTEND_CALLBACK_URI: `${frontend}/auth/callback`,
+  };
+}
+
+function ensurePortFree(port, host) {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", (error) => reject(new Error(
+      `Cannot start: ${host ?? "localhost"}:${port} (${error.code}). Stop the old instance of this profile first.`,
+    )));
+    server.listen({ port: Number(port), host }, () => server.close(resolve));
+  });
+}
 
 export function composeUpArgs() {
   return ["compose", "up", "-d", ...CORE_SERVICES];
@@ -59,6 +98,8 @@ function sleep(milliseconds) {
 }
 
 export async function waitForBackendHealth({
+  url = BACKEND_HEALTH_URL,
+  engine,
   fetchImpl = globalThis.fetch,
   sleepFn = sleep,
   timeoutMs = READINESS_TIMEOUT_MS,
@@ -69,11 +110,13 @@ export async function waitForBackendHealth({
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetchImpl(BACKEND_HEALTH_URL);
+      const response = await fetchImpl(url);
       if (response.ok) {
-        return;
+        if (!engine || (await response.json()).rag_engine === engine) return;
+        lastFailure = `expected retrieval engine ${engine}`;
+      } else {
+        lastFailure = `HTTP ${response.status}`;
       }
-      lastFailure = `HTTP ${response.status}`;
     } catch (error) {
       lastFailure = error instanceof Error ? error.message : String(error);
     }
@@ -81,7 +124,7 @@ export async function waitForBackendHealth({
     await sleepFn(pollMs);
   }
 
-  throw new Error(`Timed out waiting for ${BACKEND_HEALTH_URL}: ${lastFailure}.`);
+  throw new Error(`Timed out waiting for ${url}: ${lastFailure}.`);
 }
 
 async function waitForInfrastructure() {
@@ -166,9 +209,15 @@ export function startHostProcesses(options = {}) {
 }
 
 async function runFrontendGate() {
-  console.log(`Waiting for backend health at ${BACKEND_HEALTH_URL}...`);
-  const frontend = await startFrontendAfterBackend();
-  console.log("Backend is healthy. Starting frontend...");
+  const port = process.env.DEV_FRONTEND_PORT ?? "3000";
+  const backend = `http://localhost:${process.env.DEV_BACKEND_PORT ?? "8000"}`;
+  const url = `${backend}/ready`;
+  console.log(`Waiting for ${process.env.RAG_ENGINE} backend at ${url}...`);
+  const frontend = await startFrontendAfterBackend({
+    waitForHealth: () => waitForBackendHealth({ url, engine: process.env.RAG_ENGINE }),
+    startFrontend: () => startPnpm(["--dir", "frontend", "exec", "next", "dev", "--port", port, "--hostname", "localhost"]),
+  });
+  console.log(`Frontend http://localhost:${port} → ${backend} (${process.env.RAG_ENGINE})`);
 
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, () => frontend.kill(signal));
@@ -181,6 +230,13 @@ async function runFrontendGate() {
 }
 
 async function main() {
+  const profile = developmentProfile(process.argv.slice(2));
+  Object.assign(process.env, profileEnvironment(profile));
+  if (profile.RAG_ENGINE === "sat") console.log("SAT-Graph — recuperador experimental");
+  await Promise.all([
+    ensurePortFree(profile.DEV_BACKEND_PORT, "127.0.0.1"),
+    ensurePortFree(profile.DEV_FRONTEND_PORT),
+  ]);
   await startInfrastructure();
 
   const hosts = startHostProcesses();

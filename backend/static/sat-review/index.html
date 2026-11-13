@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1"
+    />
+    <title>SAT-Graph · Revisión del corpus</title>
+    <link
+      rel="icon"
+      href="/sat-graph/review/assets/favicon.svg"
+      type="image/svg+xml"
+    />
+    <link
+      rel="stylesheet"
+      href="/sat-graph/review/assets/editor.css"
+    />
+    <script
+      src="/sat-graph/review/assets/editor.js"
+      defer
+    ></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">S<span>↗</span></span>
+        <div>
+          SAT<span class="slash"> / </span><strong>Corpus</strong
+          ><small>ESTUDIO DE REVISIÓN DOCUMENTAL</small>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="pill"><i></i> Espacio administrativo independiente</span
+        ><button id="reload">↻ Actualizar</button>
+      </div>
+    </header>
+    <div
+      id="notice"
+      role="status"
+      aria-live="polite"
+    >
+      Conectando con el grafo…
+    </div>
+    <div
+      id="access"
+      hidden
+    >
+      <h1>Revisión privada del corpus</h1>
+      <p>
+        En la estación independiente, abre el enlace privado de acceso que
+        aparece en la terminal. Si usas el backend de la aplicación, inicia
+        sesión con una cuenta administradora. No se ha expuesto ningún
+        documento.
+      </p>
+      <button id="retry">Volver a conectar</button>
+    </div>
+    <div
+      class="workspace"
+      id="workspace"
+    >
+      <aside class="library">
+        <div class="eyebrow">01 / BIBLIOTECA</div>
+        <h2>Corpus SAT <span id="doc-count">—</span></h2>
+        <p class="muted">
+          Documentos presentes en el grafo. Sin búsquedas de vigencia externa.
+        </p>
+        <label
+          class="search-label"
+          for="document-search"
+          >Buscar documento</label
+        ><input
+          id="document-search"
+          type="search"
+          placeholder="Ley, decreto, número…"
+        />
+        <button id="candidate-library" type="button" aria-pressed="false">Ver candidatos procesados</button>
+        <nav
+          id="documents"
+          aria-label="Documentos del corpus"
+        ></nav>
+        <footer>
+          <span class="dot green"></span><strong id="global-count">—</strong>
+          <p>Disponibles para recuperación en el chat SAT.</p>
+          <a
+            href="/sat-graph/api/meta/implementation-guide"
+            target="_blank"
+            rel="noopener"
+            >Contrato de API ↗</a
+          >
+        </footer>
+      </aside>
+      <main>
+        <section class="doc-heading">
+          <div>
+            <div class="eyebrow">02 / MESA DE REVISIÓN</div>
+            <h1 id="doc-title">Selecciona un documento</h1>
+            <p
+              id="doc-subtitle"
+              class="muted"
+            ></p>
+          </div>
+          <div class="heading-actions">
+            <span
+              id="draft-state"
+              class="pill"
+              >Sin cambios</span
+            ><button
+              id="discard"
+              disabled
+            >
+              Descartar</button
+            ><button
+              id="publish"
+              class="primary"
+              disabled
+            >
+              Aplicar al SAT-Graph ↗
+            </button>
+          </div>
+        </section>
+        <div class="metrics">
+          <div>
+            <strong id="component-count">—</strong><span>componentes</span>
+          </div>
+          <div>
+            <strong id="retrievable-count">—</strong
+            ><span>recuperables por el chat</span>
+          </div>
+          <div>
+            <strong id="version-count">—</strong
+            ><span>versiones almacenadas</span>
+          </div>
+          <div class="policy">
+            <span class="dot green"></span>Vigencia mantenida por tu
+            equipo<small>Sin fecha obligatoria · sin consulta al reloj</small>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div
+            role="tablist"
+            aria-label="Vista del documento"
+          >
+            <button
+              role="tab"
+              data-tab="structure"
+              aria-selected="true"
+            >
+              Estructura</button
+            ><button
+              role="tab"
+              data-tab="markdown"
+              aria-selected="false"
+            >
+              Markdown completo</button
+            ><button
+              role="tab"
+              data-tab="history"
+              aria-selected="false"
+            >
+              Historial
+            </button>
+          </div>
+          <button id="toggle-inspector" type="button" aria-controls="component-inspector" aria-expanded="true">Ocultar inspector</button>
+          <button id="open-pdf" type="button" disabled>PDF original ↗</button>
+          <button id="download">↓ Exportar Markdown</button
+          ><button id="download-draft">↓ Borrador JSON</button>
+        </div>
+        <div id="review-grid" class="review-grid">
+          <section class="canvas-panel">
+            <div
+              id="structure-view"
+              class="view"
+            >
+              <div class="canvas-tools">
+                <input
+                  id="component-search"
+                  type="search"
+                  aria-label="Buscar componente o texto"
+                  placeholder="Buscar artículo, inciso o contenido…"
+                /><button id="expand">Expandir todo</button
+                ><button id="collapse">Contraer</button>
+                <button id="group-nodes" type="button" hidden disabled>Crear padre</button>
+                <button id="promote-nodes" type="button" hidden disabled>Subir un nivel</button>
+                <button id="clear-group" type="button" hidden>Limpiar selección</button>
+              </div>
+              <p id="group-hint" class="hint" hidden>Arrastra el nombre de un nodo sobre su nuevo padre. Usa las casillas para agrupar varios.</p>
+              <div class="legend">
+                <span><i class="dot blue"></i> Componente / Item</span
+                ><span><i class="dot gray"></i> Versión / CTV</span
+                ><span><i class="dot pale"></i> Idioma / CLV</span
+                ><span class="muted"
+                  >Selecciona una fila para corregirla →</span
+                >
+              </div>
+              <div class="graph-scroll">
+                <div class="graph-head">
+                  <span>Jerarquía del documento</span
+                  ><span>Versión temporal</span><span>Idioma</span
+                  ><span>Unidad de texto</span>
+                </div>
+                <div
+                  id="tree"
+                  role="tree"
+                  aria-label="Estructura documental"
+                ></div>
+              </div>
+              <div
+                id="tree-summary"
+                class="canvas-foot"
+              ></div>
+            </div>
+            <div
+              id="markdown-view"
+              class="view"
+              hidden
+            >
+              <div class="view-help">
+                <strong>Markdown canónico del borrador</strong>
+                <p>
+                  Selecciona un fragmento para agregar un componente faltante.
+                  Para corregir texto, selecciona su componente en el árbol.
+                </p>
+                <button id="add-selection">
+                  ＋ Crear componente con la selección
+                </button>
+              </div>
+              <textarea
+                id="full-markdown"
+                aria-label="Markdown completo"
+                readonly
+                spellcheck="false"
+              ></textarea>
+            </div>
+            <div
+              id="history-view"
+              class="view"
+              hidden
+            >
+              <div class="view-help">
+                <h2>Revisiones editoriales</h2>
+                <p>
+                  Correcciones de transcripción y estructura, no reformas
+                  legales ni fechas de vigencia.
+                </p>
+              </div>
+              <div id="history"></div>
+              <details>
+                <summary>
+                  Ver todas las versiones, incluidas las archivadas
+                </summary>
+                <div id="all-versions"></div>
+              </details>
+            </div>
+          </section>
+          <aside id="component-inspector" class="inspector">
+            <div class="inspector-heading">
+              <div class="eyebrow">03 / INSPECTOR</div>
+              <button id="collapse-inspector" type="button" aria-controls="component-inspector">Plegar</button>
+            </div>
+            <h2 id="selected-title">Texto y estructura</h2>
+            <p
+              id="selected-status"
+              class="muted"
+            >
+              Selecciona un componente del árbol.
+            </p>
+            <form
+              id="edit-form"
+              hidden
+            >
+              <div class="inspector-fields">
+              <label
+                >Etiqueta<input
+                  id="node-label"
+                  required
+                  maxlength="4000"
+              /></label>
+              <div class="field-pair">
+                <label>Tipo<select id="node-kind"></select></label
+                ><label
+                  >Idioma<input
+                    value="Español · es"
+                    disabled
+                /></label>
+              </div>
+              <label>Componente padre<select id="node-parent"></select></label
+              ><label
+                >Texto completo del componente<textarea
+                  id="node-text"
+                  spellcheck="false"
+                  required
+                ></textarea>
+              </label>
+              <details>
+                <summary>Rangos e identificadores</summary>
+                <div class="field-pair">
+                  <label
+                    >Inicio<input
+                      id="node-start"
+                      type="number"
+                      min="0" /></label
+                  ><label
+                    >Fin<input
+                      id="node-end"
+                      type="number"
+                      min="1"
+                  /></label>
+                </div>
+                <p class="hint">
+                  Posiciones Unicode en el Markdown; fin exclusivo. Al cambiar
+                  rangos, primero usa «Cargar rango».
+                </p>
+                <button
+                  id="load-span"
+                  type="button"
+                >
+                  Cargar rango
+                </button>
+                <pre id="node-ids"></pre>
+              </details>
+              </div>
+              <div class="editor-actions">
+                <button id="create-child" type="button" hidden title="Crear hijo con la selección">Crear hijo</button>
+                <button id="split-section" type="button" hidden title="Separar selección como sección hermana">Separar como hermana</button>
+                <button
+                  id="remove-node"
+                  type="button"
+                  class="danger"
+                >
+                  Quitar nodo
+                </button>
+              </div>
+              <p id="split-section-hint" class="hint" hidden>
+                Selecciona texto para crear un hijo o separar una sección hermana.
+              </p>
+              <p class="hint">Borrador automático · Publica con «Aplicar al SAT-Graph».</p>
+            </form>
+            <div
+              id="readonly-info"
+              hidden
+            ></div>
+          </aside>
+        </div>
+      </main>
+    </div>
+    <dialog id="add-dialog">
+      <form id="add-form">
+        <div class="eyebrow">NUEVO COMPONENTE</div>
+        <h2 id="add-title">Completar la estructura</h2>
+        <label
+          >Etiqueta<input
+            id="add-label"
+            required
+            placeholder="Artículo 24. Deberes…" /></label
+        ><label>Tipo<select id="add-kind"></select></label
+        ><label>Padre<select id="add-parent"></select></label>
+        <p
+          id="add-range"
+          class="hint"
+        ></p>
+        <div class="dialog-actions">
+          <button
+            type="button"
+            id="cancel-add"
+          >
+            Cancelar</button
+          ><button
+            type="submit"
+            class="primary"
+          >
+            Agregar al borrador
+          </button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

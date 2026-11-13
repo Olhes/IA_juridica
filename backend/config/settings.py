@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Cargar explícitamente el archivo .env antes de pydantic_settings
-load_dotenv(override=True)
+# El entorno del proceso (p. ej. el perfil de dev:full) prevalece sobre .env.
+load_dotenv(override=False)
 
 class Settings(BaseSettings):
     """Configuración centralizada del sistema IA Jurídica"""
@@ -109,6 +109,8 @@ class Settings(BaseSettings):
 
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
+    SAT_GRAPH_PATH: str = str(Path(__file__).resolve().parents[1] / "docs" / "sat_graph.sqlite3")
+    SAT_AS_OF: Optional[str] = None
     EMBEDDING_MODEL: str = "embed-multilingual-v3.0"
     EMBEDDING_DIM: int = 1024
     MAX_CHUNK_SIZE: int = 1000
@@ -282,6 +284,15 @@ class Settings(BaseSettings):
     def validate_configuration(self) -> dict:
         issues = []
         warnings = []
+        if self.RAG_ENGINE.lower() not in {"sat", "lightrag"}:
+            issues.append("RAG_ENGINE debe ser sat o lightrag")
+        if self.SAT_AS_OF:
+            try:
+                from datetime import date
+                if date.fromisoformat(self.SAT_AS_OF).isoformat() != self.SAT_AS_OF:
+                    raise ValueError()
+            except ValueError:
+                issues.append("SAT_AS_OF debe tener formato YYYY-MM-DD")
         
         if not self.COHERE_API_KEY:
             issues.append("COHERE_API_KEY no está configurada")

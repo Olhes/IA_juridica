@@ -136,7 +136,7 @@ Diferencias explícitas:
 uv run python -m pytest tests/backend/unit/test_sat_corpus_editor.py -q
 ```
 
-El smoke visual `tests/frontend/sat-editor-smoke.mjs` publica una corrección:
+El smoke visual `tests/frontend/e2e/sat-editor-smoke.mjs` publica una corrección:
 ejecútalo **solo contra una copia SQLite** iniciada con `--db`, nunca contra el
 corpus real. Requiere `SAT_EDITOR_TEST_COPY=1`, `SAT_EDITOR_URL` con el enlace
 local y un navegador Playwright instalado (o `PLAYWRIGHT_CHANNEL=chrome`).

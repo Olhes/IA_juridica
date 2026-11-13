@@ -37,7 +37,7 @@ class RankStages(BaseModel):
 class SearchPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     query: str = Field(min_length=1, max_length=4000)
-    as_of: date
+    as_of: date | None = None
     scope: Literal["PE"] = "PE"
     language: Literal["es"] = "es"
     resource_ids: list[str] = Field(default_factory=list, max_length=50)
@@ -48,10 +48,13 @@ class SearchPlan(BaseModel):
     chunk_chars: int = Field(default=1000, ge=100, le=4000)
     # Presupuesto de bytes UTF-8, no se declara como conteo exacto de tokens.
     context_bytes: int = Field(default=16000, ge=100, le=64000)
+    include_documentary: bool = False  # opt-in de pruebas; no acredita vigencia histórica
 
     @field_validator("as_of", mode="before")
     @classmethod
     def explicit_date(cls, value):
+        if value is None:
+            return None
         if isinstance(value, date) and not hasattr(value, "hour"):
             return value
         if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
@@ -159,10 +162,18 @@ class SATRetriever:
         ]
 
     def eligible(self, plan: SearchPlan) -> list[dict]:
-        when = plan.as_of.isoformat()
+        when = plan.as_of.isoformat() if plan.as_of else None
         groups = defaultdict(list)
         for node in self.nodes.values():
-            if node["type"] == "CTV" and node.get("provenance_state") == "reviewed":
+            if node.get("editorial_superseded_by"):
+                continue
+            if when is None and node["type"] == "CTV" and node.get("provenance_state") in {"user_attested_snapshot", "reviewed"}:
+                if node["scope"] == plan.scope:
+                    groups[node["work_id"]].append(node)
+            elif node["type"] == "CTV" and node.get("provenance_state") == "user_attested_snapshot":
+                if node["scope"] == plan.scope and node.get("snapshot_as_of") == when:
+                    groups[node["work_id"]].append(node)
+            elif node["type"] == "CTV" and node.get("provenance_state") == "reviewed":
                 if (
                     node["scope"] == plan.scope
                     and node["valid_from"] <= when
@@ -171,12 +182,22 @@ class SATRetriever:
                     groups[node["work_id"]].append(node)
         result = []
         for wid, versions in groups.items():
+            if when is None and len(versions) > 1:
+                # La fecha ordena versiones almacenadas; no verifica vigencia externa.
+                keys = [v.get("snapshot_as_of") or v.get("valid_from") or "" for v in versions]
+                newest = max(keys)
+                versions = [v for v, key in zip(versions, keys) if key == newest] if newest else []
             # Un conflicto de versiones no se resuelve por score semántico.
             if len(versions) != 1:
                 continue
             version = versions[0]
+            # Una versión cerrada explícitamente en el grafo no vuelve a activarse.
+            if when is None and version.get("valid_to") is not None:
+                continue
             work = self.nodes[wid]
-            if when > version["checked_through"]:
+            if version.get("provenance_state") == "user_attested_snapshot" and work.get("kind") not in {"article", "numeral", "inciso", "subinciso", "disposition"}:
+                continue
+            if when is not None and when > version["checked_through"]:
                 continue
             if plan.resource_ids and work["resource_id"] not in plan.resource_ids:
                 continue
@@ -216,15 +237,68 @@ class SATRetriever:
                         "evidence_id": text["evidence_id"],
                         "source_url": text["source_url"],
                         "review_id": version["review_id"],
-                        "as_of": plan.as_of.isoformat(),
+                        "as_of": plan.as_of.isoformat() if plan.as_of else None,
                         "valid_from": version["valid_from"],
                         "valid_to": version["valid_to"],
                         "checked_through": version["checked_through"],
                         "language": plan.language,
                         "scope": plan.scope,
-                        "provenance_state": "reviewed",
+                        "provenance_state": version["provenance_state"],
+                        "snapshot_as_of": version.get("snapshot_as_of"),
+                        "text_review_state": version.get("text_review_state"),
                     }
                 )
+        if getattr(plan, "include_documentary", False):
+            result.extend(self._documentary_chunks(plan))
+        return result
+
+    def _documentary_chunks(self, plan):
+        """Versiones documentales aprobadas: recuperación experimental, no CTV."""
+        mapping = {
+            "ley-30364-original": "pe:ley:30364", "ley-28970": "pe:ley:28970",
+            "ley-30490": "pe:ley:30490", "ley-31464": "pe:ley:31464",
+            "ds-004-2025-mimp": "pe:ds:004-2025-mimp",
+            "ds-005-2022-mimp": "pe:ds:005-2022-mimp",
+            "ds-024-2021-mimp": "pe:ds:024-2021-mimp",
+            "rm-100-2021-mimp": "pe:rm:100-2021-mimp",
+        }
+        revisions = defaultdict(list)
+        for n in self.nodes.values():
+            if n["type"] == "DocumentaryRevision" and not n.get("editorial_superseded_by"):
+                revisions[n["directory"]].append(n)
+        selected = {items[0]["id"]: items[0] for items in revisions.values() if len(items) == 1}
+        result = []
+        for node in self.nodes.values():
+            if node["type"] != "DocumentaryComponent" or node["revision_id"] not in selected:
+                continue
+            if node["kind"] not in {"article", "numeral", "inciso", "subinciso", "disposition"}:
+                continue
+            rev = selected[node["revision_id"]]
+            resource_id = mapping.get(rev["directory"])
+            if resource_id not in self.nodes or (plan.resource_ids and resource_id not in plan.resource_ids):
+                continue
+            if plan.component is not None and plan.component != node["source_node_id"]:
+                continue
+            body = rev["markdown"][node["start"]:node["end"]]
+            if sha256(body.encode()).hexdigest() != node["text_sha256"]:
+                raise ValueError("Fragmento documental alterado")
+            resource = self.nodes[resource_id]
+            for offset in range(0, len(body), plan.chunk_chars):
+                content = body[offset:offset + plan.chunk_chars]
+                result.append({
+                    "id": "tu-doc:" + fingerprint([node["id"], offset, content]),
+                    "version_id": node["id"], "text_id": rev["id"], "work_id": node["id"],
+                    "resource_id": resource_id, "component": node["source_node_id"],
+                    "label": node["label"], "resource_label": resource.get("title", resource_id),
+                    "content": content, "start": node["start"] + offset,
+                    "end": node["start"] + offset + len(content),
+                    "text_sha256": sha256(content.encode()).hexdigest(),
+                    "evidence_id": rev["evidence_id"], "source_url": resource.get("url"),
+                    "review_id": rev["review_hash"], "as_of": None,
+                    "valid_from": None, "valid_to": None, "checked_through": None,
+                    "language": "es", "scope": "PE", "provenance_state": "assumed_current_documentary",
+                    "text_review_state": rev.get("text_review_state"),
+                })
         return result
 
     def _ppr(self, chunks, seeds, *, use_memberships=True):
@@ -416,7 +490,7 @@ class SATRetriever:
             "reason": None if hits else "no_eligible_relevant_evidence_within_budget",
             "revision": self.revision,
             "strategy": plan.strategy,
-            "as_of": str(plan.as_of),
+            "as_of": str(plan.as_of) if plan.as_of else None,
             "eligible_chunks": len(chunks),
             "candidate_count": len(ordered),
             "context_bytes": used,
@@ -426,7 +500,7 @@ class SATRetriever:
             "dense_status": dense_status,
             "rerank_status": rerank_status,
             "ppr_status": ppr_status,
-            "warning": "Recuperación experimental; no determina aplicabilidad al caso concreto.",
+            "warning": ("Se utilizan las versiones más recientes almacenadas, asumidas vigentes por la administración del corpus." if plan.as_of is None else ("Incluye CTV con vigencia declarada por el usuario únicamente para la fecha del snapshot; no acredita intervalos históricos." if any(c.get("provenance_state") == "user_attested_snapshot" for c in chunks) else ("Incluye documentos para pruebas con vigencia supuesta, no verificada; no sirve para consultas históricas." if getattr(plan, "include_documentary", False) else "Recuperación experimental; no determina aplicabilidad al caso concreto."))),
         }
 
     def history(self, resource_id: str, component: str) -> dict:
@@ -439,7 +513,7 @@ class SATRetriever:
                 for n in self.nodes.values()
                 if n["type"] == "CTV" and n["work_id"] == wid
             ],
-            key=lambda n: (n["valid_from"], n["id"]),
+            key=lambda n: (n.get("valid_from") or n.get("snapshot_as_of") or "", n["id"]),
         )
         ids = {version["id"] for version in versions}
         action_ids = {
@@ -463,5 +537,5 @@ class SATRetriever:
                 if e["source"] in action_ids
                 and e["type"] in {"terminates", "produces", "source"}
             ],
-            "policy": "all_reviewed_history_not_current_applicability",
+            "policy": ("reviewed_history_and_attested_snapshots_not_current_applicability" if any(v.get("provenance_state") == "user_attested_snapshot" for v in versions) else "all_reviewed_history_not_current_applicability"),
         }

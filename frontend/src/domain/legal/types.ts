@@ -89,6 +89,14 @@ export interface CitationCheck {
   source: string | null;
   /** Extracto del corpus donde aparece la cita; nunca texto del modelo. */
   excerpt: string | null;
+  /** Sección íntegra de la versión SAT resuelta, no un extracto léxico. */
+  sat_section?: {
+    title: string;
+    path: string[];
+    text: string;
+    version_id: string;
+    source_url?: string | null;
+  };
 }
 
 /** Fuente recuperada con su relevancia y un extracto del corpus (`metadata.evidence`). */
@@ -97,7 +105,7 @@ export interface EvidenceItem {
   relevance: number | null;
   excerpt: string;
   /** Camino de recuperación: grafo de conocimiento (LightRAG) o búsqueda léxica local. */
-  origin?: 'lightrag' | 'lexical';
+  origin?: 'lightrag' | 'lexical' | 'sat';
   /** Casaciones citadas en el fragmento; vacío si no es jurisprudencia. */
   jurisprudence?: string[];
 }
@@ -153,6 +161,8 @@ export interface LegalQueryApiResponse {
     evidence?: EvidenceItem[];
     rerank_scores: number[];
     retrieval_method: string;
+    sat_warning?: string;
+    sat_as_of?: string;
     total_candidates: number;
     enriched_context: Record<string, unknown>;
     optimizer_stats: Record<string, unknown>;

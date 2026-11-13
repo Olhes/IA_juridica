@@ -129,7 +129,14 @@ class ResponseValidator:
         sources      = rag_result.get("sources", [])
 
         # Asegurar que el CrossChecker use el corpus actualizado
-        self.cross_checker.update_documents(self._rag_engine.documents)
+        if rag_result.get("method") == "sat":
+            # La validación debe usar los mismos fragmentos SAT de esta consulta.
+            documents = {str(i): {"content": d.get("content", ""), "chunks": [d.get("content", "")]}
+                         for i, d in enumerate(rag_result.get("documents", []))}
+            checker = RAGCrossChecker(documents, grounded_threshold=self.cross_checker.threshold)
+        else:
+            self.cross_checker.update_documents(self._rag_engine.documents)
+            checker = self.cross_checker
 
         warnings : List[str] = []
         status   = ValidationStatus.PASSED
@@ -143,7 +150,7 @@ class ResponseValidator:
         # ── PASO 2: Cross-check RAG ────────────────────────────────────────────
         cross_result: Optional[CrossCheckResult] = None
         if self.config.enable_cross_check:
-            cross_result = self.cross_checker.check(answer_text, query)
+            cross_result = checker.check(answer_text, query)
             if not cross_result.is_grounded:
                 warnings.append(
                     f"Respuesta con soporte RAG bajo (overlap={cross_result.overlap_score:.2f})"
@@ -151,7 +158,8 @@ class ResponseValidator:
 
         # ── PASO 3: Self-correction ────────────────────────────────────────────
         corrections_applied = 0
-        if self.config.enable_self_correction and hallucination_report.requires_correction:
+        if (self.config.enable_self_correction and hallucination_report.requires_correction
+                and not (rag_result.get("method") == "sat" and rag_result.get("verbatim_answer"))):
             corrected_text, corrections_applied = await self.self_correction.correct(
                 original_text        =answer_text,
                 hallucination_report =hallucination_report,

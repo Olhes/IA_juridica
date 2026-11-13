@@ -18,11 +18,13 @@ class LegalIngestionPipeline:
     def __init__(self, rag_engine=None, pdf_processor=None, evidence_store_dir=None,
                  legacy_rag_write=None, docs_root=None):
         self.pdf_processor = pdf_processor
-        self.rag_engine = rag_engine or LegalRAGEngine()
         self.legacy_rag_write = (
             settings.SAT_INGESTION_LEGACY_RAG if legacy_rag_write is None
             else legacy_rag_write
         )
+        self.rag_engine = rag_engine
+        if self.legacy_rag_write and self.rag_engine is None:
+            self.rag_engine = LegalRAGEngine()
         self.file_utils = FileUtils()
 
         # Directorios

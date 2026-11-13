@@ -133,7 +133,8 @@ def verify_citations(answer_text: str, evidence: list) -> list:
     """
     results = []
     prepared = [
-        (item.get("source"), item.get("text") or "", evidence_keys(item.get("text") or ""))
+        (item.get("source"), item.get("text") or "",
+         evidence_keys(item.get("text") or "") | evidence_keys(item.get("citation") or ""))
         for item in evidence
     ]
     for citation in extract_citations(answer_text):

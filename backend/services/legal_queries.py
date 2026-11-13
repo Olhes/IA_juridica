@@ -8,7 +8,8 @@ from fastapi.encoders import jsonable_encoder
 
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
-from services.citation_verifier import jurisprudence_keys, verify_citations
+from retrieval.sat_chat import SATChatRetriever
+from services.citation_verifier import citation_matches, evidence_keys, jurisprudence_keys, verify_citations
 from services.pipeline_telemetry import PipelineTimer
 from services.translation_qe import estimate_quality
 
@@ -28,10 +29,12 @@ def _evidence(documents):
     """Fuentes recuperadas para citar: ``[{source, text}]`` (texto del corpus, no del modelo)."""
     return [
         {
-            "source": (d.get("metadata") or {}).get("title")
+            "source": (d.get("metadata") or {}).get("citation")
+            or (d.get("metadata") or {}).get("title")
             or (d.get("metadata") or {}).get("filename")
             or "Fuente desconocida",
             "text": d.get("content") or "",
+            "citation": (d.get("metadata") or {}).get("citation"),
         }
         for d in documents
     ]
@@ -49,6 +52,32 @@ def _evidence_summary(documents):
         }
         for item, d in zip(_evidence(documents), documents)
     ]
+
+
+def _response_citations(answer, documents):
+    checks = verify_citations(answer, _evidence(documents))
+    sections = {}
+    for document in documents:
+        metadata = document.get("metadata") or {}
+        section = metadata.get("sat_section")
+        if metadata.get("retrieval_origin") != "sat" or not section or not document.get("content"):
+            continue
+        key = f"sat-section:{section['version_id']}"
+        sections[key] = {
+            "key": key, "text": section["title"], "status": "verified",
+            "source": metadata.get("title"), "excerpt": None,
+            "sat_section": {**section, "text": document["content"].strip()},
+        }
+    if not sections:
+        return checks
+    covered = set().union(*(evidence_keys(item["text"]) for item in sections.values()))
+    # Collapse only references to the same structural citation, not citations
+    # to other provisions that happen to be mentioned inside the recovered text.
+    remaining = [
+        check for check in checks
+        if not any(citation_matches(check["key"], key) for key in covered)
+    ]
+    return [*sections.values(), *remaining]
 
 
 def response_text(data, language="spanish"):
@@ -110,16 +139,18 @@ async def answer_query(
             )
         processed_query = translated["translated_text"]
     retrieval_query = processed_query
-    if history:
-        prior_questions = "\n".join(
-            m["content"] for m in history if m["role"] == "user"
-        )
+    prior_questions = [m["content"] for m in (history or []) if m["role"] == "user"]
+    if prior_questions:
         retrieval_query += (
-            "\nContexto de preguntas anteriores:\n" + prior_questions[-3000:]
+            "\nContexto de preguntas anteriores:\n" + "\n".join(prior_questions)[-3000:]
         )
     try:
         async with timer.stage("retrieval"):
-            rag_result = await state.rag_engine.query_with_rerank(retrieval_query)
+            retriever = getattr(state, "query_retriever", None) or state.rag_engine
+            if isinstance(retriever, SATChatRetriever):
+                rag_result = await retriever.query_with_rerank(processed_query, prior_questions=prior_questions)
+            else:
+                rag_result = await retriever.query_with_rerank(retrieval_query)
     except Exception as error:
         logging.getLogger("ia_juridica.pipeline").error(
             "retrieval_failed error_type=%s", type(error).__name__
@@ -130,6 +161,8 @@ async def answer_query(
     if rag_result.get("method") == "error":
         raise PipelineError(503, "Legal retrieval unavailable", "RETRIEVAL_UNAVAILABLE")
     documents = rag_result.get("documents", [])
+    reference = rag_result.get("sat_reference") if rag_result.get("method") == "sat" else None
+    verbatim = rag_result.get("verbatim_answer") if documents and reference else None
     enriched_prompt, enriched_context = state.context_engineer.build_legal_prompt(
         query=processed_query,
         documents=documents,
@@ -137,7 +170,21 @@ async def answer_query(
         history=history,
         context=context,
     )
-    if documents:
+    if reference and documents:
+        enriched_prompt = (
+            f"{enriched_prompt or ''}\n\nReferencia exacta recuperada: {reference['citation']}. "
+            "Cita esta referencia. Responde solo sobre el nivel solicitado; no lo sustituyas por "
+            "sus apartados hermanos o por una lista general del artículo."
+        )
+    if verbatim:
+        data = {
+            "respuesta_espanol": verbatim,
+            "fuentes_legales": [{
+                "nombre": reference["citation"], "tipo": "artículo",
+                "enlace": documents[0].get("metadata", {}).get("source_url"),
+            }],
+        }
+    elif documents:
         try:
             async with timer.stage("generation"):
                 response = await state.legal_agent.respond_general(
@@ -157,8 +204,9 @@ async def answer_query(
     else:
         # Lack of evidence is an explicit abstention, not invented advice.
         data = {
-            "respuesta_espanol": "No hay evidencia suficiente en el corpus para responder esta consulta. "
-            "Solicita revisión profesional o incorpora una fuente verificable.",
+            "respuesta_espanol": (rag_result["sat_warning"] if reference else
+                                  "No hay evidencia suficiente en el corpus para responder esta consulta. "
+                                  "Solicita revisión profesional o incorpora una fuente verificable."),
             "fuentes_legales": [],
         }
     async with timer.stage("validation"):
@@ -170,12 +218,14 @@ async def answer_query(
             enriched_context=enriched_context,
         )
     final = jsonable_encoder(validated.answer_data)
-    if not documents:
-        final = data  # Self-correction must not manufacture advice without evidence.
+    if not documents or verbatim:
+        final = data  # Self-correction cannot invent evidence or rewrite a literal excerpt.
     if not response_text(final).strip():
         raise PipelineError(502, "Legal response unavailable", "GENERATION_UNAVAILABLE")
     validation = validated.validation_report.model_dump()
     validation["is_reliable"] = bool(documents and validated.is_reliable)
+    if rag_result.get("method") == "sat" and rag_result.get("sat_warning"):
+        validation.setdefault("warnings", []).append(rag_result["sat_warning"])
     translation = None
     if language == "quechua":
         original = response_text(final)
@@ -212,7 +262,10 @@ async def answer_query(
             "pipeline": "validated-before-delivery-v1",
             "evidence_status": "retrieved" if documents else "insufficient_evidence",
             "retrieval_method": rag_result.get("method", "unknown"),
-            "citations": verify_citations(response_text(final), _evidence(documents)) if documents else [],
+            **({"sat_warning": rag_result.get("sat_warning"), "sat_as_of": rag_result.get("sat_as_of"),
+                "sat_reference": reference}
+               if rag_result.get("method") == "sat" else {}),
+            "citations": _response_citations(response_text(final), documents) if documents else [],
             "evidence": _evidence_summary(documents),
             "total_candidates": rag_result.get("total_candidates", 0),
             "optimizer_stats": optimizer.get_session_stats(),

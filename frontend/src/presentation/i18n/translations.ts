@@ -77,6 +77,8 @@ export const chatTranslations = {
       verified: 'Verificada en las fuentes',
       unverified: 'No se encontró en las fuentes recuperadas',
       excerptFrom: (source: string) => `Extracto de ${source}`,
+      fullSection: 'Ver sección completa',
+      sourceLink: 'Abrir fuente original',
     },
     related: {
       title: 'Jurisprudencia relacionada',
@@ -84,7 +86,7 @@ export const chatTranslations = {
       unknownRelevance: 'Relevancia no medida',
       citedCases: 'Casaciones citadas',
       pathLabel: 'Cómo se encontró',
-      origins: { lightrag: 'Grafo de conocimiento', lexical: 'Búsqueda léxica' },
+      origins: { lightrag: 'Grafo de conocimiento', lexical: 'Búsqueda léxica', sat: 'SAT-Graph' },
       methods: {
         cohere_rerank: 'reordenada por el reranker semántico',
         fallback_keyword_rerank: 'reordenada por coincidencia de palabras (sin reranker)',
@@ -166,6 +168,8 @@ export const chatTranslations = {
       verified: 'Willakuykunapi chiqaqchasqa',
       unverified: 'Taripasqa willakuykunapi mana tarisqachu',
       excerptFrom: (source: string) => `${source} nisqamanta pisi simi`,
+      fullSection: 'Tukuy rakita qhaway',
+      sourceLink: 'Qallariy pukyuta kichay',
     },
     related: {
       title: 'Kikin hina jurisprudencia',
@@ -173,7 +177,7 @@ export const chatTranslations = {
       unknownRelevance: 'Mana tupusqachu',
       citedCases: 'Casacionkuna sutichasqa',
       pathLabel: 'Imaynatam tarisqa',
-      origins: { lightrag: 'Yachay llika (grafo)', lexical: 'Simi maskay' },
+      origins: { lightrag: 'Yachay llika (grafo)', lexical: 'Simi maskay', sat: 'SAT-Graph' },
       methods: {
         cohere_rerank: 'reranker nisqawan kutichisqa',
         fallback_keyword_rerank: 'simikuna tupachiywan kutichisqa (mana rerankerwan)',

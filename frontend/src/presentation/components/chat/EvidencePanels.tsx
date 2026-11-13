@@ -4,6 +4,16 @@ import { BadgeCheck, Languages, Phone, Scale, ShieldQuestion, TriangleAlert } fr
 import { useState } from 'react';
 import type { LegalQueryApiResponse, SupportedLanguage } from '../../../domain/legal/types';
 import { chatTranslations } from '../../i18n/translations';
+import { MarkdownRenderer } from './MarkdownRenderer';
+
+function officialLink(value?: string | null) {
+  try {
+    const url = new URL(value ?? '');
+    return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Tarjeta de evidencia insuficiente: el sistema se abstiene y ofrece recursos de ayuda. */
 export function InsufficientEvidenceCard({ language }: { language: SupportedLanguage }) {
@@ -45,9 +55,30 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
   return (
     <section aria-label={t.label} className="mt-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{t.label}</h3>
-      <ul className="mt-1 flex flex-wrap gap-2">
+      <ul className="mt-1 space-y-2">
         {citations.map((citation) => {
           const verified = citation.status === 'verified';
+          const section = verified ? citation.sat_section : undefined;
+          if (section) {
+            const href = officialLink(section.source_url);
+            return (
+              <li key={citation.key}>
+                <details className="rounded-lg border border-emerald-200 bg-emerald-50/50 text-slate-900">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
+                    <span className="ml-1">{section.title}</span>
+                    <span className="ml-2 text-xs font-normal text-emerald-800">{t.fullSection}</span>
+                  </summary>
+                  <div className="border-t border-emerald-200 bg-white px-3 py-2">
+                    <p className="mb-2 break-words text-xs font-medium text-slate-600">{section.path.join(' → ')}</p>
+                    <div className="max-h-[28rem] overflow-auto break-words rounded bg-slate-50 px-3 py-2">
+                      <MarkdownRenderer content={section.text} />
+                    </div>
+                    {href && <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs underline">{t.sourceLink}</a>}
+                  </div>
+                </details>
+              </li>
+            );
+          }
           const title = verified
             ? `${t.verified}${citation.source ? ` — ${t.excerptFrom(citation.source)}` : ''}${citation.excerpt ? `: ${citation.excerpt}` : ''}`
             : t.unverified;
@@ -78,7 +109,7 @@ export function CitationChips({ language, apiResponse }: { language: SupportedLa
                       “{citation.excerpt}”
                     </>
                   ) : (
-                    t.unverified
+                    verified ? t.verified : t.unverified
                   )}
                 </p>
               </details>
@@ -202,10 +233,11 @@ export function TrustPanel({ language, apiResponse }: { language: SupportedLangu
 /** Todo lo que acompaña a una respuesta final del asistente. */
 export function AssistantEvidence({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
   if (apiResponse.metadata?.evidence_status === 'insufficient_evidence') {
-    return <InsufficientEvidenceCard language={language} />;
+    return <><InsufficientEvidenceCard language={language} />{apiResponse.metadata?.sat_warning && <p role="note" className="mt-3 text-xs text-amber-800">{apiResponse.metadata.sat_warning} {apiResponse.metadata.sat_as_of && `(${apiResponse.metadata.sat_as_of})`}</p>}</>;
   }
   return (
     <>
+      {apiResponse.metadata?.sat_warning && <p role="note" className="mt-3 text-xs text-amber-800">{apiResponse.metadata.sat_warning} {apiResponse.metadata.sat_as_of && `(${apiResponse.metadata.sat_as_of})`}</p>}
       <TranslationNotice language={language} apiResponse={apiResponse} />
       <CitationChips language={language} apiResponse={apiResponse} />
       <RelatedJurisprudence language={language} apiResponse={apiResponse} />

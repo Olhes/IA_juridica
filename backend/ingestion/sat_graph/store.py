@@ -92,6 +92,8 @@ class SATGraphStore:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS sat_edges (id TEXT PRIMARY KEY, source TEXT NOT NULL REFERENCES sat_nodes(id), predicate TEXT NOT NULL, target TEXT NOT NULL REFERENCES sat_nodes(id), payload TEXT NOT NULL)"
             )
+            db.execute("CREATE INDEX IF NOT EXISTS sat_edges_source_predicate ON sat_edges(source, predicate)")
+            db.execute("CREATE INDEX IF NOT EXISTS sat_edges_target_predicate ON sat_edges(target, predicate)")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS sat_documents (evidence_id TEXT PRIMARY KEY REFERENCES sat_nodes(id), markdown TEXT NOT NULL, state TEXT NOT NULL)"
             )
@@ -459,6 +461,8 @@ class SATGraphStore:
             raise ValueError("Objetivos de Action duplicados")
         old = [self._get(db, identity, "CTV") for identity in action.terminates]
         new = [self._get(db, identity, "CTV") for identity in action.produces]
+        if any(v.get("provenance_state") == "user_attested_snapshot" for v in old + new):
+            raise ValueError("Una acción histórica no puede modificar snapshots sin intervalo legal")
         if action.kind == "amend" and (
             not old
             or sorted(v["work_id"] for v in old) != sorted(v["work_id"] for v in new)
@@ -513,6 +517,10 @@ class SATGraphStore:
         groups = {}
         for (payload,) in db.execute("SELECT payload FROM sat_nodes WHERE kind='CTV'"):
             version = json.loads(payload)
+            if version.get("editorial_superseded_by"):
+                continue
+            if version.get("provenance_state") == "user_attested_snapshot":
+                continue
             groups.setdefault((version["work_id"], version["scope"]), []).append(
                 version
             )
@@ -542,6 +550,12 @@ class SATGraphStore:
             (parent["work_id"], child["work_id"]),
         ).fetchone():
             raise ValueError("Membresía sin estructura Work explícita")
+        if parent.get("provenance_state") == child.get("provenance_state") == "user_attested_snapshot":
+            if parent.get("snapshot_as_of") != child.get("snapshot_as_of"):
+                raise ValueError("Membresía de snapshots en fechas distintas")
+            return
+        if parent.get("provenance_state") == "user_attested_snapshot" or child.get("provenance_state") == "user_attested_snapshot":
+            raise ValueError("Membresía entre snapshot y versión histórica no verificada")
         if child["valid_from"] > parent["valid_from"] or (
             child["valid_to"] is not None
             and (parent["valid_to"] is None or child["valid_to"] < parent["valid_to"])
@@ -579,9 +593,11 @@ class SATGraphStore:
                 (identity, v)
                 for identity, v in versions
                 if v["work_id"] == wid
+                and not v.get("editorial_superseded_by")
                 and v["scope"] == scope
-                and v["valid_from"] <= when
-                and (v["valid_to"] is None or when < v["valid_to"])
+                and ((v.get("provenance_state") == "user_attested_snapshot" and v.get("snapshot_as_of") == when)
+                     or (v.get("provenance_state") == "reviewed" and v["valid_from"] <= when
+                         and (v["valid_to"] is None or when < v["valid_to"])))
             ]
             if len(active) != 1:
                 return {
@@ -686,5 +702,6 @@ class SATGraphStore:
             "edges": edges,
             "documents": documents,
             "resource_count": sum(n["type"] == "Resource" for n in nodes),
-            "reviewed_version_count": sum(n["type"] == "CTV" for n in nodes),
+            "reviewed_version_count": sum(n["type"] == "CTV" and n.get("provenance_state") == "reviewed" for n in nodes),
+            "attested_snapshot_count": sum(n["type"] == "CTV" and n.get("provenance_state") == "user_attested_snapshot" for n in nodes),
         }

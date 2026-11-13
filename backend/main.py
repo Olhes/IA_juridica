@@ -58,12 +58,15 @@ from modules.validation.services.response_validator import (
 from optimization.llm_optimizer import LLMOptimizer
 from optimization.query_cache import answer_cache_key
 from services.legal_queries import answer_query
+from retrieval.sat_chat import SATChatRetriever
 from services.legal_stream import stream_legal_query
 from services.stream_guard import guard_stream
 from services.stream_telemetry import StreamTelemetry, stream_metrics
 from services.feedback_store import FeedbackIn, FeedbackStore
 from services.quality_access import require_quality_admin
 from services.quality_reports import admin_overview, load_published
+from services.sat_corpus_routes import router as sat_corpus_router
+from services.sat_api import router as sat_api_router
 from context.conversation_prompt import bounded_history, with_conversation
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
 from database.postgres_adapter_final import DatabaseUnavailableError
@@ -75,6 +78,9 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
+
+def sat_graph_path():
+    return Path(settings.SAT_GRAPH_PATH) if settings.RAG_ENGINE.lower() == "sat" else PROCESSED_DIR.parent / "sat_graph.sqlite3"
 
 logger = logging.getLogger("ia_juridica.api")
 
@@ -147,7 +153,7 @@ async def _prepare_query_context(payload, owner_id, mode):
         with_conversation("", history, payload.context)
     except ValueError:
         raise HTTPException(422, "Conversation context exceeds the prompt budget")
-    engine = getattr(app.state, "rag_engine", None)
+    engine = getattr(app.state, "query_retriever", None) or getattr(app.state, "rag_engine", None)
     revision_fn = getattr(engine, "get_cache_revision", None)
     revision = revision_fn() if callable(revision_fn) else None
     key = None
@@ -263,10 +269,15 @@ async def lifespan(app: FastAPI):
         KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
         # Crear instancias pero no inicializar componentes pesados
-        app.state.rag_engine = LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
+        sat_mode = settings.RAG_ENGINE.lower() == "sat"
+        app.state.rag_engine = None if sat_mode else LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
+        app.state.query_retriever = SATChatRetriever(sat_graph_path()) if sat_mode else app.state.rag_engine
         app.state.ingestion_pipeline = LegalIngestionPipeline(
-            rag_engine=app.state.rag_engine
+            rag_engine=app.state.rag_engine,
+            legacy_rag_write=not sat_mode and settings.SAT_INGESTION_LEGACY_RAG,
         )
+        if settings.RAG_ENGINE.lower() == "sat":
+            app.state.ingestion_pipeline.sat_graph_path = sat_graph_path()
         app.state.legal_agent = LegalAgent()
         app.state.context_engineer = ContextEngineer()
 
@@ -281,7 +292,7 @@ async def lifespan(app: FastAPI):
             enable_cultural_validation=True,
         )
         app.state.response_validator = ResponseValidator(
-            rag_engine=app.state.rag_engine,
+            rag_engine=app.state.query_retriever,
             cohere_client=app.state.legal_agent.cohere_client,
             context_engineer=app.state.context_engineer,
             config=validation_config,
@@ -299,8 +310,12 @@ async def lifespan(app: FastAPI):
     else:
         print("Componentes ya inicializados, saltando...")
 
-    app.state.corpus_state = "loading"
-    app.state.corpus_task = asyncio.create_task(load_heavy_components(app.state.rag_engine, PROCESSED_DIR))
+    if settings.RAG_ENGINE.lower() == "sat":
+        app.state.corpus_state = "ready"
+        app.state.corpus_task = asyncio.create_task(asyncio.sleep(0))
+    else:
+        app.state.corpus_state = "loading"
+        app.state.corpus_task = asyncio.create_task(load_heavy_components(app.state.rag_engine, PROCESSED_DIR))
     try:
         yield
     finally:
@@ -395,6 +410,9 @@ app.add_middleware(
 # Registrar rutas de chat persistente (DESPUÉS del middleware)
 app.include_router(chat_router)
 app.include_router(auth_router)
+if settings.RAG_ENGINE.lower() == "sat":
+    app.include_router(sat_corpus_router)
+    app.include_router(sat_api_router)
 
 
 @app.exception_handler(DatabaseUnavailableError)
@@ -440,7 +458,7 @@ async def readiness():
     phase = getattr(app.state, "corpus_state", "unavailable")
     if phase != "ready":
         raise HTTPException(503, "Legal corpus unavailable")
-    return {"status": "ready"}
+    return {"status": "ready", "rag_engine": settings.RAG_ENGINE.lower()}
 
 
 @app.get("/health")
@@ -460,6 +478,8 @@ async def health_check():
             components["lightrag"] = "unavailable"
     except Exception:
         components["lightrag"] = "error"
+    if settings.RAG_ENGINE.lower() == "sat":
+        components["sat"] = "ready" if getattr(app.state, "query_retriever", None) else "unavailable"
 
     try:
         agent = getattr(app.state, "legal_agent", None)
@@ -498,7 +518,7 @@ async def health_check():
     critical_ok = (
         all(
             components.get(c) in ("ready", "fallback")
-            for c in ("cohere", "lightrag", "pydantic_ai")
+            for c in ("cohere", "sat" if settings.RAG_ENGINE.lower() == "sat" else "lightrag", "pydantic_ai")
         )
         and components.get("postgresql") == "healthy"
         and components.get("corpus") == "ready"
@@ -507,6 +527,7 @@ async def health_check():
     return {
         "status": "healthy" if critical_ok else "degraded",
         "components": components,
+        "rag_engine": settings.RAG_ENGINE.lower(),
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
     }
@@ -581,7 +602,9 @@ async def query_document(
             encoding = tiktoken.get_encoding("cl100k_base")
             token_count = len(encoding.encode(markdown_content))
 
-        use_rag_fallback = token_count > settings.MAX_UPLOAD_TOKENS and settings.ENABLE_UPLOAD_RAG_FALLBACK
+        use_rag_fallback = (settings.RAG_ENGINE.lower() != "sat"
+                            and token_count > settings.MAX_UPLOAD_TOKENS
+                            and settings.ENABLE_UPLOAD_RAG_FALLBACK)
 
         if use_rag_fallback:
             logger.info(f"Documento grande ({token_count} tokens > {settings.MAX_UPLOAD_TOKENS}), usando RAG temporal")
@@ -837,11 +860,13 @@ async def upload_document(
             )
             evidence_published = True
             sat_result = await asyncio.to_thread(
-                stage_document, PROCESSED_DIR.parent / "sat_graph.sqlite3",
+                stage_document, sat_graph_path(),
                 evidence, processed_content, artifact.docling_document,
             )
 
-        legacy_write = file_ext != ".pdf" or settings.SAT_INGESTION_LEGACY_RAG
+        legacy_write = app.state.rag_engine is not None and (
+            file_ext != ".pdf" or settings.SAT_INGESTION_LEGACY_RAG
+        )
         if legacy_write:
             await app.state.rag_engine.add_document(
                 processed_content,
@@ -964,8 +989,12 @@ async def legal_query_stream(request: Request, payload: LegalQueryRequest, princ
         raise HTTPException(500, "Legal query stream failed")
 
     async def persist(result):
+        metadata = {"sources": result["sources"], "validation": result["validation"]}
+        if any(c.get("sat_section") for c in result.get("metadata", {}).get("citations", [])):
+            # Keep the citation tied to the version used, even after a corpus update.
+            metadata["api_response"] = result
         await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
-                                         payload.language, {"sources": result["sources"], "validation": result["validation"]})
+                                         payload.language, metadata)
 
     request_id = getattr(request.state, "request_id", "unknown")
     source = stream_legal_query(
@@ -1122,15 +1151,18 @@ async def generate_pdf_report(
 
 
 @app.get("/knowledge-graph")
-async def get_knowledge_graph(engine: str = "lightrag", _auth: bool = Depends(verify_admin_api_key)):
+async def get_knowledge_graph(engine: str | None = None, _auth: bool = Depends(verify_admin_api_key)):
+    engine = engine or settings.RAG_ENGINE.lower()
     try:
         if engine == "sat":
             graph_data = await asyncio.to_thread(
-                lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+                lambda: SATGraphStore(sat_graph_path()).export()
             )
             return {"success": True, "graph": graph_data}
         if engine != "lightrag":
             raise HTTPException(422, "Unknown graph engine")
+        if app.state.rag_engine is None:
+            raise HTTPException(409, "LightRAG is disabled in SAT mode")
         graph_data = await app.state.rag_engine.get_knowledge_graph()
         return {"success": True, "graph": graph_data}
     except HTTPException:
@@ -1146,7 +1178,7 @@ async def resolve_sat_version(resource_id: str, component: str, as_of: str,
     """Lectura admin determinística; no cambia el recuperador del chat legado."""
     try:
         return await asyncio.to_thread(
-            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").resolve(
+            lambda: SATGraphStore(sat_graph_path()).resolve(
                 resource_id, component, as_of
             )
         )
@@ -1163,7 +1195,7 @@ async def sat_candidate_structure(evidence_id: str, parse_id: str | None = None,
     """AST y layout candidatos, solo para revisión administrativa autorizada."""
     try:
         return await asyncio.to_thread(
-            lambda: SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").structure(evidence_id, parse_id)
+            lambda: SATGraphStore(sat_graph_path()).structure(evidence_id, parse_id)
         )
     except ValueError:
         raise HTTPException(422, "Missing or ambiguous SAT structure; specify a valid parse_id")
@@ -1189,7 +1221,7 @@ async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool 
                 requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
                 token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
             )
-        graph = SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+        graph = SATGraphStore(sat_graph_path()).export()
         return SATRetriever(graph).search(plan, provider=provider)
 
     try:
@@ -1208,7 +1240,7 @@ async def sat_graph_history(resource_id: str, component: str,
                             _auth: bool = Depends(verify_admin_api_key)):
     try:
         return await asyncio.to_thread(lambda: SATRetriever(
-            SATGraphStore(PROCESSED_DIR.parent / "sat_graph.sqlite3").export()
+            SATGraphStore(sat_graph_path()).export()
         ).history(resource_id, component))
     except Exception as error:
         _log_failure("sat_graph_history_failed", error)
@@ -1316,6 +1348,8 @@ async def evaluate_system(
 
 @app.get("/documents")
 async def list_documents(_auth: bool = Depends(verify_admin_api_key)):
+    if app.state.rag_engine is None:
+        raise HTTPException(409, "Use the SAT corpus review to list documents in SAT mode")
     try:
         docs = await app.state.rag_engine.list_documents()
         return {"success": True, "documents": docs}
@@ -1335,7 +1369,7 @@ async def get_validation_stats(_auth: bool = Depends(verify_admin_api_key)):
     """
     try:
         optimizer: LLMOptimizer = app.state.llm_optimizer
-        rag_stats = app.state.rag_engine.get_stats()
+        rag_stats = app.state.rag_engine.get_stats() if app.state.rag_engine else {"engine": "sat"}
 
         return {
             "success": True,

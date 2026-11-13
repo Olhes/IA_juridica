@@ -4,6 +4,7 @@
   "description": "Asistente virtual bilingüe (quechua-español) para consultas de derecho digital",
   "main": "backend/main.py",
   "scripts": {
+    "sat:review": "uv run python backend/sat_review_app.py --open",
     "deps:export": "node scripts/export-requirements.mjs",
     "deps:check": "uv lock --check && node scripts/export-requirements.mjs --check",
     "test": "node scripts/run-tests.mjs offline",
