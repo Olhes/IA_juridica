@@ -38,6 +38,7 @@ requerimientos.md
 # next.js
 /.next/
 /frontend/.next/
+/frontend/.next-sat/
 /out/
 
 # backend document artifacts (local-only)
@@ -47,8 +48,11 @@ requerimientos.md
 /backend/docs/failed/**
 /backend/docs/source_evidence/**
 /backend/docs/sat_graph.sqlite3*
+!/backend/docs/sat_graph.sqlite3
 /backend/docs/voyage_cache.sqlite3*
 /backend/docs/sat_reviews/**
+!/backend/docs/sat_reviews/**/
+!/backend/docs/sat_reviews/**/*.pdf
 kv_store_llm_response_cache.json
 !/backend/docs/raw_pdfs/.gitkeep
 !/backend/docs/processed/.gitkeep

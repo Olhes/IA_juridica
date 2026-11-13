@@ -20,5 +20,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # La base SAT viaja por Git LFS; sin esto el checkout deja punteros.
+          lfs: true
       - name: Build y up
         run: bash deploy/azure/deploy.sh
