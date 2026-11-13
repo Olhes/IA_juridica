@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { ApiService } from '../../../frontend/src/application/legal/services/apiService';
 import { server, API } from '../fixtures/server';
@@ -44,6 +44,20 @@ test('API JSON inválido y desconexión no producen un éxito falso', async () =
   expect((await api.listConversations()).success).toBe(false);
   server.use(http.get(`${API}/chat/conversations`, () => HttpResponse.error()));
   expect((await api.listConversations()).success).toBe(false);
+});
+
+test('GET de conversación ausente devuelve 404 sin reportar una excepción', async () => {
+  server.use(http.get(`${API}/chat/conversations/gone`, () =>
+    HttpResponse.json({ detail: 'Conversation not found' }, { status: 404 })));
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    expect(await new ApiService().getConversation('gone')).toEqual({
+      success: false, status: 404, error: 'Conversation not found',
+    });
+    expect(log).not.toHaveBeenCalled();
+  } finally {
+    log.mockRestore();
+  }
 });
 test('API serializa idioma título y metadatos y codifica búsquedas', async () => {
   const api = new ApiService();

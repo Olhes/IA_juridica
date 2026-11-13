@@ -36,6 +36,11 @@ interface TerminalModalProps {
   onSend: (message: string) => void;
   messages: TerminalMessage[];
   isLoading?: boolean;
+  sendDisabled?: boolean;
+  notice?: string;
+  recoveredDraft?: string;
+  onDraftRecovered?: () => void;
+  onNewSession?: () => void;
   language?: SupportedLanguage;
   onRetry?: (messageId: string) => void;
   /** Envía 👍/👎 de una respuesta; si falta, no se muestra la barra de opinión. */
@@ -78,6 +83,11 @@ export function TerminalModal({
   onSend,
   messages,
   isLoading = false,
+  sendDisabled = false,
+  notice,
+  recoveredDraft,
+  onDraftRecovered,
+  onNewSession,
   language = 'spanish',
   onRetry,
   onFeedback,
@@ -89,6 +99,11 @@ export function TerminalModal({
   autoPlayTTS = false,
 }: TerminalModalProps) {
   const [input, setInput] = useState('');
+  useEffect(() => {
+    if (recoveredDraft === undefined) return;
+    setInput((current) => current ? `${recoveredDraft} ${current}` : recoveredDraft);
+    onDraftRecovered?.();
+  }, [recoveredDraft, onDraftRecovered]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -179,7 +194,7 @@ export function TerminalModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || sendDisabled) return;
     onSend(input.trim());
     setInput('');
   };
@@ -242,6 +257,16 @@ export function TerminalModal({
 
         {/* Área de Mensajes */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-10 py-7 space-y-6">
+          {notice && (
+            <div className="m-4 text-sm">
+              <p role="status">{notice}</p>
+              {onNewSession && sendDisabled && (
+                <button type="button" onClick={onNewSession} className="mt-2 underline">
+                  Nueva consulta
+                </button>
+              )}
+            </div>
+          )}
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-3">
               <div className="w-14 h-14 rounded-2xl bg-amber-400 flex items-center justify-center text-slate-900">
@@ -374,7 +399,7 @@ export function TerminalModal({
               <button
                 type="submit"
                 aria-label="Enviar consulta"
-                disabled={!input.trim() && !attachedFile || isLoading}
+                disabled={(!input.trim() && !attachedFile) || isLoading || sendDisabled}
                 className="w-[46px] h-[46px] shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors disabled:opacity-40 disabled:hover:bg-indigo-600 flex items-center justify-center active:scale-95"
               >
                 <Send className="w-5 h-5" />

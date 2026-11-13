@@ -32,6 +32,7 @@ interface UseChatOptions {
   language: SupportedLanguage;
   /** Llamado cuando el contenido de la sesión cambia (para actualizar sidebar) */
   onSessionUpdated?: (patch: { title?: string; preview?: string; messageCount?: number }) => void;
+  onSessionMissing?: (id: string, unsentMessage?: string) => void;
 }
 
 /**
@@ -42,15 +43,17 @@ interface UseChatOptions {
  *  2. En el mismo stream llega evento final con validación/fuentes/metadata
  *  3. Persistencia en backend via chat_service
  */
-export function useChat({ sessionId, language, onSessionUpdated }: UseChatOptions) {
+export function useChat({ sessionId, language, onSessionUpdated, onSessionMissing }: UseChatOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [loadedSession, setLoadedSession] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean | undefined>(undefined);
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const epochRef = useRef(0);
   const loadVersionRef = useRef(0);
+  const unavailableRef = useRef<string | null>(null);
+  const isLoadingHistory = sessionId !== null && loadedSession !== sessionId;
 
   // ── Cargar mensajes desde el backend cuando cambia la sesión activa ────────
   useEffect(() => {
@@ -59,18 +62,24 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     abortRef.current?.abort();
     abortRef.current = null;
     setIsLoading(false);
+    setLoadedSession(null);
+    unavailableRef.current = null;
     setMessages([]);
     let active = true;
     const loadMessages = async () => {
       if (!sessionId) {
         setMessages([]);
-        setHydrated(true);
         return;
       }
 
       try {
         const response = await apiService.getConversation(sessionId);
         if (!active || version !== loadVersionRef.current) return;
+        if (response.status === 404) {
+          unavailableRef.current = sessionId;
+          onSessionMissing?.(sessionId);
+          return;
+        }
         if (response.success && response.data) {
           const backendMessages = response.data.messages;
           const chatMessages = backendMessages.map((msg: BackendMessage) => ({
@@ -79,6 +88,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
             content: msg.content,
             timestamp: new Date(msg.created_at),
             metadata: msg.metadata,
+            apiResponse: msg.role === 'assistant' ? msg.metadata?.api_response : undefined,
           }));
           setMessages(chatMessages);
         }
@@ -87,7 +97,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         console.error('Error loading messages:', error);
         setMessages([]);
       } finally {
-        if (active && version === loadVersionRef.current) setHydrated(true);
+        if (active && version === loadVersionRef.current) setLoadedSession(sessionId);
       }
     };
 
@@ -97,7 +107,7 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       epochRef.current++;
       abortRef.current?.abort();
     };
-  }, [sessionId]);
+  }, [sessionId, onSessionMissing]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -142,16 +152,14 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
 
   const sendQuery = useCallback(
     async (query: string) => {
-      if (isLoading || abortRef.current || !query.trim() || !sessionId) return;
+      if (isLoading || isLoadingHistory || abortRef.current || !query.trim() ||
+          !sessionId || unavailableRef.current === sessionId) return;
 
       const controller = new AbortController();
       abortRef.current = controller;
       const epoch = epochRef.current;
       const isCurrent = () => epoch === epochRef.current && abortRef.current === controller;
       setIsLoading(true);
-
-      // No validar sesión aquí para evitar error 404
-      // sessionId es conversation_id, no session_id de Redis
 
       // Mensaje del usuario
       const userMsg: ChatMessage = {
@@ -174,11 +182,6 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         timestamp: new Date(),
       });
 
-      // Notificar al sidebar (título = primer mensaje del usuario)
-      if (!messages.some(m => m.role === 'user')) {
-        onSessionUpdated?.({ title: query.trim().slice(0, 60) });
-      }
-
       // ── Stream + payload final (NDJSON v1, tolerante a líneas rotas) ───
       let streamedText = '';
       let gotFinalPayload = false;
@@ -199,8 +202,22 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
         });
 
         if (!isCurrent()) return;
+        if (streamRes.status === 404 &&
+            (await streamRes.json().catch(() => null))?.detail === 'Conversation not found') {
+          if (!isCurrent()) return;
+          unavailableRef.current = sessionId;
+          setMessages((prev) => prev.filter(m => m.id !== userMsg.id && m.id !== assistantId));
+          setIsLoading(false);
+          abortRef.current = null;
+          onSessionMissing?.(sessionId, query.trim());
+          return;
+        }
+        if (!isCurrent()) return;
         if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
         if (!streamRes.body) throw new Error('Error de conexión');
+        if (!messages.some(m => m.role === 'user')) {
+          onSessionUpdated?.({ title: query.trim().slice(0, 60) });
+        }
 
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
@@ -351,27 +368,12 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
           return;
         }
 
-        // Manejar error de conversación no encontrada (Redis reiniciado)
-        const errorStr = (err as Error).toString().toLowerCase();
-        if (errorStr.includes('http 404')) {
-          console.warn('Conversation not found, clearing state');
-          updateMessage(assistantId, {
-            isStreaming: false,
-            isLoadingFull: false,
-            content: 'La conversación ya no está disponible. Por favor, inicia una nueva consulta.',
-            streamingContent: undefined,
-          });
-          // Limpiar estado local
-          setMessages([]);
-          onSessionUpdated?.({ title: 'Nueva consulta', preview: '', messageCount: 0 });
-        } else {
-          updateMessage(assistantId, {
-            isStreaming: false,
-            isLoadingFull: false,
-            content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
-            streamingContent: undefined,
-          });
-        }
+        updateMessage(assistantId, {
+          isStreaming: false,
+          isLoadingFull: false,
+          content: streamedText || 'No se pudo completar la respuesta. Intenta nuevamente.',
+          streamingContent: undefined,
+        });
       }
 
       // Actualizar conteo de mensajes en el sidebar
@@ -384,7 +386,8 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
       setIsLoading(false);
       abortRef.current = null;
     },
-    [isLoading, language, sessionId, messages, pushMessage, updateMessage, onSessionUpdated, resolveFinalText]
+    [isLoading, isLoadingHistory, language, sessionId, messages, pushMessage, updateMessage,
+      onSessionUpdated, onSessionMissing, resolveFinalText]
   );
 
   // ─── Reintentar una consulta fallida ───────────────────────────────────────
@@ -444,14 +447,16 @@ export function useChat({ sessionId, language, onSessionUpdated }: UseChatOption
     abortRef.current?.abort();
     abortRef.current = null;
     setMessages([]);
+    setLoadedSession(sessionId);
     setIsLoading(false);
     // Los mensajes se limpian en el backend via useChatSessions.clearActiveSession
     onSessionUpdated?.({ title: 'Nueva consulta', preview: '', messageCount: 0 });
-  }, [onSessionUpdated]);
+  }, [onSessionUpdated, sessionId]);
 
   return {
     messages,
     isLoading,
+    isLoadingHistory,
     isOnline,
     downloadingPdfId,
     sendQuery,

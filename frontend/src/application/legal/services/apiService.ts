@@ -37,6 +37,7 @@ export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  status?: number;
 }
 
 export class ApiService {
@@ -50,7 +51,8 @@ export class ApiService {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    logErrors = true
+    logErrors = true,
+    expectedMissing = false
   ): Promise<ApiResponse<T>> {
     try {
       await this.initializeSession();
@@ -67,6 +69,9 @@ export class ApiService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData?.detail || errorData?.error || errorData?.message || `HTTP ${response.status}`;
+        if (expectedMissing && response.status === 404) {
+          return { success: false, status: 404, error: errorMessage };
+        }
         throw new Error(errorMessage);
       }
 
@@ -112,7 +117,7 @@ export class ApiService {
     total_messages: number;
     context_summary?: any;
   }>> {
-    return this.request(`/chat/conversations/${conversationId}`);
+    return this.request(`/chat/conversations/${conversationId}`, {}, true, true);
   }
 
   async listConversations(limit = 50, activeOnly = true): Promise<ApiResponse<{

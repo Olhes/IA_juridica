@@ -262,7 +262,17 @@ export function ChatPage() {
     updateSessionMeta,
     deleteSession,
     reloadSessions,
+    forgetSession,
   } = useChatSessions();
+
+  const [sessionNotice, setSessionNotice] = useState<string>();
+  const [unsentMessage, setUnsentMessage] = useState<string>();
+  const onDraftRecovered = useCallback(() => setUnsentMessage(undefined), []);
+  const onSessionMissing = useCallback((id: string, draft?: string) => {
+    forgetSession(id);
+    if (draft !== undefined) setUnsentMessage(draft);
+    setSessionNotice('Esta conversación ya no está disponible. Abre otra o inicia una nueva consulta.');
+  }, [forgetSession]);
 
   const onSessionUpdated = useCallback(
     (patch: { title?: string; preview?: string; messageCount?: number }) => {
@@ -275,11 +285,12 @@ export function ChatPage() {
   const {
     messages,
     isLoading,
+    isLoadingHistory,
     isOnline,
     sendQuery,
     retry,
     checkHealth,
-  } = useChat({ sessionId: activeSessionId, language, onSessionUpdated });
+  } = useChat({ sessionId: activeSessionId, language, onSessionUpdated, onSessionMissing });
 
   useEffect(() => { checkHealth(); }, [checkHealth]);
 
@@ -308,7 +319,13 @@ export function ChatPage() {
       setAuthModalOpen(true);
       return;
     }
-    await createSession(language);
+    try {
+      await createSession(language);
+    } catch {
+      setSessionNotice('No se pudo iniciar una nueva consulta. Inténtalo de nuevo.');
+      return;
+    }
+    setSessionNotice(undefined);
     setShowLanding(false);
     setSidebarOpen(false);
     setTerminalOpen(true);
@@ -320,6 +337,7 @@ export function ChatPage() {
       return;
     }
     setActiveSessionId(id);
+    setSessionNotice(undefined);
     setShowLanding(false);
     setSidebarOpen(false);
     setTerminalOpen(true);
@@ -606,6 +624,13 @@ export function ChatPage() {
         onSend={handleSendTerminalMessage}
         messages={terminalMessages}
         isLoading={isLoading}
+        sendDisabled={isAuthenticated && (!activeSessionId || isLoadingHistory)}
+        notice={sessionNotice ?? (isAuthenticated && !activeSessionId
+          ? 'Abre una conversación o inicia una nueva consulta para enviar un mensaje.'
+          : undefined)}
+        recoveredDraft={unsentMessage}
+        onDraftRecovered={onDraftRecovered}
+        onNewSession={handleStartChat}
         attachedFile={attachedFile}
         onRemoveAttachment={handleRemoveAttachment}
         language={language}

@@ -98,6 +98,32 @@ test('carga antigua no reemplaza mensajes de la sesión nueva', async () => {
   await act(async () => late.resolve({ success: true, data: { messages: [{ id: 'a-msg', content: 'solo A' }] } }));
   expect(rendered.result.current.messages[0]?.content).toBe('solo B');
 });
+
+test('404 al cargar invalida la sesión y bloquea envíos al ID obsoleto', async () => {
+  vi.mocked(apiService.getConversation).mockResolvedValue({ success: false, status: 404 });
+  const onSessionMissing = vi.fn();
+  const { result } = renderHook(() =>
+    useChat({ sessionId: 'gone', language: 'spanish', onSessionMissing }));
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  await waitFor(() => expect(onSessionMissing).toHaveBeenCalledWith('gone'));
+  await act(async () => { await result.current.sendQuery('no enviar'); });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test('404 de conversación durante envío devuelve el borrador sin reintentar ni renombrar', async () => {
+  const onSessionMissing = vi.fn(), onSessionUpdated = vi.fn();
+  const { result } = renderHook(() =>
+    useChat({ sessionId: 'gone', language: 'spanish', onSessionMissing, onSessionUpdated }));
+  await waitFor(() => expect(result.current.isLoadingHistory).toBe(false));
+  const fetch = vi.fn(async () => Response.json({ detail: 'Conversation not found' }, { status: 404 }));
+  vi.stubGlobal('fetch', fetch);
+  await act(async () => { await result.current.sendQuery('mi pregunta'); });
+  expect(onSessionMissing).toHaveBeenCalledWith('gone', 'mi pregunta');
+  expect(onSessionUpdated).not.toHaveBeenCalled();
+  expect(result.current.messages).toEqual([]);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 test('cambio de sesión cancela stream y no actualiza metadatos antiguos', async () => {
   const { result, rerender, updated } = await hook();
   const late = deferred<Response>(); let signal!: AbortSignal;
