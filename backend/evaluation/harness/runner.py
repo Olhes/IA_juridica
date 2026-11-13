@@ -122,7 +122,7 @@ async def build_live_answer_fn():
     import main  # noqa: PLC0415 - importa FastAPI y los proveedores solo si hace falta
 
     context = await enter_app(main)
-    engine = main.app.state.rag_engine
+    engine = getattr(main.app.state, "query_retriever", None) or main.app.state.rag_engine
     retrieve, captured = engine.query_with_rerank, {}
 
     async def capturing_retrieval(*args, **kwargs):
@@ -390,7 +390,7 @@ def main(argv=None):
     parser.add_argument("suite", choices=["legal_qa", "retrieval", "translation", "stream"])
     parser.add_argument("--split", action="append", choices=["dev", "holdout"])
     parser.add_argument("--samples", type=int, default=None)
-    parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
+    parser.add_argument("--judge", default="none", choices=["none"])
     parser.add_argument("--cassette", default=None)
     parser.add_argument("--provider", choices=["application", "nvidia-voyage"], default="application")
     parser.add_argument("--source", default="offline", choices=["offline", "cassette"], help="retrieval: motor local o cassette")

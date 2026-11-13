@@ -24,7 +24,7 @@ def pytest_addoption(parser):
         "--run-model-evals",
         action="store_true",
         default=False,
-        help="Genera respuestas con Cohere y usa juez DeepEval (red/coste)",
+        help="Autoriza evaluaciones con proveedores externos (red/coste)",
     )
     group.addoption(
         "--quality-report-dir",
@@ -61,12 +61,9 @@ def pytest_collection_modifyitems(config, items):
     if not math.isfinite(timeout) or timeout <= 0:
         raise pytest.UsageError("--model-eval-timeout debe ser positivo y finito")
     if live:
-        from evaluation.model_quality import require_credentials
-
-        try:
-            require_credentials()
-        except ValueError as error:
-            raise pytest.UsageError(str(error)) from None
+        raise pytest.UsageError(
+            "No hay evaluador model_quality activo; usa el harness de evaluación."
+        )
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

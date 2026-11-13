@@ -13,6 +13,9 @@ export function testPlan(mode, extra = []) {
   if (['quality', 'e2e-real', 'harness-real'].includes(mode) && !real) {
     throw new Error('Confirma red/coste con --run-model-evals. No se inició ninguna prueba real.');
   }
+  if (mode === 'quality') {
+    throw new Error('La evaluación legacy fue retirada; usa el harness sin juez LLM.');
+  }
   if (['frontend', 'frontend-coverage', 'e2e', 'e2e-real'].includes(mode)) {
     if (mode.startsWith('e2e')) {
       return [{ name: mode === 'e2e-real' ? 'Navegador / real (red/coste)' : 'Navegador / API simulada', command: process.execPath,
@@ -29,7 +32,7 @@ export function testPlan(mode, extra = []) {
   if (mode === 'harness-real') {
     // Evaluación real del harness: temperatura 0, sin caché de respuestas y N=3 muestras (EVAL_MODE=1).
     // RAGAS solo se instala para esta corrida (capa temporal de uv), sin tocar uv.lock ni producción.
-    const suites = [['legal_qa', 'gold jurídico con juez DeepEval + RAGAS', ['--judge', 'deepeval']],
+    const suites = [['legal_qa', 'gold jurídico sin juez LLM + RAGAS', ['--judge', 'none']],
       ['retrieval', 'recuperación', []], ['translation', 'traducción es→qu', []], ['stream', 'stream NDJSON', []]];
     return suites.map(([suite, label, flags]) => ({ name: `Harness / ${label} (red/coste)`,
       command: process.platform === 'win32' ? 'uv.exe' : 'uv',
@@ -53,7 +56,6 @@ export function testPlan(mode, extra = []) {
       '--junitxml=temp/sonar-reports/pytest.xml', '-o', 'junit_family=legacy'],
     all: [],
     harness: ['tests/backend/harness'],
-    quality: ['tests/backend/quality', '-m', 'model_quality', '--run-model-evals'],
     'quality-offline': ['tests/backend/quality', '-m', 'quality'],
   };
   if (mode === 'sonar') flags.sonar = flags.coverage;

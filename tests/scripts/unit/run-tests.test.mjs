@@ -39,7 +39,7 @@ test('offline incluye Python y Node sin activar modelos reales', () => {
 });
 
 test('todos los modos Python usan configuración raíz y las suites Node viven en tests', () => {
-  for (const mode of ['python', 'backend', 'scripts', 'offline', 'coverage', 'sonar', 'all', 'quality', 'quality-offline']) {
+  for (const mode of ['python', 'backend', 'scripts', 'offline', 'coverage', 'sonar', 'all', 'quality-offline']) {
     const plan = testPlan(mode, mode === 'quality' ? ['--run-model-evals'] : []);
     const index = plan[0].args.indexOf('-c');
     assert.notEqual(index, -1);
@@ -74,11 +74,8 @@ test('coverage produce Cobertura y xUnit compatible sin activar modelos reales',
   assert.ok(testPlan('coverage', ['--run-model-evals'])[0].args.includes('--run-model-evals'));
 });
 
-test('quality selecciona solo las pruebas del modelo y reenvía opciones', () => {
-  const plan = testPlan('quality', ['--run-model-evals', '--model-eval-timeout', '60']);
-  assert.equal(plan.length, 1);
-  assert.deepEqual(plan[0].args.slice(-2), ['--model-eval-timeout', '60']);
-  assert.ok(plan[0].args.includes('model_quality'));
+test('quality legacy informa su retirada', () => {
+  assert.throws(() => testPlan('quality', ['--run-model-evals']), /legacy fue retirada/);
 });
 
 test('harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1', () => {
@@ -95,7 +92,7 @@ test('harness es offline y harness-real exige --run-model-evals con EVAL_MODE=1'
     assert.ok(task.args.includes('--run-model-evals'));
     assert.ok(task.args.includes('ragas==0.4.3'), 'RAGAS solo en la capa temporal de la corrida real');
   }
-  assert.ok(real[0].args.includes('--judge') && real[0].args.includes('deepeval'));
+  assert.equal(real[0].args[real[0].args.indexOf('--judge') + 1], 'none');
 });
 
 test('harness-compare pasa --base y --head al comparador sin activar modelos reales', () => {
@@ -129,7 +126,7 @@ test('fallos de una suite no ocultan las restantes y mantienen exit code', () =>
 
 test('error de arranque falla la ejecución y éxito retorna cero', () => {
   const output = capturedOutput();
-  assert.equal(runPlan(testPlan('quality', ['--run-model-evals']), () => ({ error: new Error('not found'), status: null }), output), 1);
+  assert.equal(runPlan(testPlan('quality-offline'), () => ({ error: new Error('not found'), status: null }), output), 1);
   assert.match(output.errors[0], /no pudo iniciarse/);
   assert.equal(runPlan(testPlan('quality-offline'), () => ({ status: 0 }), output), 0);
 });

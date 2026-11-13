@@ -421,7 +421,7 @@ def main(argv: Optional[list] = None, *, repo: Optional[Path] = None) -> int:
     parser.add_argument("--run-model-evals", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ab", action="store_true", help="A/B ciego con orden invertido de las respuestas de legal_qa")
-    parser.add_argument("--judge", default="none", choices=["none", "deepeval"])
+    parser.add_argument("--judge", default="none", choices=["none"])
     args = parser.parse_args(argv)
     repo = Path(repo or ROOT)
     suites = [s for s in args.suites.split(",") if s]

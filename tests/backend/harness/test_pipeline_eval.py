@@ -7,7 +7,7 @@ import pytest
 from evaluation.harness import thresholds
 from evaluation.harness.answers import Answer
 from evaluation.harness.cassettes import REPLAY, Cassette, CassetteMiss, canonical_key
-from evaluation.harness.judges import CallableJudge, DeepEvalJudge, NoJudge, make_judge
+from evaluation.harness.judges import CallableJudge, NoJudge, make_judge
 from evaluation.harness.pipeline_eval import evaluate_gold
 from evaluation.harness.runner import cassette_answer_fn, collect_metadata, write_result
 
@@ -116,28 +116,10 @@ async def test_judge_metrics_are_na_without_a_judge_and_present_with_one(cases, 
     assert no_context["metrics"]["fact_recall_judge"]["macro"]["value"] == 1.0
 
 
-def test_judge_factory_registers_availability_without_calling_models(monkeypatch):
-    for name in ("EVAL_JUDGE_MODEL", "EVAL_JUDGE_PROVIDER", "OPENAI_API_KEY", "COHERE_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
-    assert make_judge("none").info()["available"] is False
-    deep = make_judge("deepeval")
-    assert isinstance(deep, DeepEvalJudge) and not deep.available and "COHERE_API_KEY" in deep.unavailable_reason
-    monkeypatch.setenv("COHERE_API_KEY", "clave-ficticia")
-    cohere = make_judge("deepeval").info()  # por defecto: Cohere command-a, sin clave de OpenAI
-    assert (cohere["available"], cohere["provider"], cohere["model"]) == (True, "cohere", "command-a-03-2025")
-    assert "clave" not in json.dumps(cohere)
-    monkeypatch.setenv("EVAL_JUDGE_PROVIDER", "openai")
-    assert not make_judge("deepeval").available  # OpenAI exige su clave y un modelo explícito
-    monkeypatch.setenv("EVAL_JUDGE_MODEL", "modelo-juez")
-    monkeypatch.setenv("OPENAI_API_KEY", "clave-ficticia")
-    configured = make_judge("deepeval").info()
-    assert configured["available"] is True and configured["model"] == "modelo-juez" and "clave" not in json.dumps(configured)
-    monkeypatch.setenv("EVAL_JUDGE_PROVIDER", "otro")
+def test_factory_rejects_llm_judges():
+    assert isinstance(make_judge("none"), NoJudge)
     with pytest.raises(ValueError):
         make_judge("deepeval")
-    with pytest.raises(ValueError):
-        make_judge("desconocido")
-    assert isinstance(NoJudge(), NoJudge)
 
 
 async def test_cassette_replays_records_and_refuses_unrecorded_requests(tmp_path, cases):
@@ -252,32 +234,3 @@ async def test_ragas_id_crosscheck_is_na_without_ragas_installed(monkeypatch, co
     monkeypatch.setattr(builtins, "__import__", no_ragas)
     report = await retrieval_eval.ragas_id_crosscheck([], {}, None)
     assert report == {"available": False, "reason": "RAGAS no está instalado (lo instala `pnpm test:harness:real`)"}
-
-
-def test_judge_json_block_strips_fences_and_surrounding_text():
-    from evaluation.harness.judges import _json_block
-
-    assert _json_block('```json\n{"verdicts": []}\n```') == '{"verdicts": []}'
-    assert _json_block('Respuesta: {"a": {"b": 1}} fin') == '{"a": {"b": 1}}'
-    assert _json_block("# Language:#") == "# Language:#"  # sin objeto: se devuelve tal cual y la validación falla
-
-
-async def test_a_judge_failure_leaves_the_case_na_instead_of_crashing(monkeypatch):
-    import deepeval.metrics
-
-    class Broken:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def a_measure(self, *_args, **_kwargs):
-            raise ValueError("salida del juez que no es JSON")
-
-    monkeypatch.setenv("COHERE_API_KEY", "clave-ficticia")
-    monkeypatch.delenv("EVAL_JUDGE_PROVIDER", raising=False)
-    monkeypatch.setattr(deepeval.metrics, "FaithfulnessMetric", Broken)
-    monkeypatch.setattr(deepeval.metrics, "GEval", Broken)
-    judge = DeepEvalJudge()
-    monkeypatch.setattr(judge, "_llm", lambda: None)
-    assert await judge.faithfulness("q", "respuesta", ["contexto"]) is None
-    assert await judge.fact_present("respuesta", "hecho") is None
-    assert judge.info()["judge_failures"] == 2

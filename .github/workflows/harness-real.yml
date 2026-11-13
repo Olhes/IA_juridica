@@ -33,9 +33,6 @@ jobs:
     timeout-minutes: 120
     env:
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      # Juez de DeepEval y RAGAS: Cohere command-a por defecto (EVAL_JUDGE_MODEL lo cambia).
-      EVAL_JUDGE_PROVIDER: cohere
-      EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
       DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
       BASE_REF: ${{ github.event.inputs.base || github.base_ref && format('origin/{0}', github.base_ref) || 'origin/main' }}
     steps:
@@ -54,11 +51,11 @@ jobs:
         run: |
           uv sync --frozen --extra dev
           pnpm install --frozen-lockfile
-      - name: Evaluación real (4 suites; temperatura 0, sin caché, 3 muestras; juez Cohere + RAGAS)
+      - name: Evaluación real (4 suites; temperatura 0, sin caché, 3 muestras; sin juez LLM)
         run: pnpm test:harness:real --run-model-evals
-      - name: Comparar con la base (A/B ciego con orden invertido)
+      - name: Comparar con la base
         id: compare
-        run: pnpm test:harness:compare --base "$BASE_REF" --head HEAD --run-missing --run-model-evals --ab --judge deepeval
+        run: pnpm test:harness:compare --base "$BASE_REF" --head HEAD --run-missing --run-model-evals
       - name: Resumen
         if: always()
         run: |

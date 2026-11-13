@@ -44,11 +44,11 @@ def test_real_evaluation_is_gated_by_schedule_label_or_manual_dispatch_and_alway
     assert "'eval'" in condition and "github.repository" in condition  # solo PR del propio repositorio con la etiqueta
     run = commands(flow)
     assert "pnpm test:harness:real --run-model-evals" in run
-    assert "pnpm test:harness:compare" in run and "--ab" in run
+    assert "pnpm test:harness:compare" in run and "--judge deepeval" not in run
     assert flow["permissions"] == {"contents": "read"} and flow["concurrency"]["cancel-in-progress"] is False
     secrets = set(re.findall(r"secrets\.(\w+)", (WORKFLOWS / "harness-real.yml").read_text(encoding="utf-8")))
-    assert secrets == {"COHERE_API_KEY"}  # el juez usa Cohere: sin claves de otros proveedores
-    assert flow["jobs"]["evaluate"]["env"]["EVAL_JUDGE_PROVIDER"] == "cohere"
+    assert secrets == {"COHERE_API_KEY"}  # proveedor del pipeline, no juez
+    assert "EVAL_JUDGE_PROVIDER" not in flow["jobs"]["evaluate"]["env"]
     checkout = next(s for s in steps(flow) if str(s.get("uses", "")).startswith("actions/checkout"))
     assert checkout["with"]["fetch-depth"] == 0  # la comparación necesita la historia
 
