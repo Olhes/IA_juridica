@@ -79,6 +79,18 @@ constraint-dependencies = [
   "setuptools>=83.0.0", "soupsieve>=2.9.0,<3", "urllib3>=2.8.0,<3",
 ]
 
+# Solo usamos CPU: no se inferencia en GPU. Sin esta fuente uv resuelve torch
+# contra PyPI, donde las ruedas de Linux incluyen CUDA y arrastran ~10 GB de
+# nvidia-*. `explicit = true` la limita a los paquetes que la declaran.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
 [project.urls]
 Homepage = "https://github.com/ia-juridica/ia-juridica"
 Repository = "https://github.com/ia-juridica/ia-juridica"
