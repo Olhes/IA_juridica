@@ -3,6 +3,7 @@ Servicio de gestión de conversaciones con persistencia
 IA Jurídica - Redis Cache + PostgreSQL Storage
 """
 
+import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
@@ -20,8 +21,6 @@ from models.chat_models import (
 )
 from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
-from modules.language.services.language_detector import LanguageDetector
-from modules.language.services.translation_service import TranslationService
 
 
 class ChatService:
@@ -36,14 +35,12 @@ class ChatService:
             "context": 1800,  # 30 minutos
         }
 
-        # Inicializar servicios de idioma
-        self.language_detector = LanguageDetector()
-        self.translation_service = TranslationService()
-
     async def initialize(self):
         """Inicializar servicio y conexiones"""
-        await self.redis.initialize()
-        await self.db.initialize()
+        outcomes = await asyncio.gather(self.redis.initialize(), self.db.initialize(), return_exceptions=True)
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                raise outcome
 
     # === Gestión de Conversaciones ===
 

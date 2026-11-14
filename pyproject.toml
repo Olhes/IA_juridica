@@ -5,14 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ia-juridica"
 version = "0.1.0"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 dependencies = [
   "fastapi==0.142.2",
   "starlette==1.7.0",
   "uvicorn[standard]==0.54.0",
   "pydantic==2.13.5",
   "pydantic-settings==2.15.0",
-  "pydantic-ai-slim[cohere,google]==2.54.0",
   "cohere==7.2.0",
   "docling==2.133.0",
   "pypdf==6.19.0",
@@ -20,7 +19,6 @@ dependencies = [
   "lightrag-hku==1.5.7",
   "deepeval==4.2.8",
   "SQLAlchemy==2.1.3",
-  "asyncpg==0.31.0",
   "psycopg[binary]==3.3.6",
   "redis==8.1.0",
   "reportlab==5.0.1",
@@ -37,10 +35,10 @@ dependencies = [
   "email-validator==2.3.0",
   "pyjwt==2.15.1",
   "passlib[bcrypt]==1.7.4",
-  "torch==2.14.1", "torchvision==0.29.1",
+  "torch==2.15.0", "torchvision==0.29.1",
   "transformers>=5.10.0,<6", "accelerate==1.15.0",
   "soundfile==0.12.1",
-  "tiktoken==0.8.0",
+  "tiktoken==0.14.0",
 ]
 
 [project.optional-dependencies]

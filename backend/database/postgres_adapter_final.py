@@ -26,9 +26,6 @@ class PostgreSQLAdapter:
             try:
                 print(f"🔍 Conectando a PostgreSQL (intento {attempt + 1}/{max_retries})...")
                 
-                # Pequeño retraso para asegurar que PostgreSQL esté listo
-                await asyncio.sleep(1)
-                
                 # Usar conexión simple
                 loop = asyncio.get_event_loop()
                 

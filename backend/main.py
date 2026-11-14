@@ -44,7 +44,6 @@ from ingestion.sat_graph.postgres import PostgresSATGraphStore
 from database.postgres_connection import connect_postgres
 from retrieval.sat import SATRetriever, SearchPlan
 from retrieval.voyage import VoyageProvider, VoyageError
-from modules.rag.services.lightrag_engine import LegalRAGEngine
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
 from database.redis_adapter import redis_adapter
@@ -249,14 +248,6 @@ async def lifespan(app: FastAPI):
             "Invalid configuration: " + "; ".join(configuration["issues"])
         )
 
-    # Inicializar Redis adapter
-    try:
-        await redis_adapter.initialize()
-        print("Redis adapter inicializado correctamente")
-    except Exception:
-        print("Error inicializando Redis")
-        print("Continuando sin Redis...")
-
     # Inicializar chat service
     try:
         await chat_service.initialize()
@@ -273,7 +264,11 @@ async def lifespan(app: FastAPI):
 
         # Crear instancias pero no inicializar componentes pesados
         sat_mode = settings.RAG_ENGINE.lower() == "sat"
-        app.state.rag_engine = None if sat_mode else LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
+        app.state.rag_engine = None
+        if not sat_mode:
+            from modules.rag.services.lightrag_engine import LegalRAGEngine
+
+            app.state.rag_engine = LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
         if sat_mode:
             store = await asyncio.to_thread(sat_graph_store)
             if isinstance(store, PostgresSATGraphStore):
@@ -492,9 +487,7 @@ async def health_check():
     try:
         agent = getattr(app.state, "legal_agent", None)
         if agent:
-            from agents.pydantic_agents import PYDANTIC_AI_AVAILABLE
-
-            components["pydantic_ai"] = "ready" if PYDANTIC_AI_AVAILABLE else "fallback"
+            components["pydantic_ai"] = "fallback"  # The legal agent calls Cohere directly.
         else:
             components["pydantic_ai"] = "unavailable"
     except Exception:

@@ -16,18 +16,6 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from config.settings import settings
 
 try:
-    from pydantic_ai import Agent, RunContext
-
-    PYDANTIC_AI_AVAILABLE = True
-except ImportError as import_error:
-    Agent = None
-    RunContext = None
-    logger.warning(
-        f"Pydantic AI no disponible ({import_error}). Usando implementacion simulada."
-    )
-    PYDANTIC_AI_AVAILABLE = False
-
-try:
     import cohere
 
     COHERE_SDK_AVAILABLE = True
@@ -229,29 +217,6 @@ class LegalAgent:
             from services.cohere_chat import CohereChat
 
             self.cohere_client = CohereChat(settings.COHERE_API_KEY)
-
-        # Nota: se mantiene el path de Pydantic AI como opcional/legacy.
-        if PYDANTIC_AI_AVAILABLE and self.cohere_client:
-            self._initialize_pydantic_agent()
-        else:
-            self.agent = None
-            logger.warning(
-                "Agente Pydantic no inicializado - usando Cohere directo/fallback"
-            )
-
-    def _initialize_pydantic_agent(self):
-        """Inicializa el agente con Pydantic AI (deshabilitado en modo Cohere directo)."""
-        if not Agent:
-            logger.warning(
-                "Pydantic AI no disponible en runtime. Se usara modo Cohere directo."
-            )
-            return
-
-        # Se deja desactivado para evitar dependencias cruzadas entre versiones
-        # de pydantic-ai y cohere. El flujo principal usa self.cohere_client.
-        logger.info(
-            "Pydantic AI omitido: usando Cohere directo como proveedor principal"
-        )
 
     def _build_user_prompt(
         self, query: str, context: Dict[str, Any], language: str
@@ -767,10 +732,10 @@ class LegalAgent:
         """Obtiene estadísticas de los agentes"""
 
         return {
-            "pydantic_ai_available": PYDANTIC_AI_AVAILABLE,
+            "pydantic_ai_available": False,
             "cohere_streaming_available": self.cohere_client is not None,
             "model": self.model_name,
-            "agents_configured": 3 if PYDANTIC_AI_AVAILABLE else 0,
+            "agents_configured": 0,
             "response_types": [
                 "violencia_familiar",
                 "pension_alimentos",

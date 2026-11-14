@@ -4,7 +4,6 @@ from typing import Dict, List, Any
 from loguru import logger
 from tqdm import tqdm
 
-from modules.rag.services.lightrag_engine import LegalRAGEngine
 from utils.file_utils import FileUtils
 from config.settings import settings
 from ingestion.source_evidence import persist_source_evidence
@@ -25,6 +24,8 @@ class LegalIngestionPipeline:
         )
         self.rag_engine = rag_engine
         if self.legacy_rag_write and self.rag_engine is None:
+            from modules.rag.services.lightrag_engine import LegalRAGEngine
+
             self.rag_engine = LegalRAGEngine()
         self.file_utils = FileUtils()
 

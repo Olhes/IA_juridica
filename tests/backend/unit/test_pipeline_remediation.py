@@ -18,6 +18,9 @@ from uuid import uuid4
 
 @pytest.fixture
 def pipeline(monkeypatch):
+    async def stream_general_text(**_):
+        yield "UNVALIDATED"
+
     state = main.app.state
     values = dict(
         corpus_state="ready",
@@ -34,7 +37,9 @@ def pipeline(monkeypatch):
             ),
         ),
         legal_agent=SimpleNamespace(
-            respond_general=AsyncMock(return_value={"respuesta_espanol": "UNVALIDATED"})
+            respond_general=AsyncMock(return_value={"respuesta_espanol": "UNVALIDATED"}),
+            stream_general_text=stream_general_text,
+            build_general_response_from_text=lambda text, _: {"respuesta_espanol": text},
         ),
         context_engineer=SimpleNamespace(
             build_legal_prompt=MagicMock(return_value=("prompt", {}))
@@ -224,7 +229,8 @@ async def test_query_and_stream_return_same_validated_content(pipeline):
         == final["data"]["response"]
         == {"respuesta_espanol": "VALIDATED"}
     )
-    assert "UNVALIDATED" not in str(events)
+    assert any(event["type"] == "chunk" and event["delta"] == "UNVALIDATED" for event in events)
+    assert "UNVALIDATED" not in str(final)
     assert pipeline.response_validator.validate.await_count == 2
 
 

@@ -12,7 +12,7 @@ y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por en
 
 ## Empezar en local
 
-Necesitas Python **3.12–3.13** (`.python-version`: 3.12.10), UV, Node **24.22.1 o posterior de la rama 24**,
+Necesitas Python **3.12–3.14** (`.python-version`: 3.14.10), UV, Node **24.22.1 o posterior de la rama 24**,
 pnpm **10.30.2** y Docker Compose o el equivalente de Podman para los servicios.
 Los locks, no este documento, son la fuente de versiones reproducibles.
 

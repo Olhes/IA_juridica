@@ -10,6 +10,13 @@ import pytest
 from ingestion.pipeline import LegalIngestionPipeline
 from ingestion.docling_processor import LegalPDFProcessor
 from ingestion.source_evidence import persist_source_evidence
+from tests.backend.fixtures.sat_store import FixtureSATStore
+
+
+@pytest.fixture
+def sat_store(tmp_path):
+    """Grafo SAT aislado por prueba; producción usa el esquema PostgreSQL compartido."""
+    return lambda: FixtureSATStore(tmp_path / "sat_graph.sqlite3")
 
 
 @pytest.mark.parametrize("replacement", ["", "\ufffd"])
@@ -82,7 +89,7 @@ def test_evidence_hashes_exact_multiline_utf8_bytes(tmp_path):
     assert record.markdown_sha256 == hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def test_batch_matches_upload_identity_and_keeps_legacy_result(tmp_path, monkeypatch):
+def test_batch_matches_upload_identity_and_keeps_legacy_result(tmp_path, monkeypatch, sat_store):
     """Upload and batch ingestion share byte-based evidence identity and retain legacy RAG results."""
     from tests.backend.fixtures.uploads import configured_client, upload
 
@@ -92,7 +99,7 @@ def test_batch_matches_upload_identity_and_keeps_legacy_result(tmp_path, monkeyp
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed\nArtículo único\n"))
     pipeline = LegalIngestionPipeline(
         rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "source_evidence",
-        legacy_rag_write=True,
+        legacy_rag_write=True, sat_store_factory=sat_store,
     )
     pipeline.raw_dir = tmp_path / "batch-raw"
     pipeline.processed_dir = tmp_path / "batch-processed"
@@ -112,13 +119,13 @@ def test_batch_matches_upload_identity_and_keeps_legacy_result(tmp_path, monkeyp
     assert len(list((tmp_path / "source_evidence").glob("*.json"))) == 1
 
 
-def test_batch_fails_closed_on_markdown_or_evidence_failure(tmp_path):
+def test_batch_fails_closed_on_markdown_or_evidence_failure(tmp_path, sat_store):
     """Los fallos simulados del sistema de archivos impiden escrituras en RAG y trasladan el PDF por lotes al almacenamiento de fallidos."""
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed"))
     pipeline = LegalIngestionPipeline(
         rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
-        legacy_rag_write=True,
+        legacy_rag_write=True, sat_store_factory=sat_store,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"
@@ -143,13 +150,13 @@ def test_batch_fails_closed_on_markdown_or_evidence_failure(tmp_path):
     rag.rebuild_index.assert_not_awaited()
 
 
-def test_batch_divergent_retry_preserves_existing_markdown_and_evidence(tmp_path):
+def test_batch_divergent_retry_preserves_existing_markdown_and_evidence(tmp_path, sat_store):
     """A changed conversion on retry fails without replacing the first Markdown or evidence record."""
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# First conversion"))
     pipeline = LegalIngestionPipeline(
         rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
-        legacy_rag_write=True,
+        legacy_rag_write=True, sat_store_factory=sat_store,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"
@@ -173,13 +180,13 @@ def test_batch_divergent_retry_preserves_existing_markdown_and_evidence(tmp_path
     rag.rebuild_index.assert_awaited_once()
 
 
-def test_batch_retry_with_processor_output_alias_preserves_original(tmp_path):
+def test_batch_retry_with_processor_output_alias_preserves_original(tmp_path, sat_store):
     """A processor writing into the batch output directory cannot overwrite artifacts on divergent retry."""
     rag = SimpleNamespace(add_document=AsyncMock(), rebuild_index=AsyncMock())
     processor = LegalPDFProcessor.__new__(LegalPDFProcessor)
     pipeline = LegalIngestionPipeline(
         rag_engine=rag, pdf_processor=processor, evidence_store_dir=tmp_path / "evidence",
-        legacy_rag_write=True,
+        legacy_rag_write=True, sat_store_factory=sat_store,
     )
     pipeline.raw_dir = tmp_path / "raw"
     pipeline.processed_dir = tmp_path / "processed"

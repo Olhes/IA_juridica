@@ -79,6 +79,7 @@ async def stream_legal_query(
     yield next_event(MetaEvent, data={"language": language, "pipeline": pipeline})
     task = asyncio.create_task(run())
     deadline = time.monotonic() + timeout_s
+    chunk_emitted = False
     try:
         while True:
             remaining = deadline - time.monotonic()
@@ -90,6 +91,7 @@ async def stream_legal_query(
                 yield next_event(StageEvent, **value)
                 continue
             if kind == "delta":
+                chunk_emitted = True
                 yield next_event(ChunkEvent, delta=value)
                 continue
             if kind == "result":
@@ -98,7 +100,10 @@ async def stream_legal_query(
                 except Exception as error:  # noqa: BLE001
                     kind, value = "error", error
                 else:
-                    if not live_text:
+                    # Modo live: el texto llega por deltas. Si el pipeline no emitió
+                    # ninguno (p. ej. respuesta cacheada), el cliente igual recibe el
+                    # texto antes de `final`; en modo validado siempre se emite aquí.
+                    if not chunk_emitted:
                         yield next_event(ChunkEvent, delta=extract_text(value))
                     yield next_event(FinalEvent, data=jsonable_encoder(value))
                     break

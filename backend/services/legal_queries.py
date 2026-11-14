@@ -129,10 +129,9 @@ async def answer_query(
 
     processed_query = query
     query_language = LanguageDetector().detect_language(query)
-    translator = TranslationService()
     if query_language == "qu":
         async with timer.stage("translate_in"):
-            translated = await translator.translate(query, "qu", "es")
+            translated = await TranslationService().translate(query, "qu", "es")
         if not translated.get("success"):
             raise PipelineError(
                 503, "Query translation unavailable; retry in Spanish",
@@ -242,7 +241,7 @@ async def answer_query(
     if language == "quechua":
         original = response_text(final)
         async with timer.stage("translate_out"):
-            result = await translator.translate(original, "es", "qu")
+            result = await TranslationService().translate(original, "es", "qu")
         translated = bool(result.get("success"))
         translated_text = result.get("translated_text", original) if translated else original
         # El aviso vive solo en `metadata.translation`; el texto no lleva avisos pegados.

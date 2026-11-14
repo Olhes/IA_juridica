@@ -6,38 +6,13 @@ Implementa traducción en cascada con modelos específicos
 from typing import Dict, List, Optional, Tuple, Any
 import asyncio
 import re
+from importlib.util import find_spec
 from loguru import logger
 
-# Transformers para NLLB (modelo de traducción quechua-español)
-TRANSFORMERS_AVAILABLE = True
-
-try:
-    from googletrans import Translator
-
-    GOOGLE_TRANSLATE_AVAILABLE = True
-except ImportError:
-    logger.warning(
-        "googletrans no disponible. Google Translate API no estará disponible."
-    )
-    GOOGLE_TRANSLATE_AVAILABLE = False
-
-try:
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-    NLLB_AVAILABLE = True
-except ImportError:
-    logger.warning(
-        "transformers no disponible. NLLB no estará disponible."
-    )
-    NLLB_AVAILABLE = False
-
-try:
-    from deep_translator import MyMemoryTranslator
-    MYMEMORY_AVAILABLE = True
-except ImportError:
-    logger.warning(
-        "deep-translator no disponible. MyMemory no estará disponible."
-    )
-    MYMEMORY_AVAILABLE = False
+# NLLB no se inicializa en este servicio. Solo informamos si está instalado.
+TRANSFORMERS_AVAILABLE = find_spec("transformers") is not None
+GOOGLE_TRANSLATE_AVAILABLE = find_spec("googletrans") is not None
+MYMEMORY_AVAILABLE = find_spec("deep_translator") is not None
 
 from .language_config import LanguageConfig, LanguageCode
 from .language_detector import LanguageDetector
@@ -113,20 +88,10 @@ class TranslationService:
         # Verificar disponibilidad de transformers
         logger.info(f"📦 TRANSFORMERS_AVAILABLE: {TRANSFORMERS_AVAILABLE}")
         logger.info(f"📦 GOOGLE_TRANSLATE_AVAILABLE: {GOOGLE_TRANSLATE_AVAILABLE}")
-        logger.info(f"📦 NLLB_AVAILABLE: {NLLB_AVAILABLE}")
 
         # Inicializar Google Translate si está disponible
         self.google_translate_available = GOOGLE_TRANSLATE_AVAILABLE
-        if self.google_translate_available:
-            try:
-                self.google_translator = Translator()
-                logger.info("✅ Google Translate inicializado")
-            except Exception as e:
-                logger.warning("operation_failed error_type={}", type(e).__name__)
-                self.google_translator = None
-                self.google_translate_available = False
-        else:
-            self.google_translator = None
+        self.google_translator = None
 
         # NLLB deshabilitado temporalmente - modelos inestables
         self.nllb_available = False
@@ -366,7 +331,9 @@ class TranslationService:
         """Usa Google Translate API para traducción"""
         try:
             if not self.google_translator:
-                raise RuntimeError("Google Translate no disponible")
+                from googletrans import Translator
+
+                self.google_translator = Translator()
 
             # Mapeo de códigos de idioma para Google Translate
             google_lang_mapping = {
@@ -589,6 +556,8 @@ class TranslationService:
     def _mymemory_translate_sync(self, text: str, src_lang: str, tgt_lang: str) -> str:
         """Método síncrono para traducción MyMemory"""
         try:
+            from deep_translator import MyMemoryTranslator
+
             translator = MyMemoryTranslator(source=src_lang, target=tgt_lang)
             result = translator.translate(text)
             return result
