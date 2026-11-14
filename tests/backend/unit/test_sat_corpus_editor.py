@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from ingestion.sat_graph.store import SATGraphStore, digest
+from ingestion.sat_graph.store import digest
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from retrieval.sat import SATRetriever, SearchPlan
 from retrieval.sat_chat import SATChatRetriever
 from services.sat_corpus import CorpusEditor, Edition, Publication, TextEdit, Conflict, replace_text, validate_edition
@@ -41,7 +42,7 @@ def corpus(tmp_path):
                 store._edge(db,parent,"documentary_has_part",identity,{})
                 store._edge(db,"w:"+parent,"has_part","w:"+identity,{})
                 store._edge(db,"v:"+parent,"contains_version","v:"+identity,{})
-    return CorpusEditor(path)
+    return CorpusEditor(store)
 
 
 def edited(corpus):
@@ -95,7 +96,7 @@ def test_publication_updates_markdown_ctv_clv_ancestors_and_live_chat(corpus):
         assert db.execute("SELECT markdown FROM sat_documents WHERE evidence_id='source'").fetchone()[0] != edition.markdown
     old_texts = {n["id"]: n for n in initial["nodes"] if n["type"] == "CLV"}
     assert all(n == old_texts[n["id"]] for n in graph["nodes"] if n["id"] in old_texts)
-    result = asyncio.run(SATChatRetriever(corpus.store.path).query_with_rerank("protección integral niñez"))
+    result = asyncio.run(SATChatRetriever(corpus.store).query_with_rerank("protección integral niñez"))
     assert any("integral" in d["content"] for d in result["documents"])
     # Further changes work; a stale browser cannot overwrite them.
     with pytest.raises(Conflict):
@@ -185,7 +186,7 @@ def test_transaction_rolls_back_late_failure(corpus, monkeypatch):
 def client(corpus, monkeypatch):
     from config.settings import settings
     from sat_review_app import create_local_app
-    monkeypatch.setattr(settings, "SAT_GRAPH_PATH", str(corpus.store.path))
+    monkeypatch.setattr("services.sat_corpus_routes.runtime_sat_store", lambda: corpus.store)
     with TestClient(create_local_app("test-local-capability")) as client:
         yield client
 

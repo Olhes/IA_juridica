@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import main
 from config.settings import settings
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 
 
 def configured_client(monkeypatch, tmp_path):
@@ -17,6 +18,7 @@ def configured_client(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "SAT_INGESTION_LEGACY_RAG", True)
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")
+    monkeypatch.setattr(main, "sat_graph_store", lambda: SATGraphStore(tmp_path / "sat_graph.sqlite3"))
     processor = SimpleNamespace(process_pdf=AsyncMock(return_value="# Processed\nArtículo único\n"))
     monkeypatch.setattr(main.app.state, "pdf_processor", processor, raising=False)
     monkeypatch.setattr(

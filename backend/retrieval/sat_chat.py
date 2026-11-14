@@ -1,18 +1,15 @@
 """Adaptador de SAT para el contrato de recuperación del chat."""
 import asyncio
 from datetime import date
-from pathlib import Path
 
 from ingestion.sat_graph.store import SATGraphStore
 from retrieval.sat import SATRetriever, SearchPlan
-from retrieval.sat_citations import references, requests_literals, resolve_reference, with_prior_reference
+from retrieval.sat_citations import match_article_heading, references, requests_literals, resolve_reference, with_prior_reference
 
 
 class SATChatRetriever:
-    def __init__(self, graph_path: Path, as_of: str | None = None):
-        self.graph_path = Path(graph_path)
-        if not self.graph_path.is_file():
-            raise FileNotFoundError(f"No existe el grafo SAT: {self.graph_path}")
+    def __init__(self, store: SATGraphStore, as_of: str | None = None):
+        self.store = store
         self.as_of = date.fromisoformat(as_of) if as_of else None
 
     def get_cache_revision(self):
@@ -25,7 +22,7 @@ class SATChatRetriever:
         return {}
 
     def _search(self, query, top_k, candidates, prior_questions=()):
-        graph = SATGraphStore(self.graph_path).export()
+        graph = self.store.export()
         current = query.partition("\nContexto de preguntas anteriores:\n")[0]
         parsed = with_prior_reference(references(current), prior_questions)
         q, resources, articles, incisos, numerals, ambiguous = parsed
@@ -54,6 +51,16 @@ class SATChatRetriever:
                 "warning": "Indica la norma y el artículo del que quieres los literales.",
                 "reference": {"status": "unresolved"},
             }
+        if not articles and not ambiguous and len(resources) <= 1:
+            heading = match_article_heading(retriever, plan, current)
+            if heading:
+                resource, article = heading
+                exact = plan.model_copy(update={"resource_ids": [resource]})
+                citation = references(f"artículo {article}")[2]
+                return resolve_reference(
+                    retriever, exact, (q, {resource}, citation, incisos, numerals, False),
+                    heading_list=True,
+                )
         return retriever.search(plan)
 
     async def query_with_rerank(self, query, top_k=None, rerank_candidates=None, trace=None, *, prior_questions=()):

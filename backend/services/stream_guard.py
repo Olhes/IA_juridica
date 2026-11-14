@@ -4,8 +4,8 @@ Envuelve el generador de líneas y, pase lo que pase aguas arriba, entrega:
 
 * cada línea válida contra el esquema, con ``seq`` consecutivo desde 0 y un único ``request_id``;
 * a lo sumo **un** evento terminal (``final`` o ``error``) y después un único ``done``;
-* texto (``chunk``) solo si coincide con el de ``final``: un ``chunk`` se retiene hasta ver
-  su ``final`` y, si difieren o el ``final`` no llega, no se entrega;
+* en modo live, reenvía fragmentos provisionales; en modo validado, retiene el
+  texto hasta comprobar que coincide con ``final``;
 * un ``error`` ``TIMEOUT`` si el origen se queda mudo más de ``idle_timeout_s`` (watchdog).
 
 Una violación nunca se silencia: se registra (solo el tipo, jamás el contenido) y el cliente
@@ -37,9 +37,10 @@ def _line(event) -> str:
 
 
 class StreamGuard:
-    def __init__(self, *, extract_text: Callable[[dict], str], request_id: str):
+    def __init__(self, *, extract_text: Callable[[dict], str], request_id: str, live_text=False):
         self._extract_text = extract_text
         self._request_id = request_id
+        self._live_text = live_text
         self.violations: list = []
         self._seq = 0
         self._terminal: Optional[str] = None
@@ -100,6 +101,8 @@ class StreamGuard:
         self._saw_meta = True
 
         if event.type == "chunk":
+            if self._live_text:
+                return [self._emit(ChunkEvent, delta=event.delta)]
             if self._held_chunk is not None:
                 self._violation("multiple_chunks")
                 return self._fail()
@@ -146,9 +149,9 @@ class StreamGuard:
         return self._fail("TIMEOUT")
 
 
-async def guard_stream(source, *, extract_text, request_id, idle_timeout_s: float):
+async def guard_stream(source, *, extract_text, request_id, idle_timeout_s: float, live_text=False):
     """Generador asíncrono que aplica ``StreamGuard`` a las líneas de ``source``."""
-    guard = StreamGuard(extract_text=extract_text, request_id=request_id)
+    guard = StreamGuard(extract_text=extract_text, request_id=request_id, live_text=live_text)
     iterator = source.__aiter__()
     try:
         while True:

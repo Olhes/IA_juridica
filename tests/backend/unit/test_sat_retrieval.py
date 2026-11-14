@@ -7,7 +7,7 @@ from hashlib import sha256
 import pytest
 from pydantic import ValidationError
 
-from ingestion.sat_graph.store import SATGraphStore
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from retrieval.sat import (
     SATRetriever,
     SearchPlan,

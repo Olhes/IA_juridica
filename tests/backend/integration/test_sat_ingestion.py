@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import main
 from config.settings import Settings, settings
 from ingestion.pipeline import LegalIngestionPipeline
-from ingestion.sat_graph.store import SATGraphStore
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from ingestion.conversion import ConversionArtifact
 from tests.backend.fixtures.uploads import configured_client, upload
 
@@ -40,6 +40,7 @@ def test_sat_upload_and_batch_share_commit_and_skip_legacy_llm(monkeypatch, tmp_
         pdf_processor=processor,
         evidence_store_dir=tmp_path / "source_evidence",
         docs_root=tmp_path / "batch",
+        sat_store_factory=main.sat_graph_store,
     )
     pdf = pipeline.raw_dir / "same.pdf"
     pdf.write_bytes(b"%PDF-1.7\nbody")
@@ -109,7 +110,9 @@ def test_sat_batch_storage_failure_never_acknowledges_success(monkeypatch, tmp_p
     )
     pdf = pipeline.raw_dir / "case.pdf"
     pdf.write_bytes(b"%PDF-1.7\nbody")
-    pipeline.sat_graph_path.mkdir()
+    broken = tmp_path / "sat_graph.sqlite3"
+    broken.mkdir()
+    pipeline.sat_store_factory = lambda: SATGraphStore(broken)
     result = asyncio.run(pipeline.process_all_pdfs())
     assert result["processed_count"] == 0 and result["failed_count"] == 1
     assert (pipeline.failed_dir / "case.pdf").exists()
@@ -146,6 +149,7 @@ def test_sat_upload_and_batch_preserve_same_docling_artifact(monkeypatch, tmp_pa
         evidence_store_dir=tmp_path / "source_evidence",
         docs_root=tmp_path / "batch",
         legacy_rag_write=False,
+        sat_store_factory=main.sat_graph_store,
     )
     pdf = pipeline.raw_dir / "same.pdf"
     pdf.write_bytes(b"%PDF-1.7\nbody")

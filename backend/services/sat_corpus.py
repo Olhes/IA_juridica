@@ -1,21 +1,20 @@
 """Editorial review of the *actual* SAT corpus, not a second visualization store.
 
 Original evidence is immutable. Publishing creates a new documentary/CTV/CLV
-edition and retires the previous editorial edition in one SQLite transaction.
+edition and retires the previous editorial edition in one transaction.
 No legal dates are inferred. Work identities survive corrections.
 """
-from contextlib import closing
 from datetime import datetime, timezone
 from hashlib import sha256
 from difflib import SequenceMatcher
 from pathlib import Path
 import json
-import sqlite3
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest, work_id
+from ingestion.sat_graph.postgres import PostgresSATGraphStore
 from retrieval.sat import SATRetriever, SearchPlan
 
 
@@ -230,10 +229,8 @@ def document(graph, resource_id):
 
 
 class CorpusEditor:
-    def __init__(self, path):
-        if not Path(path).is_file():
-            raise ValueError("No existe la base SAT configurada")
-        self.store = SATGraphStore(path)
+    def __init__(self, store: SATGraphStore):
+        self.store = store
 
     def list(self):
         return documents(self.store.export())
@@ -354,10 +351,10 @@ def candidate_already_published(item, node):
 class CandidateShelf:
     def __init__(self, root):
         self.root = Path(root).resolve()
-        self.path = self.root / "candidates.sqlite3"
+        self.store = PostgresSATGraphStore(candidates=True)
 
     def list(self):
-        if not self.path.is_file():
+        if not self.store.candidate_store_available():
             return []
         sources = {}
         for name in ("acquisition.json", "attachments.json"):
@@ -366,9 +363,9 @@ class CandidateShelf:
                 for item in json.loads(path.read_text(encoding="utf-8")):
                     if item.get("sha256"):
                         sources[item["sha256"]] = item
-        with closing(sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)) as db:
+        with self.store._reader() as db:
             evidence = {eid: pid for eid, pid in db.execute(
-                "SELECT evidence_id,id FROM sat_parses GROUP BY evidence_id HAVING count(*)=1")}
+                "SELECT evidence_id,min(id) FROM sat_parses GROUP BY evidence_id HAVING count(*)=1")}
         result = []
         for path in sorted(self.root.glob("converted/*/report.json")):
             report = json.loads(path.read_text(encoding="utf-8"))
@@ -390,7 +387,7 @@ class CandidateShelf:
         item = next((row for row in self.list() if row["id"] == identity), None)
         if not item:
             raise ValueError("Candidato inexistente")
-        with closing(sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)) as db:
+        with self.store._reader() as db:
             row = db.execute(
                 """SELECT d.markdown,p.artifact,n.payload,s.payload FROM sat_parses p
                    JOIN sat_documents d ON d.evidence_id=p.evidence_id

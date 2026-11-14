@@ -38,7 +38,10 @@ from security import (
 from ingestion.pipeline import LegalIngestionPipeline
 from ingestion.source_evidence import persist_source_evidence
 from ingestion.conversion import convert_for_ingestion
-from ingestion.sat_graph.store import SATGraphStore, stage_document
+from ingestion.sat_graph.store import stage_document
+from ingestion.sat_graph.runtime import runtime_sat_store
+from ingestion.sat_graph.postgres import PostgresSATGraphStore
+from database.postgres_connection import connect_postgres
 from retrieval.sat import SATRetriever, SearchPlan
 from retrieval.voyage import VoyageProvider, VoyageError
 from modules.rag.services.lightrag_engine import LegalRAGEngine
@@ -79,8 +82,8 @@ RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
 
-def sat_graph_path():
-    return Path(settings.SAT_GRAPH_PATH) if settings.RAG_ENGINE.lower() == "sat" else PROCESSED_DIR.parent / "sat_graph.sqlite3"
+def sat_graph_store():
+    return runtime_sat_store()
 
 logger = logging.getLogger("ia_juridica.api")
 
@@ -271,13 +274,18 @@ async def lifespan(app: FastAPI):
         # Crear instancias pero no inicializar componentes pesados
         sat_mode = settings.RAG_ENGINE.lower() == "sat"
         app.state.rag_engine = None if sat_mode else LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
-        app.state.query_retriever = SATChatRetriever(sat_graph_path()) if sat_mode else app.state.rag_engine
+        if sat_mode:
+            store = await asyncio.to_thread(sat_graph_store)
+            if isinstance(store, PostgresSATGraphStore):
+                await asyncio.to_thread(store.require_ready)
+            app.state.query_retriever = SATChatRetriever(store)
+        else:
+            app.state.query_retriever = app.state.rag_engine
         app.state.ingestion_pipeline = LegalIngestionPipeline(
             rag_engine=app.state.rag_engine,
             legacy_rag_write=not sat_mode and settings.SAT_INGESTION_LEGACY_RAG,
+            sat_store_factory=sat_graph_store,
         )
-        if settings.RAG_ENGINE.lower() == "sat":
-            app.state.ingestion_pipeline.sat_graph_path = sat_graph_path()
         app.state.legal_agent = LegalAgent()
         app.state.context_engineer = ContextEngineer()
 
@@ -860,8 +868,7 @@ async def upload_document(
             )
             evidence_published = True
             sat_result = await asyncio.to_thread(
-                stage_document, sat_graph_path(),
-                evidence, processed_content, artifact.docling_document,
+                lambda: stage_document(sat_graph_store(), evidence, processed_content, artifact.docling_document),
             )
 
         legacy_write = app.state.rag_engine is not None and (
@@ -967,7 +974,7 @@ async def legal_query(request: Request, payload: LegalQueryRequest, principal: P
 @app.post("/legal-query-stream")
 @limiter.limit(settings.LLM_RATE_LIMIT)
 async def legal_query_stream(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
-    """NDJSON v1: etapas en vivo y texto solo ya validado, nunca borradores.
+    """NDJSON v1: español progresivo, con respuesta final validada.
 
     Autorización y conversación ajena (401/404) se resuelven antes de abrir el
     stream; los fallos posteriores salen como evento `error` con `code`.
@@ -998,20 +1005,23 @@ async def legal_query_stream(request: Request, payload: LegalQueryRequest, princ
 
     request_id = getattr(request.state, "request_id", "unknown")
     source = stream_legal_query(
-        run_pipeline=lambda on_stage: answer_query(app.state, payload.query, payload.language, history=history,
-                                                   context=payload.context, cache_key=cache_key, on_stage=on_stage),
+        run_pipeline=lambda on_stage, on_delta=None: answer_query(app.state, payload.query, payload.language, history=history,
+                                                   context=payload.context, cache_key=cache_key, on_stage=on_stage,
+                                                   **({"on_delta": on_delta} if on_delta is not None else {})),
         extract_text=lambda result: _extract_response_text(result["response"], payload.language),
         persist=persist,
         request_id=request_id,
         language=payload.language,
         timeout_s=settings.STREAM_PIPELINE_TIMEOUT_SECONDS,
+        live_text=payload.language == "spanish",
     )
-    # StreamGuard garantiza esquema, un solo terminal + done, chunk == final y watchdog.
+    # El guardián verifica el esquema, la secuencia, los terminales y el timeout.
     events = guard_stream(
         source,
         extract_text=lambda data: _extract_response_text(data["response"], payload.language),
         request_id=request_id,
         idle_timeout_s=settings.STREAM_IDLE_TIMEOUT_SECONDS,
+        live_text=payload.language == "spanish",
     )
     return StreamingResponse(events, media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
@@ -1156,7 +1166,7 @@ async def get_knowledge_graph(engine: str | None = None, _auth: bool = Depends(v
     try:
         if engine == "sat":
             graph_data = await asyncio.to_thread(
-                lambda: SATGraphStore(sat_graph_path()).export()
+                lambda: sat_graph_store().export()
             )
             return {"success": True, "graph": graph_data}
         if engine != "lightrag":
@@ -1178,7 +1188,7 @@ async def resolve_sat_version(resource_id: str, component: str, as_of: str,
     """Lectura admin determinística; no cambia el recuperador del chat legado."""
     try:
         return await asyncio.to_thread(
-            lambda: SATGraphStore(sat_graph_path()).resolve(
+            lambda: sat_graph_store().resolve(
                 resource_id, component, as_of
             )
         )
@@ -1195,7 +1205,7 @@ async def sat_candidate_structure(evidence_id: str, parse_id: str | None = None,
     """AST y layout candidatos, solo para revisión administrativa autorizada."""
     try:
         return await asyncio.to_thread(
-            lambda: SATGraphStore(sat_graph_path()).structure(evidence_id, parse_id)
+            lambda: sat_graph_store().structure(evidence_id, parse_id)
         )
     except ValueError:
         raise HTTPException(422, "Missing or ambiguous SAT structure; specify a valid parse_id")
@@ -1214,14 +1224,14 @@ async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool 
         if use_voyage:
             provider = VoyageProvider(
                 settings.VOYAGE_API_KEY.get_secret_value(),
-                PROCESSED_DIR.parent / "voyage_cache.sqlite3",
+                connect=connect_postgres,
                 dimension=settings.VOYAGE_DIMENSION,
                 daily_requests=settings.VOYAGE_DAILY_REQUESTS,
                 daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,
                 requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
                 token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
             )
-        graph = SATGraphStore(sat_graph_path()).export()
+        graph = sat_graph_store().export()
         return SATRetriever(graph).search(plan, provider=provider)
 
     try:
@@ -1240,7 +1250,7 @@ async def sat_graph_history(resource_id: str, component: str,
                             _auth: bool = Depends(verify_admin_api_key)):
     try:
         return await asyncio.to_thread(lambda: SATRetriever(
-            SATGraphStore(sat_graph_path()).export()
+            sat_graph_store().export()
         ).history(resource_id, component))
     except Exception as error:
         _log_failure("sat_graph_history_failed", error)

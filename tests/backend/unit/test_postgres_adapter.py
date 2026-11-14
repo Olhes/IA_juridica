@@ -116,7 +116,8 @@ async def test_conversation_update_rolls_back_database_error():
 async def test_disconnected_adapter_never_returns_fabricated_conversations():
     db = PostgreSQLAdapter()
     db.conn = None
-    assert await db.get_conversation("c1", "owner") is None
+    with pytest.raises(DatabaseUnavailableError):
+        await db.get_conversation("c1", "owner")
     assert await db.get_conversation_messages("c1", "owner") == []
     assert await db.list_conversations("owner") == []
     assert await db.update_conversation("c1", "owner", {}) is False

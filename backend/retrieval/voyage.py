@@ -1,10 +1,10 @@
 """Voyage REST con cache contextual, cuota local persistente y errores sin secretos.
 
 Solo reintenta 429 explícitos, nunca timeouts ambiguos. La reserva se conserva
-ante error. Todos los procesos deben compartir este archivo para compartir cuota.
+ante error. Los procesos de la aplicación comparten caché y cuota en PostgreSQL.
 """
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import json
 import math
@@ -14,8 +14,31 @@ import time
 from email.utils import parsedate_to_datetime
 
 import httpx
+import psycopg
 
 from .sat import fingerprint
+
+
+class _VoyagePostgres:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, sql, args=()):
+        if sql == "BEGIN IMMEDIATE":
+            # A transaction and its advisory lock are already active.
+            return None
+        sql = sql.replace("?", "%s").replace("max(until,excluded.until)", "greatest(voyage_cooldown.until,excluded.until)")
+        if sql.startswith("INSERT OR IGNORE INTO voyage_usage"):
+            sql = sql.replace("INSERT OR IGNORE", "INSERT") + " ON CONFLICT(day) DO NOTHING"
+        if sql.startswith("INSERT OR REPLACE INTO voyage_cache"):
+            sql = sql.replace("INSERT OR REPLACE", "INSERT") + " ON CONFLICT(key) DO UPDATE SET result=excluded.result,tokens=excluded.tokens"
+        return self.connection.execute(sql, args)
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
 
 
 class VoyageError(RuntimeError):
@@ -42,7 +65,7 @@ class VoyageProvider:
     def __init__(
         self,
         api_key: str,
-        cache_path: Path,
+        cache_path: Path | None = None,
         *,
         dimension=1024,
         daily_requests=100,
@@ -55,6 +78,7 @@ class VoyageProvider:
         sleep=time.sleep,
         transport=None,
         cache_only=False,
+        connect=None,
     ):
         if type(cache_only) is not bool:
             raise ValueError("cache_only requiere booleano")
@@ -69,9 +93,12 @@ class VoyageProvider:
         if not 0 <= max_429_retries <= 3 or not 0 <= max_wait_seconds <= 300:
             raise ValueError("Espera/reintentos fuera de rango")
         self._key = api_key
-        self.path = Path(cache_path)
+        if (cache_path is None) == (connect is None):
+            raise ValueError("Configura un solo almacenamiento de caché Voyage")
+        self.connect = connect
+        self.path = Path(cache_path) if cache_path is not None else None
         self.cache_only = cache_only
-        if not cache_only:
+        if not cache_only and self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self.dimension = dimension
         self.daily_requests = daily_requests
@@ -90,10 +117,12 @@ class VoyageProvider:
                     db.execute(
                         "SELECT day,requests,reserved,actual FROM voyage_usage LIMIT 0"
                     )
-            except sqlite3.Error:
+            except (sqlite3.Error, psycopg.Error):
                 raise VoyageError("Caché Voyage ausente o incompatible") from None
             return
         with self._db() as db:
+            if self.connect:
+                db.execute("BEGIN IMMEDIATE")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS voyage_cache (key TEXT PRIMARY KEY, result TEXT NOT NULL, tokens INTEGER NOT NULL)"
             )
@@ -101,13 +130,15 @@ class VoyageProvider:
                 "CREATE TABLE IF NOT EXISTS voyage_usage (day TEXT PRIMARY KEY, requests INTEGER NOT NULL, reserved INTEGER NOT NULL, actual INTEGER NOT NULL)"
             )
             db.execute(
-                "CREATE TABLE IF NOT EXISTS voyage_rate (scope TEXT, model TEXT, started REAL, reserved INTEGER)"
+                "CREATE TABLE IF NOT EXISTS voyage_rate (scope TEXT, model TEXT, started DOUBLE PRECISION, reserved INTEGER)"
             )
             db.execute(
-                "CREATE TABLE IF NOT EXISTS voyage_cooldown (scope TEXT, model TEXT, until REAL, PRIMARY KEY(scope,model))"
+                "CREATE TABLE IF NOT EXISTS voyage_cooldown (scope TEXT, model TEXT, until DOUBLE PRECISION, PRIMARY KEY(scope,model))"
             )
 
     def _db(self):
+        if self.connect:
+            return self._postgres_db()
         if self.cache_only:
             return closing(
                 sqlite3.connect(
@@ -118,6 +149,17 @@ class VoyageProvider:
                 )
             )
         return closing(sqlite3.connect(self.path, timeout=60, isolation_level=None))
+
+    @contextmanager
+    def _postgres_db(self):
+        with self.connect() as connection:
+            if self.cache_only:
+                connection.execute("SET TRANSACTION READ ONLY")
+            else:
+                connection.execute("SELECT pg_advisory_xact_lock(6591427708186)")
+                connection.execute("CREATE SCHEMA IF NOT EXISTS sat_voyage")
+            connection.execute("SET LOCAL search_path TO sat_voyage, pg_catalog")
+            yield _VoyagePostgres(connection)
 
     def usage(self):
         day = datetime.fromtimestamp(self.clock(), timezone.utc).date().isoformat()

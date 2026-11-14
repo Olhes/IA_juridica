@@ -17,9 +17,8 @@ export function useChatSessions() {
   const reloadVersion = useRef(0);
   const unavailableIds = useRef(new Set<string>());
 
-  const forgetSession = useCallback((id: string) => {
+  const deselectUnavailableSession = useCallback((id: string) => {
     unavailableIds.current.add(id);
-    setSessions((prev) => prev.filter((session) => session.id !== id));
     setActiveSessionId((current) => current === id ? null : current);
   }, []);
 
@@ -72,8 +71,7 @@ export function useChatSessions() {
     if (version !== reloadVersion.current) return;
 
     if (result.success) {
-      setSessions((current) => sessionsAfterLoad(current, result)
-        .filter((session) => !unavailableIds.current.has(session.id)));
+      setSessions((current) => sessionsAfterLoad(current, result));
       setSessionsLoadError(null);
     } else {
       setSessionsLoadError(result.error);
@@ -204,6 +202,6 @@ export function useChatSessions() {
     clearActiveSession,
     clearAllSessions,
     reloadSessions,
-    forgetSession,
+    deselectUnavailableSession,
   };
 }

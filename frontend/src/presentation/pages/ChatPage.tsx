@@ -262,17 +262,17 @@ export function ChatPage() {
     updateSessionMeta,
     deleteSession,
     reloadSessions,
-    forgetSession,
+    deselectUnavailableSession,
   } = useChatSessions();
 
   const [sessionNotice, setSessionNotice] = useState<string>();
   const [unsentMessage, setUnsentMessage] = useState<string>();
   const onDraftRecovered = useCallback(() => setUnsentMessage(undefined), []);
   const onSessionMissing = useCallback((id: string, draft?: string) => {
-    forgetSession(id);
+    deselectUnavailableSession(id);
     if (draft !== undefined) setUnsentMessage(draft);
-    setSessionNotice('Esta conversación ya no está disponible. Abre otra o inicia una nueva consulta.');
-  }, [forgetSession]);
+    setSessionNotice('No se pudo abrir esta conversación. Puedes reintentar desde Mis consultas o iniciar otra.');
+  }, [deselectUnavailableSession]);
 
   const onSessionUpdated = useCallback(
     (patch: { title?: string; preview?: string; messageCount?: number }) => {

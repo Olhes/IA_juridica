@@ -13,9 +13,14 @@ import pytest
 from ingestion.conversion import ConversionArtifact, convert_for_ingestion
 from ingestion.docling_processor import LegalPDFProcessor
 from ingestion.legal_structure import align_docling, parse_legal_structure
-from ingestion.sat_graph.__main__ import main as cli
-from ingestion.sat_graph.store import SATGraphStore, digest
+from ingestion.sat_graph.__main__ import main as sat_cli
+from ingestion.sat_graph.store import digest
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from ingestion.source_evidence import persist_source_evidence
+
+
+def cli(args):
+    return sat_cli(args, local_test_store=SATGraphStore)
 
 
 def assert_exact(text, parsed):

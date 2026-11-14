@@ -1,6 +1,6 @@
 import pytest
 
-from ingestion.sat_graph.store import SATGraphStore
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from retrieval.sat_chat import SATChatRetriever
 
 
@@ -16,22 +16,18 @@ async def test_sat_chat_retrieves_attested_ctv_and_abstains_outside_date(tmp_pat
         store._node(db, 'clv:test', 'CLV', {'language': 'es', 'text': 'Registro de deudores alimentarios morosos',
             'start': 0, 'evidence_id': 'fuente', 'source_url': 'https://example.org'})
         store._edge(db, 'ctv:test', 'has_text', 'clv:test', {})
-    adapter = SATChatRetriever(path, '2026-11-12')
+    adapter = SATChatRetriever(store, '2026-11-12')
     result = await adapter.query_with_rerank('deudores alimentarios')
     assert result['method'] == 'sat'
     assert result['documents'][0]['metadata']['version_id'] == 'ctv:test'
     assert result['documents'][0]['metadata']['retrieval_origin'] == 'sat'
     assert adapter.get_cache_revision() is None
-    absent = await SATChatRetriever(path, '2026-11-13').query_with_rerank('deudores alimentarios')
+    absent = await SATChatRetriever(store, '2026-11-13').query_with_rerank('deudores alimentarios')
     assert absent['documents'] == []
-    current = await SATChatRetriever(path).query_with_rerank('deudores alimentarios')
+    current = await SATChatRetriever(store).query_with_rerank('deudores alimentarios')
     assert current['documents'][0]['metadata']['version_id'] == 'ctv:test'
     assert current['sat_as_of'] is None
 
-
-def test_sat_chat_refuses_to_create_missing_graph(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        SATChatRetriever(tmp_path / 'missing.sqlite3')
 
 
 @pytest.mark.asyncio
@@ -72,12 +68,18 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
         provision("7.2a", "- a. Primero.", "inciso", "- a. Primero.", 60, "7.2", resource=decree)
         provision("7.2b", "- b. Segundo.", "inciso", "- b. Segundo.", 74, "7.2", resource=decree)
         provision("7.3", "7.3 Otra regla.", "numeral", "- 7.3 Otra regla.", 87, "7", resource=decree)
+        provision("13", "Artículo 13.- Lineamientos para el funcionamiento de los CIAM",
+                  "article", "Lineamientos:\n- a. Uno.\n- b. Dos.", 150, resource=decree)
+        provision("13a", "- a. Uno.", "inciso", "- a. Uno.", 166, "13", resource=decree)
+        provision("13b", "- b. Dos.", "inciso", "- b. Dos.", 176, "13", resource=decree)
+        provision("14", "Artículo 14.- Funcionamiento de los CIAM",
+                  "article", "Otro artículo.", 190, resource=decree)
         provision("law7", "Artículo 7.- Deberes", "article", "Texto distinto de la ley.", 0, resource="pe:ley:30490")
         provision("decree8", "Artículo 8.- Incompleto", "article",
                   "Artículo 8.- Incompleto\n- a. Uno.\n- b. Dos.", 100, resource=decree)
         provision("decree8a", "- a. Uno.", "inciso", "- a. Uno.", 125, "decree8", resource=decree)
 
-    adapter = SATChatRetriever(path)
+    adapter = SATChatRetriever(store)
     question = ("En el artículo 8 de la Ley N.º 28970, ¿cuáles son los supuestos del inciso d)?"
                 "\nContexto de preguntas anteriores:\nArtículo 80 de la Ley 30364")
     answer = await adapter.query_with_rerank(question, top_k=1)
@@ -107,6 +109,9 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
         "Decreto Supremo 024-2021-MIMP", "Artículo 7", "Numeral 7.2",
     ]
     assert answer["documents"][0]["content"] == list_text
+    direct = await adapter.query_with_rerank("Dame los literales del numeral 7.2 del artículo 7 del DS 024-2021-MIMP")
+    assert direct["sat_reference"]["status"] == "exact"
+    assert direct["verbatim_answer"].endswith("- a. Primero.\n- b. Segundo.")
     explicit = await adapter.query_with_rerank("Literal b. del numeral 7.2 del artículo 7 del D.S. 024-2021-MIMP")
     assert [d["document_id"] for d in explicit["documents"]] == ["work:7.2b"]
     incomplete = await adapter.query_with_rerank("Dame los literales del artículo 8 del DS 024-2021-MIMP")
@@ -116,3 +121,9 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
         "Compara el artículo 7 del DS-024-2021 con el artículo 7 de la Ley 30490",
     ])
     assert ambiguous["documents"] == []
+    by_heading = await adapter.query_with_rerank(
+        "Por otra parte, cuales son los lineamientos para el funcionamiento de los CIAM?",
+        prior_questions=["¿Qué dice el artículo 7 del DS-024-2021?"],
+    )
+    assert by_heading["sat_reference"]["article"] == "13"
+    assert by_heading["verbatim_answer"].endswith("- a. Uno.\n- b. Dos.")

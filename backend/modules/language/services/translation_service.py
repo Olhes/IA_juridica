@@ -410,14 +410,15 @@ class TranslationService:
     ) -> Dict[str, Any]:
         """Traducción usando Cohere LLM"""
         try:
-            import cohere
             from config.settings import settings
 
             if not settings.COHERE_API_KEY:
                 raise RuntimeError("Cohere API key no configurada")
 
             # Usar cliente asíncrono
-            cohere_client = cohere.AsyncClient(settings.COHERE_API_KEY)
+            from services.cohere_chat import CohereChat
+
+            cohere_client = CohereChat(settings.COHERE_API_KEY)
 
             # Prompt de traducción simplificado
             if source_lang == "es" and target_lang == "qu":

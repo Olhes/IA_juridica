@@ -681,7 +681,7 @@ class PromptManager:
 {query}
 
 === INSTRUCCIONES DE RESPUESTA ===
-- Responde en {"español y quechua" if language in ("spanish", "quechua") else language}
+- Redacta en {"español, sin traducciones ni una segunda versión" if language in ("spanish", "quechua") else language}
 - Cita artículos y leyes específicas del contexto proporcionado
 - Mantén sensibilidad cultural para comunidades rurales
 - Usa lenguaje sencillo y accesible

@@ -530,7 +530,7 @@ def main(argv=None):
     mode.add_argument(
         "--cache-only",
         action="store_true",
-        help="Reutiliza SQLite en solo lectura, sin clave ni red; misses no se puntúan",
+        help="Reutiliza el caché PostgreSQL en solo lectura, sin llamar a Voyage",
     )
     parser.add_argument("--stages", choices=list(STAGE_MODES), default="combined")
     parser.add_argument(
@@ -562,21 +562,24 @@ def main(argv=None):
     if args.output.exists():
         parser.error("El informe ya existe; elegir salida nueva")
     if args.voyage:
-        from dotenv import dotenv_values
+        from dotenv import load_dotenv
         import os
 
-        key = os.environ.get("VOYAGE_API_KEY") or dotenv_values(BACKEND / ".env").get(
-            "VOYAGE_API_KEY", ""
-        )
+        load_dotenv(BACKEND / ".env")
+        from database.postgres_connection import connect_postgres
+
+        key = os.environ.get("VOYAGE_API_KEY", "")
         provider = VoyageProvider(
             key,
-            BACKEND / "docs/voyage_cache.sqlite3",
+            connect=connect_postgres,
             dimension=args.dimension,
         )
     elif args.cache_only:
+        from database.postgres_connection import connect_postgres
+
         provider = VoyageProvider(
             "",
-            BACKEND / "docs/voyage_cache.sqlite3",
+            connect=connect_postgres,
             dimension=args.dimension,
             cache_only=True,
         )

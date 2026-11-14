@@ -7,13 +7,18 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from ingestion.sat_graph.__main__ import main
+from ingestion.sat_graph.__main__ import main as sat_cli
 from ingestion.sat_graph.catalog import CATALOG_PATH, load_catalog
 from ingestion.sat_graph.contracts import ReviewManifest, ReviewedUnit
-from ingestion.sat_graph.store import SATGraphStore, candidate_spans, digest, version_id
+from ingestion.sat_graph.store import candidate_spans, digest, version_id
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from ingestion.source_evidence import persist_source_evidence
 
 RESOURCE = "pe:ley:30364"
+
+
+def main(args):
+    return sat_cli(args, local_test_store=SATGraphStore)
 
 
 def staged(tmp_path, store, content, key="one"):

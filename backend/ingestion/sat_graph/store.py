@@ -4,14 +4,12 @@ Work/CTV/CLV corresponden a Item/Version/TextUnit en la API pública SAT.
 No interpreta reformas ni vigencia: solo aplica manifiestos jurídicos revisados.
 """
 
-from contextlib import closing, contextmanager
+from abc import ABC, abstractmethod
 from dataclasses import asdict
 from datetime import date
 import hashlib
 import json
-from pathlib import Path
 import re
-import sqlite3
 
 from ingestion.source_evidence import SourceEvidence
 from ingestion.legal_structure import parse_legal_structure
@@ -64,21 +62,19 @@ def candidate_spans(markdown: str) -> list[dict]:
 
 
 def stage_document(
-    path: Path,
+    store: "SATGraphStore",
     evidence: SourceEvidence,
     markdown: str,
     docling_document: dict | None = None,
 ) -> dict:
     """Punto común de upload/batch; inicializar almacenamiento solo tras evidencia."""
-    return SATGraphStore(path).stage(evidence, markdown, docling_document)
+    return store.stage(evidence, markdown, docling_document)
 
 
-class SATGraphStore:
-    """Una transacción por documento/revisión, conexiones cortas, sin servicios externos."""
+class SATGraphStore(ABC):
+    """Shared graph operations; transaction handling belongs to the storage adapter."""
 
-    def __init__(self, path: Path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def _initialize(self, *, seed_catalog=True):
         with self._transaction() as db:
             db.execute("CREATE TABLE IF NOT EXISTS sat_meta (version INTEGER NOT NULL)")
             if not db.execute("SELECT version FROM sat_meta").fetchone():
@@ -106,7 +102,7 @@ class SATGraphStore:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS sat_parse_evidence ON sat_parses(evidence_id)"
             )
-            for resource in load_catalog():
+            for resource in load_catalog() if seed_catalog else ():
                 payload = {
                     **resource,
                     "state": "catalogued",
@@ -131,22 +127,13 @@ class SATGraphStore:
                         },
                     )
 
-    @contextmanager
+    @abstractmethod
     def _transaction(self):
-        with closing(sqlite3.connect(self.path, timeout=30)) as db:
-            db.execute("PRAGMA foreign_keys=ON")
-            db.execute("BEGIN IMMEDIATE")
-            with db:
-                yield db
+        raise NotImplementedError
 
-    @contextmanager
+    @abstractmethod
     def _reader(self):
-        # Nodos, aristas y documentos deben proceder del mismo snapshot incluso
-        # si otra conexión confirma una revisión entre dos SELECT.
-        with closing(sqlite3.connect(self.path, timeout=30)) as db:
-            db.execute("BEGIN")
-            with db:
-                yield db
+        raise NotImplementedError
 
     @staticmethod
     def _node(db, identity, kind, payload):
@@ -157,7 +144,7 @@ class SATGraphStore:
         if existing and existing != (kind, encoded):
             raise ValueError(f"Identidad en conflicto: {identity}")
         db.execute(
-            "INSERT OR IGNORE INTO sat_nodes VALUES (?,?,?)", (identity, kind, encoded)
+            "INSERT INTO sat_nodes VALUES (?,?,?) ON CONFLICT(id) DO NOTHING", (identity, kind, encoded)
         )
 
     @staticmethod
@@ -173,7 +160,7 @@ class SATGraphStore:
     def _edge(db, source, predicate, target, evidence):
         identity = "edge:" + digest(canonical([source, predicate, target, evidence]))
         db.execute(
-            "INSERT OR IGNORE INTO sat_edges VALUES (?,?,?,?,?)",
+            "INSERT INTO sat_edges VALUES (?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
             (identity, source, predicate, target, canonical(evidence)),
         )
 
@@ -216,7 +203,7 @@ class SATGraphStore:
             if existing and existing[0] != markdown:
                 raise ValueError("Conversión divergente para el mismo PDF")
             db.execute(
-                "INSERT OR IGNORE INTO sat_documents VALUES (?,?,'pending_review')",
+                "INSERT INTO sat_documents VALUES (?,?,'pending_review') ON CONFLICT(evidence_id) DO NOTHING",
                 (evidence.evidence_id, markdown),
             )
             for span in spans:
@@ -252,7 +239,7 @@ class SATGraphStore:
                 },
             )
             db.execute(
-                "INSERT OR IGNORE INTO sat_parses VALUES (?,?,?)",
+                "INSERT INTO sat_parses VALUES (?,?,?) ON CONFLICT(id) DO NOTHING",
                 (parse_id, evidence.evidence_id, canonical(artifact)),
             )
             audit = {

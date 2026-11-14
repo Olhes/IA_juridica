@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     DATABASE_HOST: str = os.getenv("DATABASE_HOST", "localhost")
     DATABASE_PORT: int = int(os.getenv("DATABASE_PORT", "5433"))
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "juridica_db")
-    DATABASE_USER: str = os.getenv("DATABASE_USER", "postgres")
+    DATABASE_USER: str = os.getenv("DATABASE_USER", "juridica_user")
     DATABASE_PASSWORD: str = os.getenv("DATABASE_PASSWORD", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
     
@@ -109,7 +109,6 @@ class Settings(BaseSettings):
 
     # Configuración de RAG
     RAG_ENGINE: str = "lightrag"
-    SAT_GRAPH_PATH: str = str(Path(__file__).resolve().parents[1] / "docs" / "sat_graph.sqlite3")
     SAT_AS_OF: Optional[str] = None
     EMBEDDING_MODEL: str = "embed-multilingual-v3.0"
     EMBEDDING_DIM: int = 1024

@@ -1,7 +1,7 @@
 """Stream NDJSON v1 de una consulta jurídica.
 
-Emite `meta` y `stage` mientras corre el pipeline y el texto solo cuando ya está
-validado (nunca borradores). Termina siempre con un único `final` o `error`,
+Emite `meta` y `stage` mientras corre el pipeline. En modo live, `chunk` es
+provisional; solo se persiste el resultado validado. Termina con `final` o `error`,
 seguido de `done`. La autorización y la conversación ajena se validan antes de
 abrir el stream; todo fallo posterior sale como evento `error`.
 """
@@ -42,7 +42,7 @@ def error_code_for(error) -> str:
 
 
 async def stream_legal_query(
-    *, run_pipeline, extract_text, persist, request_id, language, timeout_s
+    *, run_pipeline, extract_text, persist, request_id, language, timeout_s, live_text=False
 ):
     """Genera las líneas NDJSON de una consulta.
 
@@ -62,15 +62,21 @@ async def stream_legal_query(
     async def on_stage(event):
         queue.put_nowait(("stage", event))
 
+    async def on_delta(delta):
+        if delta:
+            queue.put_nowait(("delta", delta))
+
     async def run():
         try:
-            queue.put_nowait(("result", await run_pipeline(on_stage)))
+            args = (on_stage, on_delta) if live_text else (on_stage,)
+            queue.put_nowait(("result", await run_pipeline(*args)))
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - se traduce a evento `error`
             queue.put_nowait(("error", error))
 
-    yield next_event(MetaEvent, data={"language": language, "pipeline": "validated-before-delivery-v1"})
+    pipeline = "live-draft-validated-final-v1" if live_text else "validated-before-delivery-v1"
+    yield next_event(MetaEvent, data={"language": language, "pipeline": pipeline})
     task = asyncio.create_task(run())
     deadline = time.monotonic() + timeout_s
     try:
@@ -83,13 +89,17 @@ async def stream_legal_query(
             if kind == "stage":
                 yield next_event(StageEvent, **value)
                 continue
+            if kind == "delta":
+                yield next_event(ChunkEvent, delta=value)
+                continue
             if kind == "result":
                 try:
                     await persist(value)
                 except Exception as error:  # noqa: BLE001
                     kind, value = "error", error
                 else:
-                    yield next_event(ChunkEvent, delta=extract_text(value))
+                    if not live_text:
+                        yield next_event(ChunkEvent, delta=extract_text(value))
                     yield next_event(FinalEvent, data=jsonable_encoder(value))
                     break
             code = error_code_for(value)

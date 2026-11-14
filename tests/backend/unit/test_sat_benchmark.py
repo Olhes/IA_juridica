@@ -266,7 +266,8 @@ def test_cache_only_cli_does_not_load_credentials_and_records_stage_mode(
         dimension, cache_only = 256, True
         embed = rerank = forbidden
 
-        def __init__(self, key, path, **kwargs):
+        def __init__(self, key, *, connect, **kwargs):
+            assert callable(connect)
             assert key == "" and kwargs == dict(dimension=256, cache_only=True)
 
         def usage(self):

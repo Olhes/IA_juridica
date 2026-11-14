@@ -2,7 +2,7 @@
 import re
 from string import ascii_lowercase
 
-from retrieval.sat import fingerprint
+from retrieval.sat import fingerprint, terms
 from utils.text_match import fold
 
 _N = r"(?:n\s*[.°ºo]*\s*)?"
@@ -29,6 +29,28 @@ def requests_literals(query):
     return bool(match and match[1] in {"literales", "incisos"})
 
 
+def match_article_heading(retriever, plan, query):
+    """Match a full, distinctive heading in the current turn, not in history."""
+    current = " " + " ".join(terms(query)) + " "
+    matches = set()
+    for item in retriever.eligible(plan):
+        work = item["work"]
+        if work.get("kind") != "article":
+            continue
+        label = fold(work["label"]).lstrip("# ")
+        m = _ARTICLE.match(label)
+        if not m:
+            continue
+        heading = terms(label[m.end():])
+        if len(heading) >= 4 and " " + " ".join(heading) + " " in current:
+            matches.add((len(heading), work["resource_id"], m[1]))
+    if not matches:
+        return None
+    longest = max(length for length, _, _ in matches)
+    best = {(resource, article) for length, resource, article in matches if length == longest}
+    return next(iter(best)) if len(best) == 1 else None
+
+
 def references(query):
     q = "".join("ñ" if char in "Ññ" else fold(char) for char in query)
     resources = {f"pe:ley:{m[1]}" for m in _LAW.finditer(q)}
@@ -41,7 +63,7 @@ def references(query):
     ambiguous = (
         len(articles) > 1 or any(_ADDITIONAL.match(q[m.end():]) for m in articles)
         or len(incisos) > 1 or len(numerals) > 1
-        or bool(re.search(r"\b(?:incisos|literales)\s+\(?[a-z]\)?\s*(?:,|y|e|al)\s*\(?[a-z]\b", q))
+        or bool(re.search(r"\b(?:incisos|literales)\s+\(?[a-z]\b[.)]?\s*(?:,|\b(?:y|e|al)\b)\s*\(?[a-z]\b", q))
     )
     return q, resources, articles, incisos, numerals, ambiguous
 
@@ -88,7 +110,7 @@ def _complete_list(parent, descendants, alphabetic):
     return None
 
 
-def resolve_reference(retriever, plan, parsed):
+def resolve_reference(retriever, plan, parsed, *, heading_list=False):
     q, resources, articles, incisos, numerals, ambiguous = parsed
     number = articles[0][1]
     inciso = next(iter(incisos), None)
@@ -166,8 +188,8 @@ def resolve_reference(retriever, plan, parsed):
     # Use the complete CLV of the exact provision, never a ranked/truncated fragment.
     enumeration = None
     request = _ENUMERATE.search(q)
-    if request:
-        alphabetic = request[1] in {"literales", "incisos"}
+    if request or heading_list:
+        alphabetic = heading_list if not request else request[1] in {"literales", "incisos"}
         texts = _complete_list(target, children(target), alphabetic)
         if alphabetic and not texts and not inciso:
             # An article can contain numerals; use a single eligible numbered branch
@@ -189,7 +211,7 @@ def resolve_reference(retriever, plan, parsed):
             enumeration = f"**{citation}:**\n\n" + "\n".join(
                 text if text.startswith("- ") or not alphabetic else f"- {text}" for text in texts
             )
-        elif alphabetic:
+        elif alphabetic and not heading_list:
             return {**result, "warning": "No encontré una lista completa e inequívoca de literales en la referencia solicitada."}
     hits = [hit(target)]
     if sum(len(h["content"].encode()) for h in hits) > plan.context_bytes:

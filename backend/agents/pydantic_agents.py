@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any, AsyncGenerator
 from enum import Enum
 from datetime import datetime
 import asyncio
+import re
 from loguru import logger
 
 import os
@@ -66,16 +67,15 @@ SYSTEM_PROMPT_VARIANTS = {
         "Responde con la estructura Pydantic solicitada."
     ),
     "general": (
-        "Enfoque de atencion: orientacion legal bilingue (espanol y quechua). "
-        "Usa lenguaje simple, pasos accionables, advertencias y fuentes. "
-        "Responde con la estructura Pydantic solicitada. "
-        "IMPORTANTE: Mantén las respuestas CORTAS y DIRECTAS (máximo 300-400 caracteres). "
-        "Evita explicaciones extensas, ve al grano."
+        "Redacta exclusivamente en español. No añadas traducciones ni secciones en quechua. "
+        "Si la consulta pide explicar un artículo, identifica la norma y conserva la "
+        "estructura de los numerales o literales pertinentes. No omitas puntos necesarios "
+        "por brevedad ni agregues recomendaciones ajenas a lo que se preguntó."
     ),
     "stream": (
-        "Formato de salida: solo texto plano, sin JSON ni markdown. "
+        "Responde exclusivamente en español, sin traducciones. Usa Markdown si facilita una lista. "
         "Si falta informacion para precision legal, dilo explicitamente. "
-        "IMPORTANTE: Mantén la respuesta CORTA y CONCISA (máximo 300 caracteres). "
+        "Sé conciso, pero conserva todos los puntos que pide la consulta. "
         "Ve directo al punto sin explicaciones innecesarias."
     ),
 }
@@ -226,7 +226,9 @@ class LegalAgent:
         self.cohere_client = None
 
         if COHERE_SDK_AVAILABLE and settings.COHERE_API_KEY:
-            self.cohere_client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
+            from services.cohere_chat import CohereChat
+
+            self.cohere_client = CohereChat(settings.COHERE_API_KEY)
 
         # Nota: se mantiene el path de Pydantic AI como opcional/legacy.
         if PYDANTIC_AI_AVAILABLE and self.cohere_client:
@@ -254,7 +256,7 @@ class LegalAgent:
     def _build_user_prompt(
         self, query: str, context: Dict[str, Any], language: str
     ) -> str:
-        normalized_language = "quechua" if language == "quechua" else "spanish"
+        normalized_language = "español (sin traducción)" if language in {"spanish", "quechua"} else language
         context_answer = str(context.get("answer", "")).strip()
         context_sources = context.get("sources", [])
         sources_text = (
@@ -530,6 +532,10 @@ class LegalAgent:
 
     def _build_general_response(self, text: str, query: str) -> GeneralLegalResponse:
         """Construye GeneralLegalResponse a partir de texto plano de Cohere."""
+        text = re.split(
+            r"(?:^|[\s])(?:#{1,6}\s*)?(?:\*\*)?(?:respuesta en\s+|traducci[oó]n al\s+)?quechua"
+            r"\s*\*{0,2}\s*:\s*\*{0,2}", text, maxsplit=1, flags=re.IGNORECASE,
+        )[0].strip()
         # Intentar extraer secciones si el modelo las incluyó
         spanish = (
             self._extract_section(

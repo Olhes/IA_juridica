@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from config.settings import settings
+from ingestion.sat_graph.runtime import runtime_sat_store
 from services.quality_access import require_quality_admin
 from services.sat_corpus import CandidateShelf, CorpusEditor, Conflict, Publication, TextEdit, candidate_already_published, replace_text
 
@@ -18,7 +19,7 @@ CANDIDATES = Path(__file__).resolve().parents[2] / "temp" / "sat-corpus-work"
 
 def editor():
     # Always the identical configured database used by SATChatRetriever.
-    return CorpusEditor(Path(settings.SAT_GRAPH_PATH))
+    return CorpusEditor(runtime_sat_store())
 
 
 def candidate_shelf():

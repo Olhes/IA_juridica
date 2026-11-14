@@ -222,7 +222,7 @@ async def test_answer_uses_selected_sat_retriever():
     assert result["metadata"]["evidence"][0]["origin"] == "sat"
 
 
-async def test_sat_exact_enumeration_is_not_rewritten_by_generation_or_validation():
+async def test_sat_exact_enumeration_is_used_as_guidance_for_generation():
     state = make_state()
     citation = "Artículo 8 de la Ley 30364, inciso d)"
     text = f"**{citation}:**\n\n1. Alfa\n2. Beta"
@@ -234,10 +234,38 @@ async def test_sat_exact_enumeration_is_not_rewritten_by_generation_or_validatio
     }))
     state.response_validator.validate.return_value.answer_data = {"respuesta_espanol": "Texto distinto"}
     result = await answer_query(state, "Enumera los supuestos", "spanish")
-    state.legal_agent.respond_general.assert_not_awaited()
-    assert result["response"]["respuesta_espanol"] == text
-    assert all(c["status"] == "verified" for c in result["metadata"]["citations"])
-    assert len(result["metadata"]["citations"]) == 2
+    state.legal_agent.respond_general.assert_awaited_once()
+    assert text in state.legal_agent.respond_general.call_args.kwargs["enriched_prompt"]
+    assert result["response"]["respuesta_espanol"] == "Texto distinto"
+
+
+async def test_live_deltas_arrive_before_final_and_only_final_is_persisted():
+    from services.stream_guard import guard_stream
+
+    released = asyncio.Event()
+    saved = []
+
+    async def run(_stage, delta):
+        await delta("Primer fragmento")
+        await released.wait()
+        await delta(" y segundo")
+        return {"response": "Texto revisado"}
+
+    async def persist(value):
+        saved.append(value)
+
+    source = stream_legal_query(run_pipeline=run, extract_text=lambda r: r["response"],
+                                persist=persist, request_id="req", language="spanish",
+                                timeout_s=5, live_text=True)
+    stream = guard_stream(source, extract_text=lambda r: r["response"],
+                          request_id="req", idle_timeout_s=5, live_text=True)
+    assert json.loads(await anext(stream))["type"] == "meta"
+    assert json.loads(await anext(stream))["delta"] == "Primer fragmento"
+    assert saved == []
+    released.set()
+    events = [json.loads(line) async for line in stream]
+    assert [e["type"] for e in events] == ["chunk", "final", "done"]
+    assert saved == [{"response": "Texto revisado"}]
 
 
 async def test_sat_section_consolidates_citations_without_truncating_source():

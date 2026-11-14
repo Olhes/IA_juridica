@@ -4,7 +4,7 @@ import json
 import pytest
 
 from ingestion.sat_graph.import_documentary import import_one
-from ingestion.sat_graph.store import SATGraphStore
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
 from retrieval.sat import SATRetriever, SearchPlan
 
 

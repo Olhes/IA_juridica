@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest
+from ingestion.sat_graph.runtime import runtime_sat_store
 from ingestion.source_evidence import SourceEvidence
 from dataclasses import asdict
 
@@ -97,7 +98,8 @@ def import_one(store, directory):
         existing = db.execute("SELECT markdown FROM sat_documents WHERE evidence_id=?", (evidence_id,)).fetchone()
         if existing and existing[0] != raw.decode("utf-8"):
             raise ValueError("La fuente almacenada difiere del Markdown original")
-        db.execute("INSERT OR IGNORE INTO sat_documents VALUES (?,?,'pending_review')", (evidence_id, raw.decode("utf-8")))
+        db.execute("INSERT INTO sat_documents VALUES (?,?,'pending_review') ON CONFLICT(evidence_id) DO NOTHING",
+                   (evidence_id, raw.decode("utf-8")))
         store._node(db, revision_id, "DocumentaryRevision", {**audit, "evidence_id": evidence_id, "directory": directory.name, "review_state": review["review_state"], "text_review_state": review.get("text_review_state"), "markdown": corrected, "markdown_sha256": sha(corrected.encode()), "original_markdown_sha256": original_hash, "correction_count": len(changes)})
         store._edge(db, revision_id, "evidenced_by", evidence_id, audit)
         for n in review["nodes"]:
@@ -114,10 +116,9 @@ def import_one(store, directory):
 def main():
     root = Path(__file__).resolve().parents[2] / "docs"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", type=Path, default=root / "sat_graph.sqlite3")
     parser.add_argument("--reviews", type=Path, default=root / "sat_reviews")
     args = parser.parse_args()
-    store = SATGraphStore(args.db)
+    store = runtime_sat_store()
     results, errors = [], []
     for directory in sorted(args.reviews.iterdir()):
         if not (directory / "structure-review.json").exists():

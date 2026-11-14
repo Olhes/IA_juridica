@@ -105,6 +105,7 @@ async def answer_query(
     context=None,
     cache_key=None,
     on_stage=None,
+    on_delta=None,
 ):
     timer = PipelineTimer(on_stage)
     phase = getattr(state, "corpus_state", None)
@@ -166,7 +167,7 @@ async def answer_query(
     enriched_prompt, enriched_context = state.context_engineer.build_legal_prompt(
         query=processed_query,
         documents=documents,
-        language=language,
+        language="spanish",
         history=history,
         context=context,
     )
@@ -176,23 +177,34 @@ async def answer_query(
             "Cita esta referencia. Responde solo sobre el nivel solicitado; no lo sustituyas por "
             "sus apartados hermanos o por una lista general del artículo."
         )
+    if documents:
+        enriched_prompt = (
+            f"{enriched_prompt or ''}\n\nEmpieza por la respuesta, sin saludo ni introducción. "
+            "Usa solo la evidencia recuperada. No deduzcas obligaciones de la lógica de la norma; "
+            "si la fuente no responde la pregunta, dilo brevemente. Conserva la numeración pertinente."
+        )
     if verbatim:
-        data = {
-            "respuesta_espanol": verbatim,
-            "fuentes_legales": [{
-                "nombre": reference["citation"], "tipo": "artículo",
-                "enlace": documents[0].get("metadata", {}).get("source_url"),
-            }],
-        }
-    elif documents:
+        enriched_prompt += (
+            "\nUsa esta lista como guía. Conserva todos sus elementos, orden y sentido. "
+            "Quita marcas de conversión como <!-- image --> y corrige solo cortes de palabras inequívocos.\n"
+            + verbatim.replace("<!-- image -->", "")
+        )
+    if documents:
+        enriched_prompt = enriched_prompt.replace("<!-- image -->", "")
+        generation_context = {**rag_result, "answer": (rag_result.get("answer") or "").replace("<!-- image -->", "")}
+    if documents:
         try:
             async with timer.stage("generation"):
-                response = await state.legal_agent.respond_general(
-                    query=processed_query,
-                    context=rag_result,
-                    language=language,
-                    enriched_prompt=enriched_prompt,
-                )
+                options = dict(query=processed_query, context=generation_context, language="spanish",
+                               enriched_prompt=enriched_prompt)
+                if on_delta is not None and language == "spanish":
+                    parts = []
+                    async for delta in state.legal_agent.stream_general_text(**options):
+                        parts.append(delta)
+                        await on_delta(delta)
+                    response = state.legal_agent.build_general_response_from_text("".join(parts), processed_query)
+                else:
+                    response = await state.legal_agent.respond_general(**options)
         except Exception as error:
             logging.getLogger("ia_juridica.pipeline").error(
                 "generation_failed error_type=%s", type(error).__name__
@@ -218,8 +230,8 @@ async def answer_query(
             enriched_context=enriched_context,
         )
     final = jsonable_encoder(validated.answer_data)
-    if not documents or verbatim:
-        final = data  # Self-correction cannot invent evidence or rewrite a literal excerpt.
+    if not documents:
+        final = data
     if not response_text(final).strip():
         raise PipelineError(502, "Legal response unavailable", "GENERATION_UNAVAILABLE")
     validation = validated.validation_report.model_dump()

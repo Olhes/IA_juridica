@@ -10,13 +10,14 @@ from config.settings import settings
 from ingestion.source_evidence import persist_source_evidence
 from ingestion.conversion import convert_for_ingestion
 from ingestion.sat_graph.store import stage_document
+from ingestion.sat_graph.runtime import runtime_sat_store
 
 
 class LegalIngestionPipeline:
     """Pipeline completo para ingesta de documentos legales"""
 
     def __init__(self, rag_engine=None, pdf_processor=None, evidence_store_dir=None,
-                 legacy_rag_write=None, docs_root=None):
+                 legacy_rag_write=None, docs_root=None, sat_store_factory=runtime_sat_store):
         self.pdf_processor = pdf_processor
         self.legacy_rag_write = (
             settings.SAT_INGESTION_LEGACY_RAG if legacy_rag_write is None
@@ -36,7 +37,7 @@ class LegalIngestionPipeline:
             Path(evidence_store_dir) if evidence_store_dir is not None
             else root / "source_evidence"
         )
-        self.sat_graph_path = self.evidence_store_dir.parent / "sat_graph.sqlite3"
+        self.sat_store_factory = sat_store_factory
 
         # Asegurar que existan los directorios
         self._ensure_directories()
@@ -156,8 +157,8 @@ class LegalIngestionPipeline:
                 pdf_path, processed_path, markdown_content, self.evidence_store_dir
             )
             sat_result = await asyncio.to_thread(
-                stage_document, self.sat_graph_path, evidence, markdown_content,
-                artifact.docling_document,
+                lambda: stage_document(self.sat_store_factory(), evidence, markdown_content,
+                                       artifact.docling_document),
             )
 
             # 3. Extraer metadatos

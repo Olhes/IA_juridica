@@ -4,10 +4,9 @@ Conexión simple y robusta
 """
 
 import asyncio
-import psycopg
 from typing import Dict, Any, Optional, List
 
-from config.settings import settings
+from database.postgres_connection import connect_postgres
 
 
 class DatabaseUnavailableError(RuntimeError):
@@ -34,43 +33,14 @@ class PostgreSQLAdapter:
                 loop = asyncio.get_event_loop()
                 
                 def connect_sync():
-                    # En producción usar DATABASE_URL, en desarrollo usar configuración local
-                    if settings.ENVIRONMENT == "production" and settings.DATABASE_URL:
-                        print(f"  🔧 Usando DATABASE_URL (producción)")
-                        try:
-                            conn = psycopg.connect(settings.DATABASE_URL, connect_timeout=10)
-                            # Configurar search path para usar múltiples schemas
-                            with conn.cursor() as cursor:
-                                cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
-                                conn.commit()
-                            print(f"  ✅ Conexión exitosa via DATABASE_URL")
-                            return conn
-                        except Exception as e:
-                            print("PostgreSQL connection failed")
-                            raise
-                    else:
-                        # Desarrollo local: configuración Docker
-                        actual_user = "juridica_user"
-                        print(f"  🔧 Usando configuración local: {actual_user} (trust auth)")
-                        
-                        try:
-                            conn = psycopg.connect(
-                                host=settings.DATABASE_HOST or "localhost",
-                                port=5433,  # Puerto del container Docker (evita conflicto con PostgreSQL local)
-                                dbname=settings.DATABASE_NAME or "juridica_db",
-                                user=actual_user,
-                                password="",
-                                connect_timeout=10
-                            )
-                            # Configurar search path para usar múltiples schemas
-                            with conn.cursor() as cursor:
-                                cursor.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
-                                conn.commit()
-                            print(f"  ✅ Conexión exitosa para: {actual_user}")
-                            return conn
-                        except Exception:
-                            print("  PostgreSQL connection failed")
-                            raise
+                    conn = connect_postgres()
+                    try:
+                        conn.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
+                        conn.commit()
+                        return conn
+                    except Exception:
+                        conn.close()
+                        raise
                 
                 self.conn = await loop.run_in_executor(None, connect_sync)
                 
@@ -194,7 +164,7 @@ class PostgreSQLAdapter:
     async def get_conversation(self, conversation_id: str, owner_id: str) -> Optional[Dict[str, Any]]:
         """Obtener una conversación por ID"""
         if not self.conn:
-            return None
+            raise DatabaseUnavailableError("PostgreSQL unavailable")
         
         loop = asyncio.get_event_loop()
         
@@ -407,7 +377,7 @@ class PostgreSQLAdapter:
     async def get_user_conversations(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Obtener conversaciones de un usuario específico"""
         if not self.conn:
-            return []
+            raise DatabaseUnavailableError("PostgreSQL unavailable")
         
         loop = asyncio.get_event_loop()
         

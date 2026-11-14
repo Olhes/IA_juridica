@@ -116,9 +116,9 @@ uv run --no-sync python -m ingestion.sat_graph review "D:\corpus\revision.json"
 uv run --no-sync python -m ingestion.sat_graph --output "D:\corpus\grafo.json" export
 ```
 
-`--db` permite seleccionar otra base SQLite antes del subcomando. Por defecto:
-`D:\Web\IA_juridica\backend\docs\sat_graph.sqlite3`. Los artefactos locales no
-se versionan en Git. Los tests usan directorios temporales, no esta base real.
+El CLI usa el esquema `sat_graph` del PostgreSQL de la aplicación. Configura
+`DATABASE_URL` antes de operar sobre un entorno distinto. Para instalar el
+corpus inicial, consulta [SAT-Graph beta](SAT_CORPUS_EDITOR.md).
 
 ### Completar un manifiesto
 

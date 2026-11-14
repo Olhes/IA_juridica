@@ -6,9 +6,9 @@ import argparse
 import json
 from collections import Counter
 from datetime import date
-from pathlib import Path
 
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest, work_id
+from ingestion.sat_graph.runtime import runtime_sat_store
 
 RESOURCES = {
     'ley-30364-original': 'pe:ley:30364', 'ley-28970': 'pe:ley:28970',
@@ -74,9 +74,8 @@ def publish(store, as_of):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--as-of', required=True, help='Fecha ISO de la declaración del usuario')
-    parser.add_argument('--db', type=Path, default=Path(__file__).resolve().parents[2] / 'docs' / 'sat_graph.sqlite3')
     args = parser.parse_args()
-    print(json.dumps(publish(SATGraphStore(args.db), args.as_of)))
+    print(json.dumps(publish(runtime_sat_store(), args.as_of)))
 
 
 if __name__ == '__main__':

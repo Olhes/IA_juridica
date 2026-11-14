@@ -3,17 +3,21 @@
 import argparse
 import json
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from ingestion.source_evidence import persist_source_evidence
 from .contracts import ReviewManifest
-from .store import SATGraphStore, canonical
+from .store import canonical
+from .runtime import runtime_sat_store
 
-DEFAULT_DB = Path(__file__).resolve().parents[2] / "docs" / "sat_graph.sqlite3"
 
-
-def main(argv=None):
+def main(argv=None, *, local_test_store=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    if local_test_store:
+        parser.add_argument("--db", type=Path, required=True)
     parser.add_argument(
         "--output", type=Path, help="JSON UTF-8 nuevo; no sobrescribe archivos"
     )
@@ -52,11 +56,12 @@ def main(argv=None):
     )
     review.add_argument("manifest", type=Path)
     args = parser.parse_args(argv)
-    store = SATGraphStore(args.db)
+    store = local_test_store(args.db) if local_test_store else runtime_sat_store()
+    evidence_root = args.db.parent if local_test_store else docs
     if args.command == "stage":
         markdown = args.markdown.read_bytes().decode("utf-8")
         evidence = persist_source_evidence(
-            args.pdf, args.markdown, markdown, args.db.parent / "source_evidence"
+            args.pdf, args.markdown, markdown, evidence_root / "source_evidence"
         )
         layout = (
             json.loads(args.docling_json.read_text(encoding="utf-8"))
@@ -84,7 +89,7 @@ def main(argv=None):
         graph = store.export()
         result = {
             "engine": "sat",
-            "database": str(args.db.resolve()),
+            "database": "postgresql" if not local_test_store else str(args.db.resolve()),
             "resource_count": graph["resource_count"],
             "reviewed_version_count": graph["reviewed_version_count"],
             "state": "catalogued_not_verified",

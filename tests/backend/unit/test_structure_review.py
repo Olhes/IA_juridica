@@ -5,9 +5,9 @@ from copy import deepcopy
 import pytest
 
 from ingestion.legal_structure import parse_legal_structure
-from ingestion.sat_graph.__main__ import main as cli
-from ingestion.sat_graph.store import SATGraphStore, digest
-from tests.backend.unit.test_legal_structure import assert_exact, make_evidence
+from ingestion.sat_graph.store import digest
+from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
+from tests.backend.unit.test_legal_structure import assert_exact, cli, make_evidence
 
 
 def review_for(text, heading):

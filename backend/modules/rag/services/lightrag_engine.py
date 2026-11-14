@@ -254,13 +254,13 @@ class LegalRAGEngine:
 
         async def cohere_llm_func(prompt: str, **kwargs) -> str:
             """Procesa con Cohere LLM para extracción de grafo de conocimiento"""
-            if cohere_client is None:
+            if chat_client is None:
                 raise RuntimeError(
                     "Cohere client no inicializado. Verifica COHERE_API_KEY."
                 )
 
             try:
-                response = await cohere_client.chat(
+                response = await chat_client.chat(
                     message=prompt,
                     model=settings.COHERE_LLM_MODEL,
                     temperature=settings.COHERE_TEMPERATURE,
@@ -271,6 +271,9 @@ class LegalRAGEngine:
                 logger.error(f"Error en Cohere LLM: {type(error).__name__}")
                 return ""
 
+        from services.cohere_chat import CohereChat
+
+        chat_client = CohereChat(settings.COHERE_API_KEY) if cohere_client else None
         graph_storage = _select_graph_storage()
 
         # Inicializar LightRAG con funciones reales

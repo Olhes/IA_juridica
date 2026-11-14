@@ -1,10 +1,10 @@
 """Registro verificable de fechas de publicación, sin promover temporalidad CTV."""
-from ingestion.sat_graph.store import SATGraphStore, canonical, digest
-from pathlib import Path
+from ingestion.sat_graph.store import canonical, digest
+from ingestion.sat_graph.runtime import runtime_sat_store
 
 
 def main():
-    store = SATGraphStore(Path(__file__).resolve().parents[2] / 'docs' / 'sat_graph.sqlite3')
+    store = runtime_sat_store()
     evidence = {
         'document': 'ley-28970', 'published_on': '2007-01-27',
         'effective_on': '2007-03-13',

@@ -10,19 +10,41 @@ revisable. El corpus viaja con el repositorio:
 
 - `backend/docs/sat_reviews/` contiene los PDF publicados (8 `source.pdf` y la
   referencia documental del CNA en `published-references/`).
-- `backend/docs/sat_graph.sqlite3` es la base SAT y se versiona por **Git LFS**.
+- `backend/docs/sat_graph.pg_dump` es el respaldo PostgreSQL del corpus beta.
 
-Antes del primer checkout instala Git LFS (`git lfs install`); si ya clonaste,
-ejecuta `git lfs pull` para materializar la base. Sin LFS el archivo queda como
-puntero de texto y SAT no arranca. El paquete `sat-graph-beta-corpus.zip`
-sigue disponible para instalaciones sin red o sin LFS: extrae el zip en la raíz
-del repositorio antes de arrancar SAT o el revisor. Si ya tienes una base SAT,
-**no la sobrescribas**: conserva tu edición o instala el paquete en otro
-checkout. No necesitas volver a ejecutar Docling.
+## Compartir el corpus en PostgreSQL
+
+Por defecto, el chat SAT y el revisor leen y escriben en el esquema
+`sat_graph` de **la misma base PostgreSQL del chat**. Para compartirlo, las
+instancias del equipo deben apuntar al mismo `DATABASE_URL` (gestionado fuera de
+Git); dos instancias Docker locales distintas no comparten datos. Tanto el chat
+como el revisor deben tener acceso de lectura/escritura al esquema.
+
+Para instalar el corpus beta en una base Docker local nueva, ejecuta:
+
+```powershell
+docker compose up -d --wait postgres
+docker compose cp backend/docs/sat_graph.pg_dump postgres:/tmp/sat_graph.pg_dump
+docker compose exec -T postgres pg_restore -U juridica_user -d juridica_db --single-transaction --exit-on-error --no-owner --no-privileges /tmp/sat_graph.pg_dump
+```
+
+Instala el respaldo una sola vez, sin usar `--clean`. Si el esquema ya existe,
+no lo restaures encima. Para una base compartida, el administrador restaura
+el mismo archivo con `pg_restore` apuntando a esa base. Después arranca con
+`pnpm dev:full --sat`.
+Los PDF originales siguen en `backend/docs/sat_reviews`; no se guardan como
+binarios en PostgreSQL. Cada revisor necesita el checkout con esos PDF.
+
+Si conservas una edición anterior en SQLite, puedes migrarla a una base vacía
+con `uv run python backend/scripts/import_sat_postgres.py --from-sqlite RUTA`.
+Ese comando es solo para migración; el chat y el revisor ya no usan SQLite.
+Los candidatos previos pueden migrarse aparte con `--candidates`: sus PDF y
+reportes de conversión todavía se consultan desde el directorio de trabajo.
+La caché experimental de Voyage también usa PostgreSQL; si tienes una copia
+anterior, `--voyage-cache` migra sus resultados y reservas sin llamar al proveedor.
 
 El editor es una **herramienta administrativa independiente**, no una pantalla de
-la página oficial. Usa la misma `SAT_GRAPH_PATH` que el recuperador del chat.
-No inicia el chat, modelos, PostgreSQL ni Redis.
+la página oficial. No arranca el chat, modelos, PostgreSQL ni Redis por sí solo.
 
 ## Abrir
 
@@ -80,7 +102,7 @@ El editor no reimporta automáticamente JSON descargados ni altera los PDF origi
 
 | Elemento | Resultado al aplicar |
 |---|---|
-| Markdown | Nueva `DocumentaryRevision` canónica dentro del SQLite del chat |
+| Markdown | Nueva `DocumentaryRevision` canónica dentro de la base SAT del chat |
 | Componentes | Nuevos rangos y hashes, padre e hijos revisados |
 | CTV y CLV | Nueva edición editorial, con textos recalculados desde el Markdown |
 | Work / Item | Identidad estable para los componentes existentes |
@@ -137,7 +159,7 @@ uv run python -m pytest tests/backend/unit/test_sat_corpus_editor.py -q
 ```
 
 El smoke visual `tests/frontend/e2e/sat-editor-smoke.mjs` publica una corrección:
-ejecútalo **solo contra una copia SQLite** iniciada con `--db`, nunca contra el
+ejecútalo **solo contra una base PostgreSQL aislada**, nunca contra el
 corpus real. Requiere `SAT_EDITOR_TEST_COPY=1`, `SAT_EDITOR_URL` con el enlace
 local y un navegador Playwright instalado (o `PLAYWRIGHT_CHANNEL=chrome`).
 

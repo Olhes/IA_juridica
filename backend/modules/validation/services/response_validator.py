@@ -158,8 +158,7 @@ class ResponseValidator:
 
         # ── PASO 3: Self-correction ────────────────────────────────────────────
         corrections_applied = 0
-        if (self.config.enable_self_correction and hallucination_report.requires_correction
-                and not (rag_result.get("method") == "sat" and rag_result.get("verbatim_answer"))):
+        if self.config.enable_self_correction and hallucination_report.requires_correction:
             corrected_text, corrections_applied = await self.self_correction.correct(
                 original_text        =answer_text,
                 hallucination_report =hallucination_report,

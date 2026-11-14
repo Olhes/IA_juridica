@@ -39,8 +39,8 @@ pnpm dev:full
 ```
 
 El launcher usa **Docker**, levanta PostgreSQL/Redis, espera su salud, inicia el
-backend y comprueba `/ready` antes del frontend. Qdrant no es obligatorio para ese
-arranque. Si usas Podman, arranca los servicios mediante tu proveedor Compose y
+backend y comprueba `/ready` antes del frontend.
+Si usas Podman, arranca los servicios mediante tu proveedor Compose y
 ejecuta backend/frontend por separado; no hay detección automática de Podman:
 
 ```powershell

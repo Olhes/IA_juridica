@@ -17,6 +17,15 @@ test('montaje carga historial sin borrar ni seleccionar una sesión automáticam
   const { result } = await hook(); expect(result.current.sessions[0].id).toBe('a');
   expect(result.current.activeSessionId).toBeNull(); expect(result.current.loading).toBe(false);
 });
+test('una sesión no disponible se deselecciona pero permanece en el historial', async () => {
+  const { result } = await hook();
+  act(() => result.current.setActiveSessionId('a'));
+  act(() => result.current.deselectUnavailableSession('a'));
+  expect(result.current.activeSessionId).toBeNull();
+  expect(result.current.sessions.map(session => session.id)).toEqual(['a']);
+  act(() => result.current.setActiveSessionId('a'));
+  expect(result.current.activeSessionId).toBe('a');
+});
 test('creación reutiliza consulta vacía y respeta idioma de una nueva', async () => {
   const create = vi.spyOn(apiService, 'createConversation').mockResolvedValue({ success: true, data: conversation('new') });
   const { result } = await hook();

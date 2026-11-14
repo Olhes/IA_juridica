@@ -75,7 +75,7 @@ export function useChat({ sessionId, language, onSessionUpdated, onSessionMissin
       try {
         const response = await apiService.getConversation(sessionId);
         if (!active || version !== loadVersionRef.current) return;
-        if (response.status === 404) {
+        if (!response.success || !response.data) {
           unavailableRef.current = sessionId;
           onSessionMissing?.(sessionId);
           return;
@@ -95,7 +95,8 @@ export function useChat({ sessionId, language, onSessionUpdated, onSessionMissin
       } catch (error) {
         if (!active || version !== loadVersionRef.current) return;
         console.error('Error loading messages:', error);
-        setMessages([]);
+        unavailableRef.current = sessionId;
+        onSessionMissing?.(sessionId);
       } finally {
         if (active && version === loadVersionRef.current) setLoadedSession(sessionId);
       }
@@ -288,7 +289,7 @@ export function useChat({ sessionId, language, onSessionUpdated, onSessionMissin
                 isLoadingFull: false,
                 stage: undefined,
                 streamingContent: undefined,
-                content: streamedText,
+                content: '',
                 errorInfo: { code, retryable: (event as { retryable?: boolean }).retryable === true },
               });
             } else {
