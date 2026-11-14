@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: backend/Dockerfile.production
     image: ia-juridica-backend:latest
     restart: unless-stopped
     env_file:
