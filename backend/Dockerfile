@@ -6,21 +6,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Instalar UV y dependencias del sistema
+# uv oficial, misma versión que resolvió uv.lock. Sin pip en la imagen.
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /uvx /bin/
+
+# Dependencias del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     libgomp1 \
     libglib2.0-0 \
     libgl1 \
-    && pip install uv \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar archivos de dependencias
 COPY pyproject.toml uv.lock /app/
 
-# Instalar dependencias con UV (CPU-only)
-RUN uv sync --frozen --no-dev --no-cache --extra-index-url https://download.pytorch.org/whl/cpu
+# Instalar dependencias con UV. La fuente CPU de torch vive en pyproject.toml
+# ([tool.uv.sources]); el lock ya fija las ruedas +cpu y no incluye nvidia-*.
+RUN uv sync --frozen --no-dev --no-cache
 
 # Crear usuario de runtime antes de copiar el código para evitar
 # un chown recursivo sobre /app/.venv (duplica varios GB en una capa).
