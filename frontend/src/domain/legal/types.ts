@@ -102,12 +102,20 @@ export interface CitationCheck {
 /** Fuente recuperada con su relevancia y un extracto del corpus (`metadata.evidence`). */
 export interface EvidenceItem {
   source: string;
+  /** Documento/norma recuperada; el árbol agrupa por este nombre, no por `source`. */
+  document?: string | null;
   relevance: number | null;
   excerpt: string;
   /** Camino de recuperación: grafo de conocimiento (LightRAG) o búsqueda léxica local. */
   origin?: 'lightrag' | 'lexical' | 'sat';
   /** Casaciones citadas en el fragmento; vacío si no es jurisprudencia. */
   jurisprudence?: string[];
+  /** Etiqueta estructural del fragmento (p. ej. "Artículo 3"), si el corpus la conoce. */
+  section?: string | null;
+  /** Versión del componente normativo; enlaza el fragmento con `citations[].sat_section`. */
+  version_id?: string | null;
+  /** Enlace a la publicación oficial del documento recuperado. */
+  source_url?: string | null;
 }
 
 export type EvidenceStatus = 'retrieved' | 'insufficient_evidence';

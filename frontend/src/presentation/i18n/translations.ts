@@ -61,7 +61,8 @@ export const chatTranslations = {
     },
     trust: {
       summary: '¿Por qué confiar en esta respuesta?',
-      evidence: (n: number) => (n === 1 ? 'Se apoya en 1 fuente recuperada del corpus.' : `Se apoya en ${n} fuentes recuperadas del corpus.`),
+      evidence: (fragments: number, documents: number) =>
+        `Se apoya en ${fragments} ${fragments === 1 ? 'fragmento recuperado' : 'fragmentos recuperados'} de ${documents} ${documents === 1 ? 'documento' : 'documentos'} del corpus.`,
       noEvidence: 'No se recuperaron fuentes del corpus.',
       grounded: 'El validador encontró respaldo en las fuentes.',
       notGrounded: 'El validador no encontró respaldo suficiente en las fuentes.',
@@ -79,6 +80,11 @@ export const chatTranslations = {
       excerptFrom: (source: string) => `Extracto de ${source}`,
       fullSection: 'Ver sección completa',
       sourceLink: 'Abrir fuente original',
+      unknownSource: 'Fuente desconocida',
+      fragment: 'Fragmento recuperado',
+      fragments: (n: number) => (n === 1 ? '1 fragmento' : `${n} fragmentos`),
+      verifiedCount: (verified: number, total: number) => `${verified} de ${total} verificadas`,
+      retrievedOnly: 'Fragmento recuperado; la respuesta no lo cita.',
     },
     related: {
       title: 'Jurisprudencia relacionada',
@@ -152,7 +158,7 @@ export const chatTranslations = {
     },
     trust: {
       summary: '¿Imanaqtin kay kutichiyta iñina?',
-      evidence: (n: number) => `${n} corpusmanta willakuywan sayasqa.`,
+      evidence: (fragments: number, documents: number) => `${documents} documentomanta ${fragments} willakuy rakikuna corpuspi tarisqa.`,
       noEvidence: 'Manam corpusmanta willakuy tarisqachu.',
       grounded: 'Chiqaqchaqmi willakuykunapi sayasqa tarirqan.',
       notGrounded: 'Chiqaqchaqqa mana hayk’aq willakuykunapi sayasqa tarirqanchu.',
@@ -170,6 +176,11 @@ export const chatTranslations = {
       excerptFrom: (source: string) => `${source} nisqamanta pisi simi`,
       fullSection: 'Tukuy rakita qhaway',
       sourceLink: 'Qallariy pukyuta kichay',
+      unknownSource: 'Mana yachasqa pukyu',
+      fragment: 'Willakuy rakisqa',
+      fragments: (n: number) => `${n} rakikuna`,
+      verifiedCount: (verified: number, total: number) => `${total} nisqamanta ${verified} chiqaqchasqa`,
+      retrievedOnly: 'Willakuy tarisqa; kutichiyqa manam chayta sutinchanchu.',
     },
     related: {
       title: 'Kikin hina jurisprudencia',

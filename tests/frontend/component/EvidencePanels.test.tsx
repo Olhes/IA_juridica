@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   AssistantEvidence,
-  CitationChips,
+  CitationTree,
   RelatedJurisprudence,
   TranslationNotice,
   InsufficientEvidenceCard,
@@ -38,19 +38,54 @@ test('tarjeta de evidencia insuficiente existe en quechua y reemplaza chips y pa
   expect(screen.queryByText('¿Por qué confiar en esta respuesta?')).toBeNull();
 });
 
-test('chips de citas distinguen verificadas y no verificadas y muestran el extracto del corpus', async () => {
+test('las citas se agrupan por norma y distinguen verificadas y no verificadas', async () => {
   const user = userEvent.setup();
-  render(<CitationChips language="spanish" apiResponse={withMetadata({ citations })} />);
+  render(<CitationTree language="spanish" apiResponse={withMetadata({ citations, evidence })} />);
+  await user.click(screen.getByText('Guía de pensión'));
   await user.click(screen.getByText('Art. 475 CC'));
-  expect(screen.getByText(/Extracto de Guía de pensión/)).toBeVisible();
   expect(screen.getByText(/Prelación de obligados \(Art\. 475 CC\)/)).toBeVisible();
   expect(screen.getByLabelText('Art. 475 CC: Verificada en las fuentes')).toBeInTheDocument();
   expect(screen.getByLabelText('Ley 99999: No se encontró en las fuentes recuperadas')).toBeInTheDocument();
 });
 
-test('sin citas no se dibuja el bloque de citas', () => {
-  const { container } = render(<CitationChips language="spanish" apiResponse={withMetadata({ citations: [] })} />);
+test('sin citas ni evidencia no se dibuja el bloque de citas', () => {
+  const { container } = render(<CitationTree language="spanish" apiResponse={withMetadata({ citations: [] })} />);
   expect(container).toBeEmptyDOMElement();
+});
+
+test('el árbol muestra todos los fragmentos recuperados de la norma, incluso los no citados', () => {
+  const law = 'Ley 28970';
+  const fragments = ['Artículo 3', 'Artículo 5', 'Artículo 8', 'Artículo 12', 'Artículo 19'].map((title, index) => ({
+    // En aciertos exactos `source` es la cita completa; `document` mantiene la norma.
+    source: index < 2 ? `${title} de la ${law}` : law,
+    document: law,
+    relevance: 0.9 - index / 100,
+    excerpt: `${title} del corpus`,
+    section: title,
+    version_id: `ctv:${index}`,
+  }));
+  const branch = (index: number, title: string) => ({
+    key: `sat-section:ctv:${index}`,
+    text: title,
+    status: 'verified',
+    source: law,
+    excerpt: null,
+    sat_section: { title, path: [law, title], text: `Texto del ${title.toLowerCase()}`, version_id: `ctv:${index}` },
+  });
+  render(<CitationTree language="spanish" apiResponse={withMetadata({
+    citations: [
+      branch(0, 'Artículo 3'),
+      branch(1, 'Artículo 5'),
+      { key: 'ley:28970', text: 'Ley 28970', status: 'verified', source: law, excerpt: null },
+    ],
+    evidence: fragments,
+  })} />);
+  expect(screen.getByText('Ley 28970')).toBeVisible();
+  expect(screen.getByText(/5 fragmentos/)).toBeVisible();
+  expect(screen.getByText(/3 de 3 verificadas/)).toBeVisible();
+  expect(screen.getByLabelText('Artículo 3: Verificada en las fuentes')).toBeInTheDocument();
+  expect(screen.getByLabelText('Artículo 8: Fragmento recuperado; la respuesta no lo cita.')).toBeInTheDocument();
+  expect(screen.getByText('Artículo 19')).toBeInTheDocument();
 });
 
 test('una cita SAT expande la sección íntegra con ruta y enlace original', async () => {
@@ -61,10 +96,11 @@ test('una cita SAT expande la sección íntegra con ruta y enlace original', asy
     version_id: 'ctv:test', source_url: 'https://example.org/source',
     text: '- a. Primer literal.\n- e. Último literal completo.',
   };
-  render(<CitationChips language="spanish" apiResponse={withMetadata({
+  render(<CitationTree language="spanish" apiResponse={withMetadata({
     citations: [{ key: 'sat-section:ctv:test', text: title, status: 'verified', sat_section }],
   })} />);
-  await user.click(screen.getByText(title));
+  await user.click(screen.getByText('Decreto Supremo 024-2021-MIMP'));
+  await user.click(screen.getByText('Artículo 7 · Numeral 7.2'));
   expect(screen.getByText('Decreto Supremo 024-2021-MIMP → Artículo 7 → Numeral 7.2')).toBeVisible();
   expect(screen.getByText(/Último literal completo/)).toBeVisible();
   expect(screen.getByRole('link', { name: 'Abrir fuente original' })).toHaveAttribute('href', sat_section.source_url);
@@ -75,7 +111,7 @@ test('panel de confianza resume solo lo medido: fuentes, validador, riesgo, cita
   const user = userEvent.setup();
   render(<TrustPanel language="spanish" apiResponse={withMetadata({ citations, evidence })} />);
   await user.click(screen.getByText('¿Por qué confiar en esta respuesta?'));
-  expect(screen.getByText('Se apoya en 1 fuente recuperada del corpus.')).toBeVisible();
+  expect(screen.getByText('Se apoya en 1 fragmento recuperado de 1 documento del corpus.')).toBeVisible();
   expect(screen.getByText('El validador encontró respaldo en las fuentes.')).toBeVisible();
   expect(screen.getByText('Riesgo estimado de alucinación: 12 %.')).toBeVisible();
   expect(screen.getByText('1 de 2 citas legales verificadas en las fuentes.')).toBeVisible();
