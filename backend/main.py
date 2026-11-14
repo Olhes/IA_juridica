@@ -272,8 +272,17 @@ async def lifespan(app: FastAPI):
         if sat_mode:
             store = await asyncio.to_thread(sat_graph_store)
             if isinstance(store, PostgresSATGraphStore):
-                await asyncio.to_thread(store.require_ready)
-            app.state.query_retriever = SATChatRetriever(store)
+                # Un esquema todavía vacío no debe tumbar la API: el esquema se
+                # prepara y el editor queda disponible para publicar el corpus.
+                # Si PostgreSQL no responde, /health y /ready ya lo reportan.
+                if not await asyncio.to_thread(store.is_ready):
+                    try:
+                        await asyncio.to_thread(store.ensure_schema)
+                    except Exception as error:
+                        logger.warning("sat_schema_unavailable error_type=%s", type(error).__name__)
+                    else:
+                        logger.warning("sat_corpus_empty: publica el primer documento en /sat-graph/review")
+            app.state.query_retriever = SATChatRetriever(store, settings.SAT_AS_OF)
         else:
             app.state.query_retriever = app.state.rag_engine
         app.state.ingestion_pipeline = LegalIngestionPipeline(
@@ -314,7 +323,12 @@ async def lifespan(app: FastAPI):
         print("Componentes ya inicializados, saltando...")
 
     if settings.RAG_ENGINE.lower() == "sat":
-        app.state.corpus_state = "ready"
+        # El corpus vive en PostgreSQL y puede publicarse sin reiniciar, así que
+        # la frescura se consulta al responder; aquí solo se refleja el estado real.
+        retriever = app.state.query_retriever
+        app.state.corpus_state = (
+            "ready" if await asyncio.to_thread(retriever.corpus_ready) else "degraded"
+        )
         app.state.corpus_task = asyncio.create_task(asyncio.sleep(0))
     else:
         app.state.corpus_state = "loading"
@@ -459,6 +473,10 @@ async def root():
 @app.get("/ready")
 async def readiness():
     phase = getattr(app.state, "corpus_state", "unavailable")
+    if phase == "degraded":
+        probe = getattr(getattr(app.state, "query_retriever", None), "corpus_ready", None)
+        if callable(probe) and await asyncio.to_thread(probe):
+            app.state.corpus_state = phase = "ready"
     if phase != "ready":
         raise HTTPException(503, "Legal corpus unavailable")
     return {"status": "ready", "rag_engine": settings.RAG_ENGINE.lower()}

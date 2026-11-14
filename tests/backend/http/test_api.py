@@ -23,6 +23,23 @@ def test_bootstrap_and_protected_query_gate(api):
     assert "httponly" in response.headers["set-cookie"].lower()
 
 
+def test_readiness_follows_a_corpus_published_after_startup(api, monkeypatch):
+    """El corpus SAT se publica sin reiniciar: /ready deja de fallar en caliente."""
+    client, main, _ = api
+    corpus = {"ready": False}
+    monkeypatch.setattr(main.app.state, "corpus_state", "degraded", raising=False)
+    monkeypatch.setattr(
+        main.app.state,
+        "query_retriever",
+        SimpleNamespace(corpus_ready=lambda: corpus["ready"]),
+        raising=False,
+    )
+    assert client.get("/ready").status_code == 503
+    corpus["ready"] = True
+    assert client.get("/ready").status_code == 200
+    assert main.app.state.corpus_state == "ready"
+
+
 def test_cached_query_does_not_call_external_dependencies(api):
     client, main, optimizer = api
     optimizer.get_cached.return_value = {

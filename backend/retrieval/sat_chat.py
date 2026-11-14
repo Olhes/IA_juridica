@@ -16,6 +16,15 @@ class SATChatRetriever:
         # La base puede cambiar entre la generación de la clave y la consulta.
         return None
 
+    def corpus_ready(self) -> bool:
+        """Sonda de disponibilidad del corpus para arranque y recuperación en caliente.
+
+        Un store sin la capacidad (fixtures, SQLite) se considera listo: solo el
+        adaptador PostgreSQL tiene un corpus ausente que pueda aparecer después.
+        """
+        checker = getattr(self.store, "is_ready", None)
+        return bool(checker()) if callable(checker) else True
+
     @property
     def documents(self):
         # El validador utiliza exactamente la evidencia del resultado SAT, no LightRAG.

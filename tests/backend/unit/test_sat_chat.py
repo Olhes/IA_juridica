@@ -29,6 +29,21 @@ async def test_sat_chat_retrieves_attested_ctv_and_abstains_outside_date(tmp_pat
     assert current['sat_as_of'] is None
 
 
+def test_corpus_ready_defaults_to_true_for_stores_without_the_probe(tmp_path):
+    """Los fixtures no tienen corpus ausente: solo PostgreSQL puede estar vacío."""
+    adapter = SATChatRetriever(SATGraphStore(tmp_path / 'graph.sqlite3'))
+    assert adapter.corpus_ready() is True
+
+
+def test_corpus_ready_reports_an_empty_shared_corpus(tmp_path):
+    class EmptyStore(SATGraphStore):
+        def is_ready(self):
+            return False
+
+    adapter = SATChatRetriever(EmptyStore(tmp_path / 'graph.sqlite3'))
+    assert adapter.corpus_ready() is False
+
+
 
 @pytest.mark.asyncio
 async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_path):

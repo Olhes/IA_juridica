@@ -1,6 +1,7 @@
 """One retrieval → generation → validation → translation contract for every route."""
 
 from copy import deepcopy
+import asyncio
 import logging
 
 from fastapi import HTTPException
@@ -124,6 +125,13 @@ async def answer_query(
 ):
     timer = PipelineTimer(on_stage)
     phase = getattr(state, "corpus_state", None)
+    if phase == "degraded":
+        # El corpus SAT puede publicarse sin reiniciar: se reevalúa solo mientras
+        # está degradado y deja de consultar en cuanto hay una revisión publicada.
+        # La sonda habla con PostgreSQL, así que nunca corre en el event loop.
+        probe = getattr(getattr(state, "query_retriever", None), "corpus_ready", None)
+        if callable(probe) and await asyncio.to_thread(probe):
+            state.corpus_state = phase = "ready"
     if phase in {"loading", "failed", "stopped"}:
         raise PipelineError(503, "Legal corpus unavailable", "RETRIEVAL_UNAVAILABLE")
     if phase == "degraded" and not getattr(state.rag_engine, "documents", {}):
