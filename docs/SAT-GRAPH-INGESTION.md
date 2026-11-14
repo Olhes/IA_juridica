@@ -208,8 +208,14 @@ actual sigue siendo un prototipo de reglas candidatas, no un parser universal.
 
 ## Antes de activar SAT en el chat
 
-El chat sigue usando el recuperador heredado. La búsqueda administrativa y
-los [experimentos opt-in](SAT-GRAPH-EXPERIMENTS.md) no habilitan SAT en producción.
+Por defecto el chat usa LightRAG. SAT solo se activa de forma explícita
+(`pnpm dev:full --sat` en local, `RAG_ENGINE=sat` en el entorno); la búsqueda
+administrativa y los [experimentos opt-in](SAT-GRAPH-EXPERIMENTS.md) no
+habilitan SAT en producción.
+
+Para revisar el corpus ya publicado y su estructura (Item / Work / Versión /
+CTV / CLV / TextUnit) hay una página aparte: `pnpm sat:review`. Flujo completo
+en [SAT-Graph beta: chat y revisión del corpus](SAT_CORPUS_EDITOR.md).
 
 | Paso | Condición de avance |
 |---|---|

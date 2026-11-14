@@ -54,6 +54,12 @@ Interfaz: `http://localhost:3000`. API: `http://localhost:8000`.
 Swagger/OpenAPI se habilitan por defecto en desarrollo, no en producción.
 No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin backup.
 
+Para probar el motor normativo **SAT-Graph** sobre el corpus que ya viene en el
+repositorio, arranca con `pnpm dev:full --sat`; sin el flag se usa LightRAG. La
+revisión editorial del corpus y de su estructura (página aparte, no es una
+pantalla de la web oficial) se abre con `pnpm sat:review`. Detalle en
+[SAT-Graph beta](docs/SAT_CORPUS_EDITOR.md).
+
 Si PostgreSQL local no conecta, revisa `docker compose ps postgres` y
 `docker compose logs --tail 50 postgres`. Usa `localhost:5433` desde el host o
 `postgres:5432` desde Compose; `DATABASE_URL` prevalece sobre `DATABASE_*`.
@@ -183,6 +189,7 @@ heredadas y scripts operativos; los porcentajes no son garantía del Quality Gat
 | Entender el frontend activo                     | [Arquitectura frontend](frontend/README_ARCHITECTURE.md)                                                  |
 | Operar el despliegue actual                     | [Next.js en Vercel y backend Docker en una VM de Azure](deploy/azure/README.md), [plantilla de entorno](env.production.example) |
 | Cargar/revisar corpus y grafo                   | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md)                                                               |
+| Probar SAT-Graph y revisar su corpus           | [SAT-Graph beta: chat y revisión del corpus](docs/SAT_CORPUS_EDITOR.md)                                   |
 | Entender validación y abstención              | [Pipeline](backend/VALIDATION_GUIDE.md)                                                                   |
 | Configurar OAuth local                          | [OAuth](OAUTH_SETUP.md)                                                                                   |
 | Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
