@@ -71,5 +71,12 @@ def test_verification_reads_spaced_ocr_evidence():
     assert results[0]["status"] == "verified"
 
 
+def test_law_citation_is_traceable_to_the_retrieved_document_title():
+    """El título de la fuente nombra la norma aunque el fragmento sea solo el artículo."""
+    evidence = [{"source": "Ley 28970", "text": "Artículo 3.- La licencia municipal es gratuita."}]
+    (result,) = verify_citations("La Ley 28970 regula la licencia municipal.", evidence)
+    assert result["status"] == "verified" and result["source"] == "Ley 28970"
+
+
 def test_verification_without_evidence_leaves_everything_unverified():
     assert [r["status"] for r in verify_citations("Ley 30364 y artículo 8", [])] == ["unverified", "unverified"]

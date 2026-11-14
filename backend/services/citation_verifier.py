@@ -132,20 +132,34 @@ def verify_citations(answer_text: str, evidence: list) -> list:
     ``verified`` | ``unverified``. ``text`` es lo que citó la respuesta.
     """
     results = []
-    prepared = [
-        (item.get("source"), item.get("text") or "",
-         evidence_keys(item.get("text") or "") | evidence_keys(item.get("citation") or ""))
-        for item in evidence
-    ]
+    prepared = []
+    for item in evidence:
+        source = item.get("source")
+        text = item.get("text") or ""
+        prepared.append(
+            (
+                source,
+                text,
+                evidence_keys(text) | evidence_keys(item.get("citation") or ""),
+                compact(source or ""),
+            )
+        )
     for citation in extract_citations(answer_text):
+        number = compact(citation.key.split(":", 1)[1])
         hit = next(
             (
                 (source, text)
-                for source, text, keys in prepared
+                for source, text, keys, compact_source in prepared
                 if any(citation_matches(citation.key, key) for key in keys)
                 or (
                     citation.kind in {"ley", "casacion", "decreto_supremo"}
-                    and compact(citation.key.split(":", 1)[1]) in compact(text)
+                    and (
+                        number in compact(text)
+                        # El título del documento recuperado nombra la norma citada:
+                        # la cita es trazable a esa fuente aunque el fragmento sea
+                        # solo el cuerpo del artículo y no repita el número.
+                        or number in compact_source
+                    )
                 )
             ),
             None,
