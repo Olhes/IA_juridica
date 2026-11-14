@@ -37,11 +37,30 @@ Plan de migración PostgreSQL 15 -> 18
   5. Reemplazar $DATABASE con el dump del clúster viejo
   6. Volver a desplegar con deploy.sh y esperar /ready
 
+Si $NEW_VOLUME ya existe con datos, no migra: solo despliega.
+
 El volumen $OLD_VOLUME se conserva hasta que confirmes los datos.
 
 Ejecuta con --execute para aplicarlo.
 EOF
   exit 0
+fi
+
+# Idempotente: si la migración ya ocurrió, solo despliega. Así el mismo comando
+# puede repetirse sin volver a reemplazar la base.
+if docker volume inspect "$NEW_VOLUME" >/dev/null 2>&1; then
+  "${COMPOSE[@]}" up -d --wait postgres >/dev/null 2>&1 || true
+  users=$("${COMPOSE[@]}" exec -T postgres psql -U "$DB_USER" -d "$DATABASE" -tAc \
+    "SELECT count(*) FROM auth_schema.users" 2>/dev/null || echo "")
+  users=${users//[[:space:]]/}
+  if [[ ${users:-0} -gt 0 ]]; then
+    echo "PostgreSQL 18 ya está migrado ($users usuarios); se omite la migración."
+    bash "$(dirname "$0")/deploy.sh"
+    exit 0
+  fi
+  echo "Existe $NEW_VOLUME pero la base no tiene usuarios. Revisa el estado a mano:" >&2
+  echo "  docker compose -f deploy/azure/compose.yml --env-file /etc/ia-juridica/compose.env ps" >&2
+  exit 1
 fi
 
 POSTGRES_ID=$("${COMPOSE[@]}" ps -q postgres)
