@@ -1,0 +1,12 @@
+{
+  "pdf": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-30490-attachment-1.pdf",
+  "pdf_sha256": "2569bbac83a88148577f0f1caaaed2868bfd3f0b2f7dba0ee882518bd1dd08b6",
+  "markdown_sha256": "f95b0faee3bd5fafc81683e9f65344a6ecbc0fcdb931120a8b39a8c40ac4b021",
+  "pages": 6,
+  "characters": 32926,
+  "replacement_characters": 0,
+  "seconds": 312.59,
+  "stage_exit": 0,
+  "stage_stdout": "{\"candidate_count\":41,\"engine\":\"sat\",\"evidence_id\":\"pdf-sha256-2569bbac83a88148577f0f1caaaed2868bfd3f0b2f7dba0ee882518bd1dd08b6\",\"llm_calls\":0,\"parse_id\":\"parse:7f8cd0753cd95781c9bd99101f00b84a81bd361fbcbf32f44bd1b6add8c07a85\",\"review_state\":\"pending_review\",\"structural_candidate_count\":133,\"structure_diagnostic_count\":38,\"write_state\":\"committed\"}\n",
+  "stage_stderr": ""
+}

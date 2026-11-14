@@ -1,0 +1,161 @@
+[
+  {
+    "id": "pe:rm:100-2021-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/1780515-100-2021-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/1762090/rm_100_2021_mimp.pdf.pdf?v=1617134145",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-rm-100-2021-mimp-attachment-1.pdf",
+    "sha256": "e3bd248c4cd62800c160ed92ee43691cd1f8958b632ddce78a5fb047ecd0e225",
+    "bytes": 3508602
+  },
+  {
+    "id": "pe:rm:100-2021-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/1780515-100-2021-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/1762091/protocolo-de-atencion-del-Centro-Emergencia-Mujer.pdf.pdf?v=1617134145",
+    "attachment": 2,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-rm-100-2021-mimp-attachment-2.pdf",
+    "sha256": "2fee6ce117675e34348419e55314011dfa8a0c2be966881dd20ae0fbfa1ed30c",
+    "bytes": 2800371
+  },
+  {
+    "id": "pe:ds:009-2016-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/20809-009-2016-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/30171/20809-ds_009_2016_mimp.pdf?v=1744401283",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-009-2016-mimp-attachment-1.pdf",
+    "sha256": "dd238b4b5a6e36dcd646bbfe391bab81eac5bc984f8f6934ef2eeacc8c8fb8d0",
+    "bytes": 2921477
+  },
+  {
+    "id": "pe:ds:002-2025-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/6661714-002-2025-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/7913242/6661714-ds-n-002-2025-mimp.pdf?v=1744391411",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-002-2025-mimp-attachment-1.pdf",
+    "sha256": "5b16f1576e3608df37a02b8cb11004e683240de5ea173ad17cf8ea28cc7d664e",
+    "bytes": 6231333
+  },
+  {
+    "id": "pe:ds:004-2025-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/6850857-004-2025-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/8192719/6850857-ds-004-2025-mimp.pdf?v=1750865758",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-004-2025-mimp-attachment-1.pdf",
+    "sha256": "ea419266cfcf8e0b5699e1bbee25f4c678ae3fe3180815e4bdaf2b767047c4c0",
+    "bytes": 2080164
+  },
+  {
+    "id": "pe:ley:27337",
+    "page_url": "https://www.gob.pe/institucion/congreso-de-la-republica/normas-legales/3366849-27337",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/3533125/Ley%20N%C2%B027337.pdf.pdf?v=1672840791",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-27337-attachment-1.pdf",
+    "sha256": "848b2a58096a61e94b7697ed7d6ce871ea7b5045406e21c492a85a56468fd66e",
+    "bytes": 312128
+  },
+  {
+    "id": "pe:ley:27337",
+    "page_url": "https://www.gob.pe/institucion/congreso-de-la-republica/normas-legales/3366849-27337",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/4017945/Apu%20Simi%20Qelqa%20N%C2%B0%2027337.pdf?v=1672841449",
+    "attachment": 2,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-27337-attachment-2.pdf",
+    "sha256": "740bae8bfbc4d04a9c2069f375b9bae5f99295a70e60e3ccc748f30f92ad4312",
+    "bytes": 664199
+  },
+  {
+    "id": "pe:directory:cna-2026",
+    "page_url": "https://www.gob.pe/institucion/mimp/informes-publicaciones/7858302-codigo-de-los-ninos-y-adolescentes",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/9600510/7858302-codigo_de_los_ninhos_y_adolescentes.pdf?v=1773357476",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-directory-cna-2026-attachment-1.pdf",
+    "sha256": "be6c6202edfb002ef6ef0294717d622e8a8d832c6f800642d8fd1d366b83a73a",
+    "bytes": 9215133
+  },
+  {
+    "id": "pe:ley:30490",
+    "page_url": "https://www.gob.pe/institucion/congreso-de-la-republica/normas-legales/3601024-30490",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/3766931/Ley%20N%C2%B0%2030490.pdf?v=1666119068",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-30490-attachment-1.pdf",
+    "sha256": "2569bbac83a88148577f0f1caaaed2868bfd3f0b2f7dba0ee882518bd1dd08b6",
+    "bytes": 870536
+  },
+  {
+    "id": "pe:ds:024-2021-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/2040707-024-2021-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/2041837/ds_024_2021_mimp.pdf?v=1627401992",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-024-2021-mimp-attachment-1.pdf",
+    "sha256": "504f74f91524c7d6b82034d750978bfa6690cc4b3e97dec7cf45f731cc6fd832",
+    "bytes": 455532
+  },
+  {
+    "id": "pe:ds:024-2021-mimp",
+    "page_url": "https://www.gob.pe/institucion/mimp/normas-legales/2040707-024-2021-mimp",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/2044895/reglamento-Ley-30490-Ley-Persona-Adulta-Mayor.pdf?v=1627435689",
+    "attachment": 2,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-024-2021-mimp-attachment-2.pdf",
+    "sha256": "eed2ccc4c238a12e071d7c03aacddf065f74c9bd46f5ea906e6038af301c4d36",
+    "bytes": 9777711
+  },
+  {
+    "id": "pe:directory:discapacidad",
+    "page_url": "https://www.gob.pe/institucion/conadis/informes-publicaciones/223512-ley-general-de-la-persona-con-discapacidad-y-su-reglamento",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/534697/223512-ley-general-de-la-persona-con-discapacidad_actualizada.pdf?v=1725564015",
+    "attachment": 1,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-directory-discapacidad-attachment-1.pdf",
+    "sha256": "338a2df0aac2e0b884752f6a11a27a6b15dcfc240b166c01c3a1655184f2e7c2",
+    "bytes": 659419
+  },
+  {
+    "id": "pe:directory:discapacidad",
+    "page_url": "https://www.gob.pe/institucion/conadis/informes-publicaciones/223512-ley-general-de-la-persona-con-discapacidad-y-su-reglamento",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/534698/223512-ley-general-de-la-persona-con-discapacidad_actualizada.docx?v=1725564016",
+    "attachment": 2,
+    "http_status": 200,
+    "state": "not_pdf"
+  },
+  {
+    "id": "pe:directory:discapacidad",
+    "page_url": "https://www.gob.pe/institucion/conadis/informes-publicaciones/223512-ley-general-de-la-persona-con-discapacidad-y-su-reglamento",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/4882754/LEY%2029973_%20REGLAMENTO_17_07_2023.pdf?v=1689899009",
+    "attachment": 3,
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-directory-discapacidad-attachment-3.pdf",
+    "sha256": "5ac39dc3634547c5c4e17b7361371bd68513ee2e6d13a7ea40b0d81916e2bc7d",
+    "bytes": 629842
+  },
+  {
+    "id": "pe:directory:discapacidad",
+    "page_url": "https://www.gob.pe/institucion/conadis/informes-publicaciones/223512-ley-general-de-la-persona-con-discapacidad-y-su-reglamento",
+    "url": "https://cdn.www.gob.pe/uploads/document/file/4882755/LEY%2029973_%20REGLAMENTO_17_07_2023.docx?v=1689899009",
+    "attachment": 4,
+    "http_status": 200,
+    "state": "not_pdf"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "pdf": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-directory-discapacidad-attachment-1.pdf",
+  "pdf_sha256": "338a2df0aac2e0b884752f6a11a27a6b15dcfc240b166c01c3a1655184f2e7c2",
+  "markdown_sha256": "72f3da2114f24d21fff59f71d7bd03b96f091c996c5d1df44252a87ce72fb060",
+  "pages": 55,
+  "characters": 156650,
+  "replacement_characters": 0,
+  "seconds": 322.45,
+  "stage_exit": 0,
+  "stage_stdout": "{\"candidate_count\":110,\"engine\":\"sat\",\"evidence_id\":\"pdf-sha256-338a2df0aac2e0b884752f6a11a27a6b15dcfc240b166c01c3a1655184f2e7c2\",\"llm_calls\":0,\"parse_id\":\"parse:561ce570f1d894c0c9a3041ab213860bbd294073db88a90eb6633e3c8f651c0f\",\"review_state\":\"pending_review\",\"structural_candidate_count\":258,\"structure_diagnostic_count\":124,\"write_state\":\"committed\"}\n",
+  "stage_stderr": ""
+}

@@ -1,0 +1,12 @@
+{
+  "pdf": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-dl-1377.pdf",
+  "pdf_sha256": "d28fbe3782323ebed8aec21b54dcc7abb21ee3dbd51723aac9591e53bc36693d",
+  "markdown_sha256": "d09ece7fca5abb9b3b82a685fb77f22a8088f5525bf6a6bdf4a354d530c77759",
+  "pages": 56,
+  "characters": 214957,
+  "replacement_characters": 0,
+  "seconds": 1229.98,
+  "stage_exit": 0,
+  "stage_stdout": "{\"candidate_count\":37,\"engine\":\"sat\",\"evidence_id\":\"pdf-sha256-d28fbe3782323ebed8aec21b54dcc7abb21ee3dbd51723aac9591e53bc36693d\",\"llm_calls\":0,\"parse_id\":\"parse:ece179ad926da1e7b0dd45a684298c8bd07a993b7ef4fa74ce83f840bc3b8247\",\"review_state\":\"pending_review\",\"structural_candidate_count\":106,\"structure_diagnostic_count\":705,\"write_state\":\"committed\"}\n",
+  "stage_stderr": ""
+}

@@ -1,0 +1,12 @@
+{
+  "pdf": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-024-2021-mimp-attachment-1.pdf",
+  "pdf_sha256": "504f74f91524c7d6b82034d750978bfa6690cc4b3e97dec7cf45f731cc6fd832",
+  "markdown_sha256": "286d07c59895ede275743752e022f33a0f2a1bc14ff050ba9f6a4f8c7572cf82",
+  "pages": 30,
+  "characters": 220233,
+  "replacement_characters": 0,
+  "seconds": 100.7,
+  "stage_exit": 0,
+  "stage_stdout": "{\"candidate_count\":164,\"engine\":\"sat\",\"evidence_id\":\"pdf-sha256-504f74f91524c7d6b82034d750978bfa6690cc4b3e97dec7cf45f731cc6fd832\",\"llm_calls\":0,\"parse_id\":\"parse:76932ac8faf2e63f4cc28a18629d912fb40b7bf9fe1c8ed6c72fde552594b0f5\",\"review_state\":\"pending_review\",\"structural_candidate_count\":685,\"structure_diagnostic_count\":169,\"write_state\":\"committed\"}\n",
+  "stage_stderr": ""
+}

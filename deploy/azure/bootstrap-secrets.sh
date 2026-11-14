@@ -77,9 +77,6 @@ RATE_LIMIT_STORAGE_URI=redis://:$REDIS_PASSWORD@redis:6379/1
 # Motor de recuperación: SAT es el corpus normativo versionado. Cambiar a
 # lightrag solo para comparar contra el grafo probabilístico heredado.
 RAG_ENGINE=sat
-# Los candidatos de revisión deben vivir en el volumen persistente; la raíz del
-# repo dentro del contenedor es efímera y se pierde en cada despliegue.
-SAT_CANDIDATES_DIR=/app/backend/temp/sat-corpus-work
 # Opcional: fija la fecha de corte del snapshot (YYYY-MM-DD). Vacío = versiones
 # más recientes almacenadas, asumidas vigentes por la administración del corpus.
 # SAT_AS_OF=
@@ -97,6 +94,5 @@ ensure_key() {
   grep -qE "^$1=" "$DIR/backend.env" || printf '%s\n' "$1=$2" >>"$DIR/backend.env"
 }
 ensure_key RAG_ENGINE sat
-ensure_key SAT_CANDIDATES_DIR /app/backend/temp/sat-corpus-work
 
 echo "OK: $DIR/compose.env y $DIR/backend.env"

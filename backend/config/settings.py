@@ -112,9 +112,6 @@ class Settings(BaseSettings):
     # lightrag queda como alternativa experimental del grafo probabilístico.
     RAG_ENGINE: str = "sat"
     SAT_AS_OF: Optional[str] = None
-    # Candidatos SAT pendientes de revisión. Vacío = <raíz del repo>/temp/sat-corpus-work.
-    # En contenedor debe apuntar a un volumen persistente, no a la capa efímera.
-    SAT_CANDIDATES_DIR: Optional[str] = None
     EMBEDDING_MODEL: str = "embed-multilingual-v3.0"
     EMBEDDING_DIM: int = 1024
     MAX_CHUNK_SIZE: int = 1000

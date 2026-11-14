@@ -1,0 +1,234 @@
+[
+  {
+    "id": "pe:rm:100-2021-mimp",
+    "title": "RM 100-2021-MIMP — Protocolo de Atención del CEM",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/mimp/normas-legales/1780515-100-2021-mimp",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:directory:warmi-nan",
+    "title": "Directorio de servicios WARMI ÑAN",
+    "kind": "directory",
+    "url": "https://www.gob.pe/institucion/warmi%C3%B1an/informes-publicaciones/3487068-directorio-de-servicios-del-programa-nacional-warmi-nan",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:dl:768",
+    "title": "Código Procesal Civil — DL 768 / TUO RM 010-93-JUS",
+    "kind": "norm",
+    "url": "https://www.leyes.congreso.gob.pe/Documentos/DecretosLegislativos/00768.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-dl-768.pdf",
+    "sha256": "eaffefabb5ce1f385c64b2f4b8915f4b5714a7e348dbe4dd66ad2e635bea45e6",
+    "bytes": 1827880
+  },
+  {
+    "id": "pe:ley:28970",
+    "title": "Ley 28970 — Registro de Deudores Alimentarios Morosos",
+    "kind": "norm",
+    "url": "https://leyes.congreso.gob.pe/Documentos/Leyes/28970.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-28970.pdf",
+    "sha256": "091ad079ab98ea19545f22b43dc9208cccb122d39db6fdfcdb56a7f7e7689148",
+    "bytes": 687452
+  },
+  {
+    "id": "pe:ds:008-2019-jus",
+    "title": "DS 008-2019-JUS — Reglamento REDAM",
+    "kind": "norm",
+    "url": "https://busquedas.elperuano.pe/dispositivo/NL/1737747-1",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:dl:1377",
+    "title": "DL 1377 — protección integral de niñas, niños y adolescentes",
+    "kind": "norm",
+    "url": "https://leyes.congreso.gob.pe/Documentos/2016_2021/Decretos/Legislativos/2018/DL137720180818.PDF",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-dl-1377.pdf",
+    "sha256": "d28fbe3782323ebed8aec21b54dcc7abb21ee3dbd51723aac9591e53bc36693d",
+    "bytes": 7289476
+  },
+  {
+    "id": "pe:directory:redam-modificatoria-2023",
+    "title": "Congreso — publicación sobre Ley 31928 (REDAM)",
+    "kind": "directory",
+    "url": "https://comunicaciones.congreso.gob.pe/despacho-informa/promulgan-ley-que-promueve-inscripcion-de-parte-en-registro-de-deudores-alimentarios-morosos/",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ley:30364",
+    "title": "Ley 30364 — publicación original",
+    "kind": "norm",
+    "url": "https://www3.congreso.gob.pe/Docs/DGP/DIDP/files/ley_30364.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-30364.pdf",
+    "sha256": "7ee605f76b4ba65d0b792e9b82aadcce4baec629260955ad953a47a169851125",
+    "bytes": 1829636
+  },
+  {
+    "id": "pe:ds:004-2020-mimp",
+    "title": "DS 004-2020-MIMP — TUO de la Ley 30364",
+    "kind": "norm",
+    "url": "https://elperuano.pe/normaselperuano/2020/09/06/1882613-1/1882613-1.htm",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ds:009-2016-mimp",
+    "title": "DS 009-2016-MIMP — Reglamento de la Ley 30364",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/mimp/normas-legales/20809-009-2016-mimp",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ds:005-2022-mimp",
+    "title": "DS 005-2022-MIMP — modificatoria del Reglamento 30364",
+    "kind": "norm",
+    "url": "https://www3.congreso.gob.pe/Docs/DGP/DIDP/files/ds_005-2022-mimp.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ds-005-2022-mimp.pdf",
+    "sha256": "5fad1c46c5127289b7a764a175b73cf8fb0f68465e827cb2457060e13e6843cd",
+    "bytes": 165580
+  },
+  {
+    "id": "pe:ds:002-2025-mimp",
+    "title": "DS 002-2025-MIMP — modificatoria del Reglamento 30364",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/mimp/normas-legales/6661714-002-2025-mimp",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ds:004-2025-mimp",
+    "title": "DS 004-2025-MIMP — modificatoria del Reglamento 30364",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/mimp/normas-legales/6850857-004-2025-mimp",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:dl:1703",
+    "title": "DL 1703 — Superintendencia de Defensa Pública y Acceso a la Justicia",
+    "kind": "norm",
+    "url": "https://www.congreso.gob.pe/Docs/DGP/DIDP/files/decret_legislativo_1703.pdf",
+    "http_status": 404,
+    "state": "download_failed",
+    "error": "404 Client Error: Not Found for url: https://www.congreso.gob.pe/Docs/DGP/DIDP/files/decret_legislativo_1703.pdf"
+  },
+  {
+    "id": "pe:directory:30364-modificatorias",
+    "title": "Congreso — seguimiento de Ley 30364 y reglamento",
+    "kind": "directory",
+    "url": "https://www3.congreso.gob.pe/didp/procedimientos-parlamentarios/leyes-reglamentadas-2015",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:dl:635",
+    "title": "Código Penal — DL 635, copia del Congreso",
+    "kind": "norm",
+    "url": "https://www2.congreso.gob.pe/sicr/cendocbib/con5_uibd.nsf/C835D25C36641543052586F2001DA486/%24FILE/CODIGOPENAL.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-dl-635.pdf",
+    "sha256": "5938f7f8c13ae0bf73771fae9ae503646b059dea20a8e0b1bd839bfe950d669e",
+    "bytes": 3363288
+  },
+  {
+    "id": "pe:dl:295",
+    "title": "Código Civil — DL 295, promulgación original",
+    "kind": "norm",
+    "url": "https://www.leyes.congreso.gob.pe/Documentos/DecretosLegislativos/00295.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-dl-295.pdf",
+    "sha256": "e61841e0ad898e93d587908230516d599464dc33703f5757523b579f78e2cd96",
+    "bytes": 70352
+  },
+  {
+    "id": "pe:ley:27337",
+    "title": "Ley 27337 — Código de los Niños y Adolescentes",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/congreso-de-la-republica/normas-legales/3366849-27337",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:directory:cna-2026",
+    "title": "MIMP — edición 2026 del Código de los Niños y Adolescentes",
+    "kind": "directory",
+    "url": "https://www.gob.pe/institucion/mimp/informes-publicaciones/7858302-codigo-de-los-ninos-y-adolescentes",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ley:31464",
+    "title": "Ley 31464 — procesos de alimentos",
+    "kind": "norm",
+    "url": "https://leyes.congreso.gob.pe/Documentos/2021_2026/ADLP/Texto_Consolidado/31464-TXM.pdf",
+    "http_status": 200,
+    "state": "downloaded",
+    "path": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-ley-31464.pdf",
+    "sha256": "2cb330a806b672acd3bec12a0dfab06275830d54ccd74472cb04592a8485fe5e",
+    "bytes": 439127
+  },
+  {
+    "id": "pe:ley:28439",
+    "title": "Ley 28439 — simplificación del proceso de alimentos",
+    "kind": "norm",
+    "url": "https://www.mimp.gob.pe/files/direcciones/dgfc/diff/normatividad_alimentos/1_Ley_28439.pdf",
+    "http_status": 404,
+    "state": "download_failed",
+    "error": "404 Client Error: Not Found for url: https://www.mimp.gob.pe/files/direcciones/dgfc/diff/normatividad_alimentos/1_Ley_28439.pdf"
+  },
+  {
+    "id": "pe:directory:alimentos",
+    "title": "MIMP — normatividad nacional en materia de alimentos",
+    "kind": "directory",
+    "url": "https://www.gob.pe/institucion/mimp/informes-publicaciones/5478027-normatividad-nacional-en-materia-de-alimentos",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ley:30490",
+    "title": "Ley 30490 — personas adultas mayores",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/congreso-de-la-republica/normas-legales/3601024-30490",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:ds:024-2021-mimp",
+    "title": "DS 024-2021-MIMP — Reglamento de Ley 30490",
+    "kind": "norm",
+    "url": "https://www.gob.pe/institucion/mimp/normas-legales/2040707-024-2021-mimp",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:directory:discapacidad",
+    "title": "CONADIS — Ley 29973 y reglamento",
+    "kind": "directory",
+    "url": "https://www.gob.pe/institucion/conadis/informes-publicaciones/223512-ley-general-de-la-persona-con-discapacidad-y-su-reglamento",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:service:linea-100",
+    "title": "Línea 100 — orientación ante violencia",
+    "kind": "service",
+    "url": "https://www.gob.pe/44181-solicitar-ayuda-en-casos-de-violencia-contra-las-mujeres-e-integrantes-del-grupo-familiar-linea-100",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:service:alegra",
+    "title": "ALEGRA — asistencia legal gratuita",
+    "kind": "service",
+    "url": "https://www.gob.pe/562-obtener-asesoria-legal-gratis-en-los-centros-de-asistencia-legal-gratuita-alegra",
+    "state": "page_requires_extraction"
+  },
+  {
+    "id": "pe:directory:alegra",
+    "title": "Directorio de centros ALEGRA",
+    "kind": "directory",
+    "url": "https://www.gob.pe/institucion/minjus/informes-publicaciones/3300912-directorio-de-centros-de-asistencia-legal-gratuita-alegra",
+    "state": "page_requires_extraction"
+  }
+]

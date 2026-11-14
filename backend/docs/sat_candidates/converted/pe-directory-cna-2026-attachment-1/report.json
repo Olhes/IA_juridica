@@ -1,0 +1,12 @@
+{
+  "pdf": "D:\\Web\\IA_juridica\\temp\\sat-corpus-work\\pdf\\pe-directory-cna-2026-attachment-1.pdf",
+  "pdf_sha256": "be6c6202edfb002ef6ef0294717d622e8a8d832c6f800642d8fd1d366b83a73a",
+  "markdown_sha256": "6ec3e919940e9eb2c78d263e6d8717c34dd7078fb4891b05955071b9bdfa5d69",
+  "pages": 87,
+  "characters": 164139,
+  "replacement_characters": 0,
+  "seconds": 1032.08,
+  "stage_exit": 0,
+  "stage_stdout": "{\"candidate_count\":28,\"engine\":\"sat\",\"evidence_id\":\"pdf-sha256-be6c6202edfb002ef6ef0294717d622e8a8d832c6f800642d8fd1d366b83a73a\",\"llm_calls\":0,\"parse_id\":\"parse:ca3606979cbcfb38ac5d4cef615b01523889748f1211a41e4a1bef7290c8294e\",\"review_state\":\"pending_review\",\"structural_candidate_count\":342,\"structure_diagnostic_count\":416,\"write_state\":\"committed\"}\n",
+  "stage_stderr": ""
+}

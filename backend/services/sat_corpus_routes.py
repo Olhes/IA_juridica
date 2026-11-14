@@ -14,13 +14,9 @@ from services.sat_corpus import CandidateShelf, CorpusEditor, Conflict, Publicat
 router = APIRouter(prefix="/sat-graph/review", tags=["SAT corpus review"])
 ASSETS = Path(__file__).resolve().parents[1] / "static" / "sat-review"
 REVIEWS = Path(__file__).resolve().parents[1] / "docs" / "sat_reviews"
-# En contenedor la raíz del repo no es escribible: SAT_CANDIDATES_DIR la redirige
-# a un volumen persistente para no perder candidatos en cada despliegue.
-CANDIDATES = (
-    Path(settings.SAT_CANDIDATES_DIR).resolve()
-    if settings.SAT_CANDIDATES_DIR
-    else Path(__file__).resolve().parents[2] / "temp" / "sat-corpus-work"
-)
+# El banco de candidatos vive junto al corpus publicado, dentro del repo: el
+# revisor solo lee rutas versionadas. Los PDFs se validan por sha256.
+CANDIDATES = Path(__file__).resolve().parents[1] / "docs" / "sat_candidates"
 
 
 def editor():
