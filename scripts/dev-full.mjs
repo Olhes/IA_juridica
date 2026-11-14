@@ -189,7 +189,9 @@ export async function ensureSatCorpus({
     { stdio: "inherit" });
   const restore = await runProcess("docker", [
     "compose", "exec", "-T", "postgres", "pg_restore", "-U", "juridica_user",
-    "-d", "juridica_db", "--schema=sat_graph", "--clean", "--if-exists",
+    // Sin --schema: pg_restore filtra también el CREATE SCHEMA y falla en una
+    // base nueva; el dump solo contiene objetos de sat_graph.
+    "-d", "juridica_db", "--clean", "--if-exists",
     "--no-owner", "--no-privileges", "--exit-on-error", "/tmp/sat_graph.pg_dump",
   ], { stdio: "inherit" });
   if (restore.code !== 0) {

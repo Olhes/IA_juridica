@@ -33,8 +33,10 @@ if [[ ${revisions:-0} == 0 ]]; then
   if [[ -f $CORPUS_DUMP ]]; then
     echo "Corpus SAT vacío: restaurando $CORPUS_DUMP..."
     "${COMPOSE[@]}" cp "$CORPUS_DUMP" postgres:/tmp/sat_graph.pg_dump
+    # Sin --schema: pg_restore filtra también el CREATE SCHEMA y la restauración
+    # falla sobre una base nueva. El dump solo contiene objetos de sat_graph.
     "${COMPOSE[@]}" exec -T postgres pg_restore -U juridica_user -d juridica_db \
-      --schema=sat_graph --clean --if-exists --no-owner --no-privileges --exit-on-error /tmp/sat_graph.pg_dump
+      --clean --if-exists --no-owner --no-privileges --exit-on-error /tmp/sat_graph.pg_dump
   else
     echo "Aviso: corpus SAT vacío y sin $CORPUS_DUMP; publica documentos en /sat-graph/review" >&2
   fi
