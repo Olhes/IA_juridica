@@ -5,16 +5,49 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 COMPOSE=(docker compose -f deploy/azure/compose.yml --env-file /etc/ia-juridica/compose.env)
+CORPUS_DUMP=backend/docs/sat_graph.pg_dump
+OLD_VOLUME=${OLD_VOLUME:-iajuridica_postgres_data}
+NEW_VOLUME=${NEW_VOLUME:-iajuridica_postgres_data_pg18}
+
+# PostgreSQL 18 no abre un directorio de datos de 15. Si el volumen anterior
+# todavía tiene los datos y el nuevo no existe, levantar el stack crearía una base
+# vacía y se perderían usuarios e historial: se detiene y se pide la migración.
+if docker volume inspect "$OLD_VOLUME" >/dev/null 2>&1 \
+   && ! docker volume inspect "$NEW_VOLUME" >/dev/null 2>&1; then
+  echo "Detenido: $OLD_VOLUME tiene datos de PostgreSQL 15 y $NEW_VOLUME no existe." >&2
+  echo "Migra primero: bash deploy/azure/upgrade-postgres-18.sh --execute" >&2
+  exit 1
+fi
 
 "${COMPOSE[@]}" config --quiet
 "${COMPOSE[@]}" build backend
+
+# El corpus SAT es dato, no código: el esquema `sat_graph` se crea pero queda
+# vacío. Se restaura con la base todavía sola —antes de que el backend pueda
+# inicializar el esquema en paralelo— y solo si no hay revisiones publicadas.
+"${COMPOSE[@]}" up -d --wait postgres
+revisions=$("${COMPOSE[@]}" exec -T postgres psql -U juridica_user -d juridica_db -tAc \
+  "SELECT count(*) FROM sat_graph.sat_nodes WHERE kind='DocumentaryRevision'" 2>/dev/null || echo "")
+revisions=${revisions//[[:space:]]/}
+if [[ ${revisions:-0} == 0 ]]; then
+  if [[ -f $CORPUS_DUMP ]]; then
+    echo "Corpus SAT vacío: restaurando $CORPUS_DUMP..."
+    "${COMPOSE[@]}" cp "$CORPUS_DUMP" postgres:/tmp/sat_graph.pg_dump
+    "${COMPOSE[@]}" exec -T postgres pg_restore -U juridica_user -d juridica_db \
+      --schema=sat_graph --clean --if-exists --no-owner --no-privileges --exit-on-error /tmp/sat_graph.pg_dump
+  else
+    echo "Aviso: corpus SAT vacío y sin $CORPUS_DUMP; publica documentos en /sat-graph/review" >&2
+  fi
+fi
+
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # /health responde aunque el corpus falle; /ready exige el corpus cargado.
 echo "Esperando /ready..."
 for _ in $(seq 1 60); do
-  if "${COMPOSE[@]}" exec -T backend curl -fsS http://127.0.0.1:8000/ready >/dev/null 2>&1; then
-    echo "Backend listo: $("${COMPOSE[@]}" exec -T backend curl -fsS http://127.0.0.1:8000/ready)"
+  ready=$("${COMPOSE[@]}" exec -T backend curl -fsS http://127.0.0.1:8000/ready 2>/dev/null || true)
+  if [[ -n $ready ]]; then
+    echo "Backend listo: $ready"
     docker image prune -f >/dev/null
     exit 0
   fi

@@ -4,9 +4,9 @@
 Navegador ──> https://ia-juridica-pe.vercel.app  (Next.js en Vercel)
                  └─ /api/*  ──rewrite──> https://api.68-211-73-117.sslip.io  (Caddy, HTTPS)
                                               └─> backend:8000 (FastAPI, 1 worker)
-                                                   ├─ postgres (volumen postgres_data)
-                                                   ├─ redis    (volumen redis_data)
-                                                   └─ docs/knowledge_graph (corpus del repo)
+                                                   ├─ postgres 18.7 (volumen postgres_data_pg18)
+                                                   ├─ redis 8.10    (volumen redis_data)
+                                                   └─ corpus SAT en el esquema sat_graph de postgres
 ```
 
 El navegador solo habla con el dominio de Vercel, así que las cookies de sesión
@@ -122,3 +122,36 @@ WHERE u.email = 'tu@gmail.com' AND r.name = 'admin' ON CONFLICT DO NOTHING;"
   Las contraseñas de Postgres/Redis solo se aplican sobre volúmenes nuevos.
 - Rate limit por IP: Caddy confía en `X-Forwarded-For` (lo pone Vercel). Quien llame
   directo a la API puede falsearlo; aceptable para la demo.
+
+## 4. Motor SAT y corpus normativo
+
+Producción corre `RAG_ENGINE=sat`: el chat responde desde el corpus versionado del
+esquema `sat_graph` de PostgreSQL, no desde LightRAG. `bootstrap-secrets.sh` escribe
+ambas claves y las agrega a un `backend.env` anterior sin pisar el resto.
+
+- `deploy.sh` restaura `backend/docs/sat_graph.pg_dump` cuando el esquema no tiene
+  ninguna revisión publicada. Si ya hay corpus —o venís de una migración— no lo toca.
+- Sin corpus la API **igual arranca**: `/health` responde, `/ready` devuelve 503 y el
+  editor `/sat-graph/review` sigue disponible para publicar el primer documento.
+  Cuando la publicación termina, `/ready` pasa a 200 sin reiniciar.
+- Los candidatos pendientes de revisión viven en `/srv/ia-juridica/temp/sat-corpus-work`
+  (`SAT_CANDIDATES_DIR`), no en la capa efímera del contenedor.
+- `SAT_AS_OF` (opcional, `YYYY-MM-DD`) fija la fecha de corte del snapshot. Vacío =
+  versiones más recientes almacenadas.
+
+### Migrar de PostgreSQL 15 a 18
+
+PostgreSQL 18 no abre un directorio de datos de 15 y además cambió `PGDATA`. Por eso el
+compose usa un volumen nuevo (`postgres_data_pg18`) y `deploy.sh` **se detiene** si detecta
+datos en el volumen viejo sin migrar, para no crear una base vacía en silencio.
+
+```bash
+# En la VM, antes del siguiente deploy:
+cd /opt/ia-juridica && git pull
+sudo bash deploy/azure/upgrade-postgres-18.sh          # muestra el plan
+sudo bash deploy/azure/upgrade-postgres-18.sh --execute
+```
+
+El script respalda (`/srv/ia-juridica/backups/pg15-<fecha>.{sql.gz,dump}`), para el
+stack, levanta 18 sobre el volumen nuevo, restaura la base y vuelve a desplegar. El
+volumen `iajuridica_postgres_data` queda intacto hasta que confirmes los datos.

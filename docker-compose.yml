@@ -11,7 +11,14 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 cambió PGDATA a /var/lib/postgresql/18/docker y declara el
+      # VOLUME en /var/lib/postgresql. Montar en /var/lib/postgresql/data deja la
+      # base en un volumen anónimo que se pierde al recrear el contenedor.
+      - postgres_data:/var/lib/postgresql
+      # Mismo esquema inicial que producción; solo corre sobre un volumen vacío.
+      - ./backend/database/init_multi_schema.sql:/docker-entrypoint-initdb.d/01_init_multi_schema.sql:ro
+      - ./backend/database/migrations/001_add_auth_roles_permissions.sql:/docker-entrypoint-initdb.d/02_auth_roles_permissions.sql:ro
+      - ./backend/database/migrations/002_add_picture_column.sql:/docker-entrypoint-initdb.d/03_picture_column.sql:ro
     networks:
       - ia_juridica_network
     restart: unless-stopped
@@ -22,7 +29,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7.4.12-alpine
+    image: redis:8.10.3-alpine
     container_name: ia_juridica_redis
     ports:
       - "127.0.0.1:6379:6379"

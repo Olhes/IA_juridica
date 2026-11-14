@@ -1,0 +1,9 @@
+# Los scripts de despliegue se ejecutan en Linux (VM de Azure, cron, CI).
+# Con core.autocrlf=true en Windows, un checkout con CRLF rompe bash con
+# "syntax error near unexpected token $'do\r'". El índice ya está en LF; esto
+# lo hace explícito para cualquier clon y sistema operativo.
+*.sh        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+Dockerfile* text eol=lf
+*.dockerfile text eol=lf

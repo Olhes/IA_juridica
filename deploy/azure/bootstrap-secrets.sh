@@ -11,7 +11,9 @@ set -euo pipefail
 
 DIR=/etc/ia-juridica
 install -d -m 750 -o root -g docker "$DIR"
-install -d -o 1000 -g 1000 /srv/ia-juridica/data /srv/ia-juridica/logs /srv/ia-juridica/temp/pdfs
+install -d -o 1000 -g 1000 /srv/ia-juridica/data /srv/ia-juridica/logs \
+  /srv/ia-juridica/temp/pdfs /srv/ia-juridica/temp/sat-corpus-work \
+  /srv/ia-juridica/backups
 
 rand() { openssl rand -hex 32; }
 
@@ -72,11 +74,29 @@ REDIS_URL=redis://:$REDIS_PASSWORD@redis:6379/0
 RATE_LIMIT_ENABLED=true
 RATE_LIMIT_STORAGE_URI=redis://:$REDIS_PASSWORD@redis:6379/1
 
+# Motor de recuperación: SAT es el corpus normativo versionado. Cambiar a
+# lightrag solo para comparar contra el grafo probabilístico heredado.
+RAG_ENGINE=sat
+# Los candidatos de revisión deben vivir en el volumen persistente; la raíz del
+# repo dentro del contenedor es efímera y se pierde en cada despliegue.
+SAT_CANDIDATES_DIR=/app/backend/temp/sat-corpus-work
+# Opcional: fija la fecha de corte del snapshot (YYYY-MM-DD). Vacío = versiones
+# más recientes almacenadas, asumidas vigentes por la administración del corpus.
+# SAT_AS_OF=
+
 FEEDBACK_DIR=./data/feedback
 LOAD_LOCAL_KG=true
 NEO4J_ENABLED=false
 EOF
   chgrp docker "$DIR/backend.env"
 fi
+
+# Un backend.env previo a SAT no tiene estas claves y el deploy fallaría en
+# silencio con LightRAG: se completan sin tocar el resto del archivo.
+ensure_key() {
+  grep -qE "^$1=" "$DIR/backend.env" || printf '%s\n' "$1=$2" >>"$DIR/backend.env"
+}
+ensure_key RAG_ENGINE sat
+ensure_key SAT_CANDIDATES_DIR /app/backend/temp/sat-corpus-work
 
 echo "OK: $DIR/compose.env y $DIR/backend.env"

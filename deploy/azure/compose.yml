@@ -10,14 +10,18 @@ name: iajuridica
 
 services:
   postgres:
-    image: postgres:15-alpine
+    # Igual que el compose local: PostgreSQL 18.7, la última estable (19 sigue en RC).
+    image: postgres:18.7-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: juridica_db
       POSTGRES_USER: juridica_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 cambió PGDATA a /var/lib/postgresql/18/docker y declara el
+      # VOLUME en /var/lib/postgresql. El volumen anterior era de PostgreSQL 15 y
+      # no es compatible en formato: se migra con deploy/azure/upgrade-postgres-18.sh.
+      - postgres_data_pg18:/var/lib/postgresql
       # Solo se ejecutan sobre un volumen vacío (primer arranque).
       - ../../backend/database/init_multi_schema.sql:/docker-entrypoint-initdb.d/01_init_multi_schema.sql:ro
       - ../../backend/database/migrations/001_add_auth_roles_permissions.sql:/docker-entrypoint-initdb.d/02_auth_roles_permissions.sql:ro
@@ -29,7 +33,8 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    # Igual que el compose local: Redis 8.10.3, la última estable.
+    image: redis:8.10.3-alpine
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?falta REDIS_PASSWORD}", "--appendonly", "yes"]
     volumes:
@@ -91,7 +96,7 @@ services:
       - backend
 
 volumes:
-  postgres_data:
+  postgres_data_pg18:
   redis_data:
   caddy_data:
   caddy_config:
