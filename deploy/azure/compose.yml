@@ -10,7 +10,6 @@ name: iajuridica
 
 services:
   postgres:
-    # Igual que el compose local: PostgreSQL 18.7, la última estable (19 sigue en RC).
     image: postgres:18.7-alpine
     restart: unless-stopped
     environment:
