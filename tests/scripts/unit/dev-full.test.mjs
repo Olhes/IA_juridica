@@ -6,6 +6,7 @@ import {
   BACKEND_HEALTH_URL,
   composeUpArgs,
   developmentProfile,
+  ensureSatCorpus,
   profileEnvironment,
   isServiceReady,
   startFrontendAfterBackend,
@@ -15,19 +16,20 @@ import {
 } from "../../../scripts/dev-full.mjs";
 
 test("both retrieval engines use the same local ports", () => {
-  assert.deepEqual(developmentProfile([]), developmentProfile(["--lightrag"]));
+  assert.deepEqual(developmentProfile([]), developmentProfile(["--sat"]));
   assert.deepEqual(developmentProfile([]), {
-    RAG_ENGINE: "lightrag", DEV_BACKEND_PORT: "8000", DEV_FRONTEND_PORT: "3000",
-  });
-  assert.deepEqual(developmentProfile(["--sat"]), {
     RAG_ENGINE: "sat", DEV_BACKEND_PORT: "8000", DEV_FRONTEND_PORT: "3000",
+  });
+  assert.deepEqual(developmentProfile(["--lightrag"]), {
+    RAG_ENGINE: "lightrag", DEV_BACKEND_PORT: "8000", DEV_FRONTEND_PORT: "3000",
   });
   assert.deepEqual(developmentProfile(["--", "--sat"]), developmentProfile(["--sat"]));
   assert.throws(() => developmentProfile(["--sat", "--lightrag"]));
+  assert.throws(() => developmentProfile(["--unknown"]));
 });
 
 test("both retrieval engines retain the existing Google OAuth callback", () => {
-  for (const args of [[], ["--sat"]]) {
+  for (const args of [[], ["--lightrag"]]) {
     const env = profileEnvironment(developmentProfile(args));
     assert.equal(env.GOOGLE_REDIRECT_URI, "http://localhost:8000/auth/google/callback");
     assert.equal(env.GOOGLE_FRONTEND_CALLBACK_URI, "http://localhost:3000/auth/callback");
@@ -52,6 +54,32 @@ test("readiness checks the selected backend rather than the default", async () =
 test("development startup targets only PostgreSQL and Redis", () => {
   assert.deepEqual(CORE_SERVICES, ["postgres", "redis"]);
   assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "postgres", "redis"]);
+});
+
+test("SAT corpus is restored only when the local schema is empty", async () => {
+  const calls = [];
+  const recorder = (code, stdout = "") => async (_command, args) => {
+    calls.push(args);
+    return { code, stdout, stderr: "" };
+  };
+
+  assert.equal(await ensureSatCorpus({
+    RAG_ENGINE: "lightrag", runProcess: recorder(0, "0"),
+  }), "skipped");
+  assert.deepEqual(calls, []);
+
+  assert.equal(await ensureSatCorpus({
+    RAG_ENGINE: "sat", runProcess: recorder(0, "9\n"),
+  }), "present");
+  assert.equal(calls.length, 1);
+
+  calls.length = 0;
+  assert.equal(await ensureSatCorpus({
+    RAG_ENGINE: "sat", runProcess: recorder(0, ""),
+  }), "restored");
+  assert.equal(calls.length, 3);
+  assert.match(calls[1].join(" "), /compose cp backend\/docs\/sat_graph\.pg_dump/);
+  assert.match(calls[2].join(" "), /pg_restore/);
 });
 
 test("host processes require running containers with healthy checks", () => {

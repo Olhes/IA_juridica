@@ -1,7 +1,8 @@
 # SAT-Graph beta: chat y revisión del corpus
 
-El chat usa LightRAG por defecto. Para probar **SAT-Graph beta**, detén la
-instancia anterior y ejecuta `pnpm dev:full --sat`. Ambos motores usan el
+El corpus normativo versionado (SAT) es el motor por defecto, en local y en
+producción. `pnpm dev` levanta backend y frontend sobre SAT; para comparar con
+el grafo probabilístico heredado, `pnpm dev --lightrag`. Ambos motores usan el
 backend en `localhost:8000` y el frontend en `localhost:3000`, uno a la vez.
 
 La distribución beta incluye nueve fuentes procesadas: ocho fuentes normativas

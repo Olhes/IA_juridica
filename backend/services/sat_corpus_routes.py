@@ -14,7 +14,13 @@ from services.sat_corpus import CandidateShelf, CorpusEditor, Conflict, Publicat
 router = APIRouter(prefix="/sat-graph/review", tags=["SAT corpus review"])
 ASSETS = Path(__file__).resolve().parents[1] / "static" / "sat-review"
 REVIEWS = Path(__file__).resolve().parents[1] / "docs" / "sat_reviews"
-CANDIDATES = Path(__file__).resolve().parents[2] / "temp" / "sat-corpus-work"
+# En contenedor la raíz del repo no es escribible: SAT_CANDIDATES_DIR la redirige
+# a un volumen persistente para no perder candidatos en cada despliegue.
+CANDIDATES = (
+    Path(settings.SAT_CANDIDATES_DIR).resolve()
+    if settings.SAT_CANDIDATES_DIR
+    else Path(__file__).resolve().parents[2] / "temp" / "sat-corpus-work"
+)
 
 
 def editor():

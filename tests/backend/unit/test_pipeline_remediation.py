@@ -145,6 +145,8 @@ async def test_loader_retries_failure_without_false_ready(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_lifespan_loads_once_and_finalizes(monkeypatch, pipeline):
+    # Este ciclo es el de LightRAG; SAT tiene su propio arranque en main.lifespan.
+    monkeypatch.setattr(main.settings, "RAG_ENGINE", "lightrag")
     engine = pipeline.rag_engine
     engine.initialize_storages = AsyncMock()
     engine.load_processed_documents = AsyncMock()
@@ -174,6 +176,7 @@ async def test_lifespan_loads_once_and_finalizes(monkeypatch, pipeline):
 
 @pytest.mark.asyncio
 async def test_shutdown_cancels_loading_and_closes_on_error(monkeypatch, pipeline):
+    monkeypatch.setattr(main.settings, "RAG_ENGINE", "lightrag")
     started = asyncio.Event()
 
     async def load(*args):

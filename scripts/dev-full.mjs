@@ -10,13 +10,15 @@ const READINESS_POLL_MS = 1_000;
 export function developmentProfile(args) {
   // pnpm may forward the option separator literally; npm consumes it.
   if (args[0] === "--") args = args.slice(1);
-  const sat = args.includes("--sat");
-  if (args.some((arg) => arg !== "--sat" && arg !== "--lightrag") ||
-      (sat && args.includes("--lightrag"))) {
-    throw new Error("Use dev:full [--sat | --lightrag].");
+  // SAT es el motor por defecto; --lightrag lo cambia para comparar contra el
+  // grafo probabilístico heredado. --sat se acepta por compatibilidad.
+  const lightrag = args.includes("--lightrag");
+  if (args.some((arg) => !["--sat", "--lightrag"].includes(arg)) ||
+      (lightrag && args.includes("--sat"))) {
+    throw new Error("Use dev:full [--lightrag] (SAT es el default).");
   }
   return {
-    RAG_ENGINE: sat ? "sat" : "lightrag",
+    RAG_ENGINE: lightrag ? "lightrag" : "sat",
     DEV_BACKEND_PORT: "8000",
     DEV_FRONTEND_PORT: "3000",
   };
@@ -149,7 +151,7 @@ async function waitForInfrastructure() {
   throw new Error(`Timed out waiting for Docker infrastructure: ${details}.`);
 }
 
-async function startInfrastructure() {
+async function startInfrastructure(profile) {
   console.log("Starting PostgreSQL and Redis...");
   const result = await run("docker", composeUpArgs(), { stdio: "inherit" });
   if (result.code !== 0) {
@@ -158,7 +160,42 @@ async function startInfrastructure() {
 
   console.log("Waiting for PostgreSQL and Redis health checks...");
   await waitForInfrastructure();
+  const corpus = await ensureSatCorpus(profile);
+  if (corpus === "restored") console.log("Corpus SAT restaurado desde el respaldo del repositorio.");
   console.log("PostgreSQL and Redis are healthy. Starting backend...");
+}
+
+const CORPUS_DUMP = "backend/docs/sat_graph.pg_dump";
+
+/**
+ * SAT responde desde el corpus, que es dato y no código. En una base local nueva
+ * el esquema queda vacío y /ready responde 503; se restaura el respaldo
+ * versionado una sola vez, igual que hace deploy/azure/deploy.sh.
+ */
+export async function ensureSatCorpus({
+  RAG_ENGINE,
+  runProcess = run,
+  dumpPath = CORPUS_DUMP,
+} = {}) {
+  if (RAG_ENGINE !== "sat") return "skipped";
+
+  const count = await runProcess("docker", [
+    "compose", "exec", "-T", "postgres", "psql", "-U", "juridica_user", "-d", "juridica_db",
+    "-tAc", "SELECT count(*) FROM sat_graph.sat_nodes WHERE kind='DocumentaryRevision'",
+  ], { stdio: ["ignore", "pipe", "ignore"] });
+  if (count.code === 0 && Number(count.stdout.trim()) > 0) return "present";
+
+  await runProcess("docker", ["compose", "cp", dumpPath, "postgres:/tmp/sat_graph.pg_dump"],
+    { stdio: "inherit" });
+  const restore = await runProcess("docker", [
+    "compose", "exec", "-T", "postgres", "pg_restore", "-U", "juridica_user",
+    "-d", "juridica_db", "--schema=sat_graph", "--clean", "--if-exists",
+    "--no-owner", "--no-privileges", "--exit-on-error", "/tmp/sat_graph.pg_dump",
+  ], { stdio: "inherit" });
+  if (restore.code !== 0) {
+    throw new Error(`No se pudo restaurar ${dumpPath}; publica documentos en /sat-graph/review.`);
+  }
+  return "restored";
 }
 
 function startPnpm(args, {
@@ -232,12 +269,13 @@ async function runFrontendGate() {
 async function main() {
   const profile = developmentProfile(process.argv.slice(2));
   Object.assign(process.env, profileEnvironment(profile));
-  if (profile.RAG_ENGINE === "sat") console.log("SAT-Graph — recuperador experimental");
+  if (profile.RAG_ENGINE === "lightrag") console.log("LightRAG — grafo probabilístico (comparación)");
+  else console.log("SAT-Graph — corpus normativo versionado");
   await Promise.all([
     ensurePortFree(profile.DEV_BACKEND_PORT, "127.0.0.1"),
     ensurePortFree(profile.DEV_FRONTEND_PORT),
   ]);
-  await startInfrastructure();
+  await startInfrastructure(profile);
 
   const hosts = startHostProcesses();
   for (const signal of ["SIGINT", "SIGTERM"]) {
