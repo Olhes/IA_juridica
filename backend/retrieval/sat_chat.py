@@ -74,6 +74,9 @@ class SATChatRetriever:
                          'retrieval_origin': 'sat', 'source_url': h['source_url'],
                          'version_id': h['version_id'], 'provenance_state': h['provenance_state'],
                          'citation': h.get('citation'),
+                         # Etiqueta estructural del work (p. ej. "Artículo 3"): permite
+                         # agrupar los fragmentos recuperados por norma y artículo.
+                         'section_label': h.get('label'),
                          'sat_section': h.get('sat_section'),
                          'snapshot_as_of': h.get('snapshot_as_of')},
         } for h in result['hits']]

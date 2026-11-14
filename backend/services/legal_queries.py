@@ -41,17 +41,32 @@ def _evidence(documents):
 
 
 def _evidence_summary(documents):
-    return [
-        {
-            "source": item["source"],
-            "relevance": d.get("relevance_score"),
-            "excerpt": " ".join(item["text"].split())[:EXCERPT_CHARS],
-            # Camino de recuperación: grafo de LightRAG o búsqueda léxica local.
-            "origin": (d.get("metadata") or {}).get("retrieval_origin") or "lexical",
-            "jurisprudence": jurisprudence_keys(item["text"]),
-        }
-        for item, d in zip(_evidence(documents), documents)
-    ]
+    """Un item por fragmento recuperado, con la estructura que el corpus conozca.
+
+    ``section`` y ``version_id`` permiten agrupar la evidencia como árbol
+    norma → artículos sin reconstruir la jerarquía en el cliente.
+    """
+    summary = []
+    for item, document in zip(_evidence(documents), documents):
+        metadata = document.get("metadata") or {}
+        section = metadata.get("sat_section") or {}
+        summary.append(
+            {
+                "source": item["source"],
+                # Nombre del documento recuperado (norma): agrupa el árbol aunque
+                # `source` sea la cita exacta ("Artículo 3 de la Ley 28970").
+                "document": metadata.get("title") or metadata.get("filename") or item["source"],
+                "relevance": document.get("relevance_score"),
+                "excerpt": " ".join(item["text"].split())[:EXCERPT_CHARS],
+                # Camino de recuperación: grafo de LightRAG o búsqueda léxica local.
+                "origin": metadata.get("retrieval_origin") or "lexical",
+                "jurisprudence": jurisprudence_keys(item["text"]),
+                "section": section.get("title") or metadata.get("section_label"),
+                "version_id": metadata.get("version_id"),
+                "source_url": metadata.get("source_url"),
+            }
+        )
+    return summary
 
 
 def _response_citations(answer, documents):
