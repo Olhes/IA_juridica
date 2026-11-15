@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "SAT-Graph · secuencia NDJSON en español",
+    "viewBox": [1080, 620],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {"id":"browser","type":"frontend","label":"Navegador","sublabel":"consulta jurídica"},
+    {"id":"api","type":"backend","label":"API / StreamGuard","sublabel":"main.py · stream_guard.py"},
+    {"id":"pipeline","type":"backend","label":"Pipeline","sublabel":"legal_queries.py"},
+    {"id":"cohere","type":"cloud","label":"Cohere","sublabel":"cohere_chat.py"},
+    {"id":"db","type":"database","label":"PostgreSQL","sublabel":"conversación"}
+  ],
+  "segments": [
+    {"from":150,"to":218,"label":"Admisión"},
+    {"from":224,"to":386,"label":"Borrador"},
+    {"from":394,"to":534,"label":"Validación y cierre"}
+  ],
+  "messages": [
+    {"from":"browser","to":"api","y":162,"label":"POST: consulta + idioma"},
+    {"from":"api","to":"browser","y":199,"label":"meta","variant":"return"},
+    {"from":"api","to":"pipeline","y":237,"label":"answer_query()","variant":"emphasis"},
+    {"from":"pipeline","to":"cohere","y":274,"label":"Prompt con evidencia"},
+    {"from":"cohere","to":"pipeline","y":312,"label":"Deltas de texto","variant":"return"},
+    {"from":"pipeline","to":"api","y":349,"label":"on_delta()"},
+    {"from":"api","to":"browser","y":380,"label":"chunk provisional","variant":"return"},
+    {"from":"pipeline","to":"api","y":416,"label":"Resultado validado + citas","variant":"return"},
+    {"from":"api","to":"db","y":455,"label":"Persistir si hay conversación","variant":"emphasis"},
+    {"from":"api","to":"browser","y":493,"label":"final: resultado completo","variant":"return"},
+    {"from":"api","to":"browser","y":527,"label":"done","variant":"return"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"Ruta exitosa · español","items":["El texto provisional puede llegar antes de la validación. En modo quechua no se transmiten los deltas del borrador español."]},
+    {"dot":"amber","title":"Excepciones de entrega","items":["Sin evidencia, no se llama a Cohere para redactar. Después de abrir el stream, un fallo emite error → done en vez de final."]}
+  ]
+}

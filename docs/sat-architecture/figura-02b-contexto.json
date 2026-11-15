@@ -1,0 +1,126 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SAT-Graph · decisiones de _expand_ranked_component()",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "lane0",
+      "label": "Preparación de evidencia"
+    },
+    {
+      "id": "lane1",
+      "label": "Salida alternativa"
+    }
+  ],
+  "mainPath": [
+    "hits",
+    "resolve",
+    "child",
+    "budget",
+    "accept"
+  ],
+  "nodes": [
+    {
+      "id": "hits",
+      "label": "Resultados ordenados",
+      "sublabel": "Work · CTV · CLV",
+      "lane": "lane0",
+      "col": 0,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "resolve",
+      "label": "Identificar CLV",
+      "sublabel": "Una CLV por CTV del hit",
+      "lane": "lane0",
+      "col": 1,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "child",
+      "label": "Validar descendientes",
+      "sublabel": "contains_version + offsets",
+      "lane": "lane0",
+      "col": 2,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "budget",
+      "label": "Evitar solapamientos",
+      "sublabel": "Respetar 24.000 bytes",
+      "lane": "lane0",
+      "col": 3,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "accept",
+      "label": "Entregar sección",
+      "sublabel": "Texto íntegro + rango + hash",
+      "lane": "lane0",
+      "col": 4,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "reject",
+      "label": "Rechazar candidato",
+      "sublabel": "Abstenerse si es el principal",
+      "lane": "lane1",
+      "col": 3,
+      "type": "security",
+      "width": 174,
+      "height": 82
+    }
+  ],
+  "edges": [
+    {
+      "from": "hits",
+      "to": "resolve"
+    },
+    {
+      "from": "resolve",
+      "to": "child"
+    },
+    {
+      "from": "child",
+      "to": "budget"
+    },
+    {
+      "from": "budget",
+      "to": "accept"
+    },
+    {
+      "from": "budget",
+      "to": "reject",
+      "label": "no cabe"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Validar no es recomponer",
+      "items": [
+        "Se compara la CLV del padre con sus descendientes en sus offsets. Una CLV íntegra puede seguir siendo poco pertinente para la consulta."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Traza global · 7.139 bytes",
+      "items": [
+        "La pregunta cotidiana conservó 4 de los 5 hits que podían llegar al empaquetado: uno solapó. Si el primero es inválido o no cabe, se abstiene."
+      ]
+    }
+  ]
+}

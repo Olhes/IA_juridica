@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02c-publicacion.json",
+  "output": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02c-publicacion.html",
+  "specification": {
+    "sha256": "a30c632ff559d8fa36c4094390a7ce9fcdde8d3277c83cea37021bbc4127f308",
+    "bytes": 3821
+  },
+  "artifact": {
+    "sha256": "8a1d489ba7cce512b0f3bab032bedd7066fa5e2b9eae2692f751b7ea00e66fe5",
+    "bytes": 806687
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

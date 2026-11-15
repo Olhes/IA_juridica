@@ -1,0 +1,185 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SAT-Graph · del PDF a la edición recuperable",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "extract",
+      "label": "A · Origen y candidatura"
+    },
+    {
+      "id": "publish",
+      "label": "B · Control editorial y publicación"
+    }
+  ],
+  "mainPath": [
+    "pdf",
+    "convert",
+    "evidence",
+    "parse",
+    "candidate"
+  ],
+  "nodes": [
+    {
+      "id": "pdf",
+      "lane": "extract",
+      "col": 0,
+      "type": "external",
+      "label": "PDF de origen",
+      "sublabel": "Archivo relativo al corpus",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "convert",
+      "lane": "extract",
+      "col": 1,
+      "type": "backend",
+      "label": "Conversión Docling",
+      "sublabel": "Markdown + estructura JSON",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "evidence",
+      "lane": "extract",
+      "col": 2,
+      "type": "database",
+      "label": "Evidencia inmutable",
+      "sublabel": "Vínculo por SHA-256 del PDF",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "parse",
+      "lane": "extract",
+      "col": 3,
+      "type": "backend",
+      "label": "Segmentar y alinear",
+      "sublabel": "Nodos, offsets y texto íntegro",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "candidate",
+      "lane": "extract",
+      "col": 4,
+      "type": "database",
+      "label": "Estructura candidata",
+      "sublabel": "No recuperable por el chat",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "edit",
+      "lane": "publish",
+      "col": 1,
+      "type": "frontend",
+      "label": "Corregir la edición",
+      "sublabel": "Markdown y componentes juntos",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "check",
+      "lane": "publish",
+      "col": 2,
+      "type": "security",
+      "label": "Validar precondiciones",
+      "sublabel": "Rangos, jerarquía, revisión",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "store",
+      "lane": "publish",
+      "col": 3,
+      "type": "database",
+      "label": "Publicar en PostgreSQL",
+      "sublabel": "Versión anterior archivada",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "read",
+      "lane": "publish",
+      "col": 4,
+      "type": "backend",
+      "label": "Abrir revisión de lectura",
+      "sublabel": "Snapshot coherente para el chat",
+      "width": 168,
+      "height": 88
+    }
+  ],
+  "edges": [
+    {
+      "from": "pdf",
+      "to": "convert"
+    },
+    {
+      "from": "convert",
+      "to": "evidence"
+    },
+    {
+      "from": "evidence",
+      "to": "parse"
+    },
+    {
+      "from": "parse",
+      "to": "candidate"
+    },
+    {
+      "from": "candidate",
+      "to": "edit",
+      "label": "fuera de consulta",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "role": "return"
+    },
+    {
+      "from": "edit",
+      "to": "check"
+    },
+    {
+      "from": "check",
+      "to": "store"
+    },
+    {
+      "from": "store",
+      "to": "read"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Alineación estricta",
+      "items": [
+        "Un elemento Docling se alinea si el texto es exacto y único. Si es ambiguo o no aparece, se registra un diagnóstico; no se inventa un rango."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Dos tipos de cambio",
+      "items": [
+        "Una revisión corrige la edición del corpus. No equivale a una promulgación, modificación o derogación jurídica."
+      ]
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "pdf"
+    ],
+    "allowedTerminals": [
+      "read"
+    ],
+    "requiredPaths": [
+      {
+        "from": "pdf",
+        "to": "candidate"
+      }
+    ]
+  }
+}

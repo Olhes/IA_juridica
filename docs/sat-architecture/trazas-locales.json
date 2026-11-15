@@ -1,0 +1,197 @@
+[
+  {
+    "case": "encabezado",
+    "query": "\u00bfCu\u00e1les son las reglas para una audiencia \u00fanica en un proceso de demanda de pensi\u00f3n de alimentos?",
+    "reads": [
+      {
+        "operation": "chat_heading_snapshot",
+        "scope": null,
+        "nodes": 6879,
+        "edges": 2641
+      },
+      {
+        "operation": "chat_article_snapshot",
+        "scope": "pe:ley:31464",
+        "nodes": 39,
+        "edges": 25
+      }
+    ],
+    "state": "retrieved",
+    "reason": null,
+    "candidate_count": 1,
+    "reference": {
+      "resource_id": "pe:ley:31464",
+      "article": "170-a",
+      "inciso": null,
+      "numeral": null,
+      "status": "exact",
+      "citation": "Art\u00edculo 170-A (texto contenido en Art\u00edculo 3. Incorporaci\u00f3n de los art\u00edculos 164-A, 167-A, 170-A, 173-A y 178-A en el C\u00f3digo de los Ni\u00f1os y Adolescentes) \u2014 Ley 31464"
+    },
+    "evidence_bytes": 1541,
+    "omissions": [],
+    "hits": [
+      {
+        "resource": "pe:ley:31464",
+        "section": "Art\u00edculo 170-A",
+        "version_id": "ctv-editorial:764855098f9414bee272acf47e7475b19f187626f685a9a499d9165b7582faca",
+        "citation": "Art\u00edculo 170-A (texto contenido en Art\u00edculo 3. Incorporaci\u00f3n de los art\u00edculos 164-A, 167-A, 170-A, 173-A y 178-A en el C\u00f3digo de los Ni\u00f1os y Adolescentes) \u2014 Ley 31464",
+        "path": [
+          "Ley 31464",
+          "Art\u00edculo 3. Incorporaci\u00f3n de los art\u00edculos 164-A, 167-A, 170-A, 173-A y 178-A en el C\u00f3digo de los Ni\u00f1os y Adolescentes",
+          "Art\u00edculo 170-A"
+        ],
+        "start": null,
+        "end": null,
+        "sha256_observed": "f037f77af10c7158fa3440a5f6151a0cafc302944862034711e9711a97dbbc6a",
+        "bytes": 1541
+      }
+    ]
+  },
+  {
+    "case": "literal",
+    "query": "En el art\u00edculo 8 de la Ley 30364, \u00bfcu\u00e1les son los cuatro supuestos del inciso d)?",
+    "reads": [
+      {
+        "operation": "chat_heading_snapshot",
+        "scope": null,
+        "nodes": 6879,
+        "edges": 2641
+      },
+      {
+        "operation": "chat_article_snapshot",
+        "scope": "pe:ley:30364",
+        "nodes": 40,
+        "edges": 25
+      }
+    ],
+    "state": "retrieved",
+    "reason": null,
+    "candidate_count": 1,
+    "reference": {
+      "resource_id": "pe:ley:30364",
+      "article": "8",
+      "inciso": "d",
+      "numeral": null,
+      "status": "exact",
+      "citation": "Art\u00edculo 8 de la Ley 30364, inciso d)"
+    },
+    "evidence_bytes": 812,
+    "omissions": [],
+    "hits": [
+      {
+        "resource": "pe:ley:30364",
+        "section": "Inciso d)",
+        "version_id": "ctv-snapshot:3c4167f08eb78da90190e793a3fcd8c74abc0a86b704af50fa43bc68a7c81f70",
+        "citation": "Art\u00edculo 8 de la Ley 30364, inciso d)",
+        "path": [
+          "Ley 30364",
+          "Art\u00edculo 8",
+          "Inciso d)"
+        ],
+        "start": null,
+        "end": null,
+        "sha256_observed": "98fc99918875c9275e6dbea14fcd543905e8d3bb506bd70f3e74de0c15de7b85",
+        "bytes": 812
+      }
+    ]
+  },
+  {
+    "case": "cotidiana",
+    "query": "El pap\u00e1 de mi hija dej\u00f3 de pasarme dinero y no s\u00e9 d\u00f3nde trabaja. \u00bfPuedo pedir alimentos y qu\u00e9 necesito?",
+    "reads": [
+      {
+        "operation": "chat_heading_snapshot",
+        "scope": null,
+        "nodes": 6879,
+        "edges": 2641
+      },
+      {
+        "operation": "chat_snapshot",
+        "scope": null,
+        "nodes": 23666,
+        "edges": 18446
+      }
+    ],
+    "state": "retrieved",
+    "reason": null,
+    "candidate_count": 30,
+    "reference": null,
+    "evidence_bytes": 7139,
+    "omissions": [
+      "structural_overlap"
+    ],
+    "hits": [
+      {
+        "resource": "pe:ley:31464",
+        "section": "Art\u00edculo 164-A",
+        "version_id": "ctv-editorial:b47d3aa819101a79e7b5dd71acd5884ddf84c7d2a357e3a461b84f58c0d8aea1",
+        "citation": null,
+        "path": null,
+        "start": 3590,
+        "end": 4413,
+        "sha256_observed": "3e8297d11030134fc597f86d4aa7f3fd9a38ac969ef449fb3039fd33b0835aeb",
+        "bytes": 836
+      },
+      {
+        "resource": "pe:dl:1377",
+        "section": "Art\u00edculo 2.- Modificaci\u00f3n del C\u00f3digo Civil",
+        "version_id": "ctv-editorial:4b8b11130b330e68f8c9ed04e6065a7c4c684755e1f1848533b5e167712eeceb",
+        "citation": null,
+        "path": null,
+        "start": 192431,
+        "end": 195212,
+        "sha256_observed": "dae9be8b20c61e2250c1b4eb3d98428cb836a54c06772a13599a9535864303d5",
+        "bytes": 2835
+      },
+      {
+        "resource": "pe:dl:1377",
+        "section": "Art\u00edculo 2.- Modificaci\u00f3n del C\u00f3digo Civil",
+        "version_id": "ctv-editorial:5cf9e5028085be0342148dfb35df1a93153b8547abb1ec56f62dd42087bfab6f",
+        "citation": null,
+        "path": null,
+        "start": 5994,
+        "end": 8871,
+        "sha256_observed": "57560b31bd9845c9e816124af31f73031e8d645e07b18a07a5b9882910f32a4b",
+        "bytes": 2931
+      },
+      {
+        "resource": "pe:ley:27337",
+        "section": "Art\u00edculo 22\u00ba.- Derecho a trabajar del adolescente.- El adolescente que trabaja ser\u00e1 protegido en forma especial por el Estado. El Estado reconoce el derecho de los adolescentes a trabajar, con las restricciones que impone este C\u00f3digo, siempre y cuando no exista explotaci\u00f3n econ\u00f3mica y su actividad laboral no importe riesgo o peligro, afecte su proceso educativo o sea nocivo para su salud o para su desarrollo f\u00edsico, mental, espiritual, moral o social.",
+        "version_id": "ctv-editorial:f91f77f9d30c8272668ffff30581df493a4e5153f6e0132396e3388868be379a",
+        "citation": null,
+        "path": null,
+        "start": 17852,
+        "end": 18378,
+        "sha256_observed": "547144ddd20eed8f52912a04c1fe528f806e1738e2a52fdfa41cb626ebe8ca8e",
+        "bytes": 537
+      }
+    ]
+  },
+  {
+    "case": "sin_alcance",
+    "query": "Dame los literales.",
+    "reads": [
+      {
+        "operation": "chat_heading_snapshot",
+        "scope": null,
+        "nodes": 6879,
+        "edges": 2641
+      },
+      {
+        "operation": "chat_snapshot",
+        "scope": null,
+        "nodes": 23666,
+        "edges": 18446
+      }
+    ],
+    "state": "abstain",
+    "reason": "unresolved_reference",
+    "candidate_count": 0,
+    "reference": {
+      "status": "unresolved"
+    },
+    "evidence_bytes": 0,
+    "omissions": [],
+    "hits": []
+  }
+]

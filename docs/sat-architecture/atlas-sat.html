@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas de SAT-Graph · IA Jurídica</title>
+<style>
+:root{color-scheme:light dark;--bg:#f3f5f6;--surface:#fff;--ink:#162938;--muted:#425a6b;--line:#c9d5dc;--accent:#0d536d;--tint:#e7f1f6;--note:#fff2d9;--note-ink:#60431b;--hero:#142b3c;--hero-ink:#f3f8fb}
+@media(prefers-color-scheme:dark){:root{--bg:#111b22;--surface:#172632;--ink:#eaf2f8;--muted:#bdccd5;--line:#3e5461;--accent:#9cd6ef;--tint:#213c4a;--note:#3d3224;--note-ink:#fae0a8}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}
+.wrap{width:min(1360px,calc(100% - 56px));margin:auto}.hero{background:var(--hero);color:var(--hero-ink);border-bottom:4px solid #589db6;padding:30px 0 23px}
+.eyebrow{font-size:.75rem;letter-spacing:.15em;font-weight:800;text-transform:uppercase;margin:0 0 5px}
+h1,h2,h3,p{margin-top:0}h1{font-size:clamp(26px,3.5vw,42px);margin-bottom:5px;line-height:1.12}h2{font-size:1.35rem;line-height:1.25;margin-bottom:6px}h3{font-size:1rem;margin-bottom:5px}.hero p:last-child{margin-bottom:0;max-width:75ch;color:#d5e5ed}
+a{color:var(--accent);text-underline-offset:3px}a:hover{text-decoration-thickness:2px}button,[role="tab"]{font:inherit}button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 14px;padding:0}
+.tabs button{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--tint);border-color:var(--accent);color:var(--accent);font-weight:750}
+.layout{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(300px,1fr);gap:16px;align-items:start}
+.panel,.diagram,.full{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-wrap:anywhere}
+.panel,.full{padding:18px}.diagram{margin:0;overflow:hidden;width:100%;background:#fff}
+.diagram img{display:block;width:100%;height:auto}.diagram figcaption{background:var(--surface);color:var(--muted);padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap}
+.intro{color:var(--muted);margin-bottom:10px}.panel details{border-top:1px solid var(--line);padding:9px 0}.panel details:last-child{padding-bottom:0}summary{font-weight:700;cursor:pointer}
+.step {display:inline-block;min-width:2.5em;color:var(--accent);font-weight:800}
+details p{margin:8px 0 6px}.refs{color:var(--muted);font-size:.85rem}
+.full{margin:14px 0 22px}.callout{padding:9px 12px;border-radius:6px;background:var(--note);color:var(--note-ink);margin:10px 0 0}
+table{width:100%;border-collapse:collapse;font-size:.91rem}th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--accent);background:var(--tint)}td:first-child{font-weight:700}tbody tr:last-child td{border-bottom:0}
+.scroll{overflow-x:auto}.scroll table{min-width:640px}.footer{padding:6px 0 23px;color:var(--muted)}.path{display:block;padding:8px 10px;margin:8px 0;background:var(--tint);border-radius:6px}
+code{font:0.9em ui-monospace,Consolas,monospace}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.metric{background:var(--tint);border-radius:6px;padding:7px 12px}.metric strong{display:block;color:var(--accent);font-size:1.4rem}
+@media(max-width:890px){.wrap{width:calc(100% - 28px)}.layout{grid-template-columns:1fr}.hero{padding-top:22px}}
+@media print{.hero{background:#fff;color:#000;border-bottom:1px solid #000}.hero p:last-child{color:#000}.wrap{width:100%}.tabs,.footer{display:none}.layout{grid-template-columns:1fr}.panel,.diagram,.full{break-inside:avoid}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="wrap">
+  <p class="eyebrow">IA Jurídica · v8 / <code>3e106be</code></p>
+  <h1>Del PDF a la respuesta jurídica</h1>
+  <p>Atlas técnico de SAT-Graph: entradas, salidas, bifurcaciones, código y cuatro trazas de recuperación observadas contra PostgreSQL local.</p>
+</div></header>
+<main class="wrap">
+<div class="tabs" role="tablist" aria-label="Fases del sistema">
+  <button id="tab-mapa" role="tab" aria-controls="mapa" aria-selected="true">Mapa completo</button>
+  <button id="tab-publicacion" role="tab" aria-controls="publicacion" aria-selected="false" tabindex="-1">A · Publicación</button>
+  <button id="tab-consulta" role="tab" aria-controls="consulta" aria-selected="false" tabindex="-1">B1 · Enrutamiento</button>
+  <button id="tab-evidencia" role="tab" aria-controls="evidencia" aria-selected="false" tabindex="-1">B2 · Evidencia</button>
+  <button id="tab-respuesta" role="tab" aria-controls="respuesta" aria-selected="false" tabindex="-1">C · Respuesta</button>
+  <button id="tab-trazas" role="tab" aria-controls="trazas" aria-selected="false" tabindex="-1">Trazas reales</button>
+</div>
+<section role="tabpanel" id="mapa" aria-labelledby="tab-mapa">
+  <div class="layout">
+    <figure class="diagram">
+      <img src="figura-02-implementacion.svg" alt="Mapa de tres fases: preparación, recuperación y respuesta">
+      <figcaption><a href="figura-02-implementacion.html">Abrir figura interactiva</a><a href="figura-02-implementacion.svg" download>Descargar SVG</a></figcaption>
+    </figure>
+    <aside class="panel">
+      <h2>Tres fases, tres contratos</h2>
+      <p class="intro">La conversión, la publicación y la recuperación no son equivalentes. Sigue el objeto que sale de cada fase.</p>
+      <details open><summary><span class="step">A</span>PDF → edición consultable</summary><p>Docling devuelve Markdown y, cuando está disponible, un documento estructurado. SAT guarda evidencia de entrada y propone una jerarquía. Solo la publicación incorpora la edición al corpus del chat.</p><p class="refs"><a href="../../backend/ingestion/pipeline.py#L118">pipeline.py</a> · <a href="../../backend/services/sat_corpus.py#L241">sat_corpus.py</a></p></details>
+      <details open><summary><span class="step">B</span>Pregunta → evidencia o abstención</summary><p>Si se resuelve una referencia, SAT trae el texto de ese nivel. Si no, cuando procede busca por términos en el alcance disponible. Un hit no equivale a una cita correcta ni garantiza pertinencia.</p><p class="refs"><a href="../../backend/retrieval/sat_chat.py#L125">sat_chat.py</a> · <a href="../../backend/retrieval/sat.py#L388">sat.py</a></p></details>
+      <details open><summary><span class="step">C</span>Evidencia → texto, citas y stream</summary><p>Cohere redacta a partir de la evidencia. En español el borrador puede aparecer en vivo; lo que se guarda es la respuesta final, no los deltas.</p><p class="refs"><a href="../../backend/services/legal_queries.py#L115">legal_queries.py</a> · <a href="../../backend/services/legal_stream.py#L44">legal_stream.py</a></p></details>
+    </aside>
+  </div>
+</section>
+<section role="tabpanel" id="publicacion" aria-labelledby="tab-publicacion" hidden>
+  <div class="layout">
+    <figure class="diagram"><img src="figura-02c-publicacion.svg" alt="Ingesta, candidato editorial y publicación en PostgreSQL"><figcaption><a href="figura-02c-publicacion.html">Abrir figura interactiva</a><a href="figura-02c-publicacion.svg" download>Descargar SVG</a></figcaption></figure>
+    <aside class="panel">
+      <h2>Cuándo un PDF llega al chat</h2>
+      <details open><summary><span class="step">A1</span>Origen y huella</summary><p><code>process_single_pdf()</code> conserva la ruta relativa, verifica que un Markdown preexistente no difiera y persiste evidencia. La huella identifica contenido; no certifica exactitud de la extracción ni vigencia.</p><p class="refs"><a href="../../backend/ingestion/pipeline.py#L118">pipeline.py</a> · <a href="../../backend/ingestion/source_evidence.py">source_evidence.py</a></p></details>
+      <details open><summary><span class="step">A2</span>Segmentar y alinear</summary><p>Se proponen artículos, numerales, incisos y otros niveles con rango y padre. Un bloque Docling solo recibe offsets Markdown si la coincidencia es exacta y única. Los demás conservan diagnóstico; sus coordenadas Docling no se convierten en offsets por inferencia.</p><p class="refs"><a href="../../backend/ingestion/legal_structure.py#L162">legal_structure.py</a> · <a href="../../backend/ingestion/sat_graph/store.py#L64">store.py</a></p></details>
+      <details open><summary><span class="step">A3</span>Publicar la edición corregida</summary><p>Se validan límites, padres, ausencia de ciclos y revisión base. La publicación persiste la edición con una revisión de lectura transaccional. La conversión sola no vuelve recuperable un candidato.</p><p class="refs"><a href="../../backend/services/sat_corpus.py#L55">validate_edition()</a> · <a href="../../backend/services/sat_corpus.py#L241">CorpusEditor.apply()</a> · <a href="../../backend/ingestion/sat_graph/postgres.py#L48">postgres.py</a></p></details>
+    </aside>
+  </div>
+  <section class="full">
+    <h3>Qué representa cada nodo</h3>
+    <p class="path"><code>Resource</code> norma → <code>Work</code> componente → <code>CTV</code> versión temporal del componente → <code>CLV</code> versión lingüística con texto</p>
+    <p class="callout"><strong>Editorial no es causal:</strong> corregir el Markdown o la jerarquía de una edición no representa una reforma jurídica. La recuperación conversacional no consulta una cadena de <code>Action</code> como la que propone el paper.</p>
+  </section>
+</section>
+<section role="tabpanel" id="consulta" aria-labelledby="tab-consulta" hidden>
+  <div class="layout">
+    <div>
+      <figure class="diagram"><img src="figura-02a-plan-de-consulta.svg" alt="Resolución exacta, búsqueda léxica y rama de abstención"><figcaption><a href="figura-02a-plan-de-consulta.html">Abrir figura interactiva</a><a href="figura-02a-plan-de-consulta.svg" download>Descargar SVG</a></figcaption></figure>
+      <section class="full"><h3>Lectura selectiva observada · «audiencia única»</h3><div class="metrics"><div class="metric"><strong>6.879</strong>nodos del catálogo, sin texto íntegro</div><div class="metric"><strong>39</strong>nodos de la rama selectiva</div><div class="metric"><strong>1.541 bytes</strong>de una sección exacta</div></div>
+      <p class="path">Cita estructural observada: <strong>Ley 31464 → artículo 3 incorporador → artículo 170-A del Código de los Niños y Adolescentes.</strong></p>
+      <p class="intro">Los conteos describen snapshots devueltos, no filas leídas físicamente ni latencias.</p></section>
+    </div>
+    <aside class="panel">
+      <h2>Qué decide <code>_search()</code></h2>
+      <details open><summary><span class="step">01</span>Inferir alcance sin inventar</summary><p>Extrae norma, artículo, inciso o numeral. Una petición estructural de seguimiento solo puede heredar una referencia inequívoca de una pregunta anterior del usuario, no de una respuesta del modelo.</p><p class="refs"><a href="../../backend/retrieval/sat_citations.py#L66">references()</a> · <a href="../../backend/retrieval/sat_citations.py#L83">with_prior_reference()</a></p></details>
+      <details open><summary><span class="step">02</span>Elegir qué leer</summary><p>Se busca un encabezado inequívoco cuando corresponde. El catálogo conserva la primera línea de la CLV, no es evidencia de respuesta. Con un Work único se lee su rama y se compara la revisión; ante cambio se resuelve sobre un snapshot global.</p><p class="refs"><a href="../../backend/retrieval/sat_chat.py#L125">_search()</a> · <a href="../../backend/ingestion/sat_graph/postgres.py#L127">chat_heading_snapshot()</a></p></details>
+      <details open><summary><span class="step">03</span>Exacta, léxica o abstención</summary><p>El resolver exacto exige que el nivel solicitado sea único. Si procede buscar, dos rankings BM25 —texto y texto con metadatos— se fusionan por RRF (<code>k=60</code>, pesos iguales). Esta ruta no llama a un reranker externo ni a un modelo de embeddings.</p><p class="refs"><a href="../../backend/retrieval/sat_citations.py#L130">resolve_reference()</a> · <a href="../../backend/retrieval/sat.py#L149">rrf()</a> · <a href="../../backend/retrieval/sat.py#L388">search()</a></p></details>
+      <details><summary><span class="step">04</span>Qué se reutiliza entre consultas</summary><p>PostgreSQL devuelve snapshots coherentes que el proceso cachea por revisión. SAT puede reutilizar el snapshot, la elegibilidad y los índices BM25, no el ranking de una pregunta anterior. El chat SAT tampoco genera clave para cachear la respuesta final: <code>get_cache_revision()</code> devuelve <code>None</code>.</p><p class="refs"><a href="../../backend/ingestion/sat_graph/postgres.py#L94">Snapshot por revisión</a> · <a href="../../backend/retrieval/sat_chat.py#L92">Reuso y caché de respuesta</a> · <a href="../../backend/main.py#L145">Admisión</a></p></details>
+    </aside>
+  </div>
+</section>
+<section role="tabpanel" id="evidencia" aria-labelledby="tab-evidencia" hidden>
+  <div class="layout">
+    <figure class="diagram"><img src="figura-02b-contexto.svg" alt="Comprobación estructural, deduplicación y presupuesto de contenido"><figcaption><a href="figura-02b-contexto.html">Abrir figura interactiva</a><a href="figura-02b-contexto.svg" download>Descargar SVG</a></figcaption></figure>
+    <aside class="panel">
+      <h2>Qué verifica <code>_expand_ranked_component()</code></h2>
+      <details open><summary><span class="step">01</span>Elegibilidad antes de puntuar</summary><p>Sin corte explícito se elige la última CTV elegible almacenada, no la fecha de hoy. Versiones sustituidas, cierres explícitos, empates o una CLV no única excluyen evidencia según el caso.</p><p class="refs"><a href="../../backend/retrieval/sat.py#L201">eligible()</a> · <a href="../../backend/retrieval/sat.py#L255">chunks()</a></p></details>
+      <details open><summary><span class="step">02</span>Contrastar el texto completo</summary><p>A partir de la CTV del hit, toma su CLV y recorre descendientes elegibles por <code>contains_version</code>. Cada descendiente debe ser de la misma norma y coincidir con el segmento del texto padre en su offset relativo. No concatena incisos.</p><p class="refs"><a href="../../backend/retrieval/sat_chat.py#L13">_expand_ranked_component()</a></p></details>
+      <details open><summary><span class="step">03</span>Deduplicar y aplicar presupuesto</summary><p>No se emiten conjuntamente secciones de la misma norma si son iguales o se contienen jerárquicamente. Se suman bytes UTF-8; el primer candidato inválido o que no cabe causa abstención. Candidatos posteriores incompatibles se omiten y se registra la razón.</p><p class="refs"><a href="../../backend/retrieval/sat_chat.py#L58">Reglas de selección</a></p></details>
+    </aside>
+  </div>
+  <section class="full"><h3>Dos salidas distintas</h3><p><strong>Exacta:</strong> CLV del nivel pedido, cita con ruta y CTV. <strong>Léxica:</strong> secciones seleccionadas con offsets, hash de texto y motivos de omisión. La traza calcula su propio hash para comparar ambas salidas; no se atribuye al recuperador exacto un campo que no emite.</p></section>
+</section>
+<section role="tabpanel" id="respuesta" aria-labelledby="tab-respuesta" hidden>
+  <div class="layout">
+    <figure class="diagram"><img src="figura-02d-respuesta.svg" alt="Secuencia de borrador, validación y entrega por NDJSON"><figcaption><a href="figura-02d-respuesta.html">Abrir figura interactiva</a><a href="figura-02d-respuesta.svg" download>Descargar SVG</a></figcaption></figure>
+    <aside class="panel">
+      <h2>Qué ve el usuario y cuándo</h2>
+      <details open><summary><span class="step">C1</span>Contexto para Cohere</summary><p>El generador recibe la pregunta, historial, instrucciones y el texto completo de la evidencia una sola vez en el contexto. Se elimina el marcador <code>&lt;!-- image --&gt;</code>. Sin evidencia no se llama a Cohere para redactar.</p><p class="refs"><a href="../../backend/services/legal_queries.py#L186">Generación</a> · <a href="../../backend/services/cohere_chat.py#L31">AsyncClientV2</a></p></details>
+      <details open><summary><span class="step">C2</span>Validación y citas</summary><p>Se valida con los documentos recuperados y se vinculan las citas a las secciones disponibles. La validación no demuestra la pertinencia de toda la evidencia ni garantiza que cada afirmación esté respaldada.</p><p class="refs"><a href="../../backend/modules/validation/services/response_validator.py">response_validator.py</a> · <a href="../../backend/services/legal_queries.py#L73">_response_citations()</a></p></details>
+      <details open><summary><span class="step">C3</span>Provisional ≠ persistido</summary><p>En español pueden salir <code>chunk</code> provisionales antes de validar; en modo quechua se espera la salida del pipeline. Si existe conversación, se persiste antes de emitir <code>final</code>. El stream termina con <code>final</code> o <code>error</code>, seguido de <code>done</code>.</p><p class="refs"><a href="../../backend/main.py#L987">legal_query_stream()</a> · <a href="../../backend/services/legal_stream.py#L44">stream_legal_query()</a> · <a href="../../backend/services/stream_guard.py#L152">guard_stream()</a></p></details>
+    </aside>
+  </div>
+</section>
+<section role="tabpanel" id="trazas" aria-labelledby="tab-trazas" hidden>
+  <div class="full">
+    <h2>Cuatro consultas contra el corpus publicado</h2>
+    <p class="intro"><code>top_k=5</code>, hasta 30 candidatos, sin historial, sin fecha explícita y sin generación de Cohere. Los tamaños son bytes UTF-8 del texto seleccionado.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Pregunta</th><th>Snapshots devueltos (nodos)</th><th>Evidencia seleccionada</th></tr></thead>
+      <tbody>
+      <tr><td>Reglas de la audiencia única</td><td>Catálogo 6.879 → rama 39</td><td>Art. 170-A, citado a través del art. 3 de la Ley 31464 · 1.541 bytes</td></tr>
+      <tr><td>Cuatro supuestos del inciso d)</td><td>Catálogo 6.879 → rama 40</td><td>Ley 30364 → art. 8 → inciso d) · 812 bytes</td></tr>
+      <tr><td>El padre no aporta; no sé dónde trabaja</td><td>Catálogo 6.879 → global 23.666</td><td>30 candidatos; 4 secciones finales · 7.139 bytes · 1 solapamiento descartado</td></tr>
+      <tr><td>«Dame los literales»</td><td>Catálogo 6.879 → global 23.666</td><td>Abstención; 0 candidatos · 0 bytes. No ejecutó ranking.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="callout"><strong>Dos hallazgos:</strong> la pregunta cotidiana recuperó el art. 22 sobre trabajo adolescente, no el art. 96 sobre competencia, y dos secciones del DL 1377 con la misma etiqueta pero CTV y rangos distintos. Además, «Dame los literales» se abstuvo <em>después</em> de obtener el snapshot global. Esto no demuestra latencia ni uso de disco, pero sí identifica dónde conviene revisar pertinencia y el momento de abstención.</p>
+    <p class="refs"><a href="trazas-locales.json">Abrir datos originales</a> · <a href="trazar_recuperacion.py">Ver script reproducible</a> · <a href="README.md">Leer condiciones y límites</a></p>
+  </div>
+</section>
+<noscript><p>Para navegar por las fichas, habilita JavaScript. También puedes abrir los diagramas desde <a href="README.md">el documento de metodología</a>.</p></noscript>
+<footer class="footer"><a href="figura-01-proceso.html">Versión conceptual sin código</a> · <a href="README.md">Metodología y referencias Python</a> · Trazas de recuperación, no benchmark.</footer>
+</main>
+<script>
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+function openTab(index, moveFocus = false) {
+  if (!tabs[index]) return;
+  tabs.forEach((tab, i) => {
+    tab.setAttribute('aria-selected', i === index);
+    tab.tabIndex = i === index ? 0 : -1;
+    document.getElementById(tab.getAttribute('aria-controls')).hidden = i !== index;
+  });
+  if (moveFocus) tabs[index].focus();
+}
+function update(index) {
+  openTab(index, true);
+  const fragment = '#' + tabs[index].getAttribute('aria-controls');
+  if (location.hash !== fragment) history.pushState(null, '', fragment);
+}
+function restore() { openTab(Math.max(0, tabs.findIndex(tab => '#' + tab.getAttribute('aria-controls') === location.hash))); }
+tabs.forEach((tab, i) => {
+  tab.addEventListener('click', () => update(i));
+  tab.addEventListener('keydown', event => {
+    const next = {ArrowLeft:(i+tabs.length-1)%tabs.length,ArrowRight:(i+1)%tabs.length,Home:0,End:tabs.length-1}[event.key];
+    if (next !== undefined) { event.preventDefault(); update(next); }
+  });
+});
+window.addEventListener('popstate', restore);
+window.addEventListener('hashchange', restore);
+restore();
+</script>
+</body>
+</html>

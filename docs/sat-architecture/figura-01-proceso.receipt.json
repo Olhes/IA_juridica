@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-01-proceso.json",
+  "output": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-01-proceso.html",
+  "specification": {
+    "sha256": "87e602ed260f5041dccf254a23fa86aefd12b669f4c709b187431b67100e269c",
+    "bytes": 4599
+  },
+  "artifact": {
+    "sha256": "cca4e05f61dc1cb00f7846c95f4252ee1aae521122f462df0ca1a574292dbccc",
+    "bytes": 810784
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

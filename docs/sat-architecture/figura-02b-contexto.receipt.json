@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02b-contexto.json",
+  "output": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02b-contexto.html",
+  "specification": {
+    "sha256": "b404d9549378b6240434a4fa348b0aa2c09a434055a2a905d5d2e498dff59882",
+    "bytes": 2636
+  },
+  "artifact": {
+    "sha256": "33720634f75e07384adf34362be3aa43721746b5e8a9629d58b5b334bfa04480",
+    "bytes": 800501
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

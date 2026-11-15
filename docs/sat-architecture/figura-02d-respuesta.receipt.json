@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "sequence",
+  "input": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02d-respuesta.json",
+  "output": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02d-respuesta.html",
+  "specification": {
+    "sha256": "ce232fb158b7bed1fd88eb1fc04e0a10234eb3b4122c7adce99bc338263777ba",
+    "bytes": 2231
+  },
+  "artifact": {
+    "sha256": "d8ae2bef676d4d00a96a3105f1f34cd848379029fa2219053fa0fbb3365db177",
+    "bytes": 805941
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

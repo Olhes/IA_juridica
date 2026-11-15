@@ -1,0 +1,286 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SAT-Graph · implementación y flujo de evidencia",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "ingestion",
+        "label": "A · Publicación",
+        "note": "La extracción crea un candidato. Solo la edición publicada pasa al corpus consultable.",
+        "focus": [
+          "source",
+          "convert",
+          "structure",
+          "review",
+          "graph"
+        ]
+      },
+      {
+        "id": "retrieval",
+        "label": "B · Recuperación",
+        "note": "La resolución exacta y BM25/RRF son alternativas, no dos motores ejecutados en paralelo.",
+        "focus": [
+          "request",
+          "route",
+          "resolve",
+          "rank",
+          "graph"
+        ]
+      },
+      {
+        "id": "response",
+        "label": "C · Respuesta y citas",
+        "note": "Los deltas en español son provisionales. El resultado final incorpora evidencia, validación y citas.",
+        "focus": [
+          "rank",
+          "model",
+          "validate",
+          "deliver"
+        ]
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "offline",
+      "label": "A · Preparación del corpus"
+    },
+    {
+      "id": "online",
+      "label": "B · Consulta en línea: de la pregunta a la evidencia"
+    },
+    {
+      "id": "out",
+      "label": "C · Redacción, validación y entrega"
+    }
+  ],
+  "mainPath": [
+    "request",
+    "route",
+    "resolve",
+    "rank",
+    "model",
+    "validate",
+    "deliver"
+  ],
+  "nodes": [
+    {
+      "id": "source",
+      "lane": "offline",
+      "col": 0,
+      "type": "external",
+      "label": "A1 · Fuente documental",
+      "sublabel": "PDF original → identidad y ruta",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "convert",
+      "lane": "offline",
+      "col": 1,
+      "type": "backend",
+      "label": "A2 · Extraer contenido",
+      "sublabel": "Docling → Markdown + JSON",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "structure",
+      "lane": "offline",
+      "col": 2,
+      "type": "backend",
+      "label": "A3 · Proponer jerarquía",
+      "sublabel": "Padres + rangos + alertas",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "review",
+      "lane": "offline",
+      "col": 3,
+      "type": "security",
+      "label": "A4 · Revisar y publicar",
+      "sublabel": "Edición y revisión base",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "graph",
+      "lane": "offline",
+      "col": 4,
+      "type": "database",
+      "label": "A5 · Grafo publicado",
+      "sublabel": "Resource → Work → CTV → CLV",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "request",
+      "lane": "online",
+      "col": 0,
+      "type": "frontend",
+      "label": "B1 · Recibir pregunta",
+      "sublabel": "Idioma + historial",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "route",
+      "lane": "online",
+      "col": 1,
+      "type": "backend",
+      "label": "B2 · Leer referencia",
+      "sublabel": "Norma y nivel solicitado",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "resolve",
+      "lane": "online",
+      "col": 2,
+      "type": "backend",
+      "label": "B3 · Elegir ruta",
+      "sublabel": "Exacta · léxica · abstención",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "rank",
+      "lane": "online",
+      "col": 3,
+      "type": "backend",
+      "label": "B4 · Preparar evidencia",
+      "sublabel": "Secciones ≤ 24.000 bytes",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "model",
+      "lane": "out",
+      "col": 3,
+      "type": "cloud",
+      "label": "C1 · Redactar con Cohere",
+      "sublabel": "Evidencia → borrador",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "validate",
+      "lane": "out",
+      "col": 4,
+      "type": "security",
+      "label": "C2 · Validar y citar",
+      "sublabel": "Respuesta + sección / CTV",
+      "width": 168,
+      "height": 88
+    },
+    {
+      "id": "deliver",
+      "lane": "out",
+      "col": 5,
+      "type": "frontend",
+      "label": "C3 · Guardar y emitir",
+      "sublabel": "final o error → done",
+      "width": 168,
+      "height": 88
+    }
+  ],
+  "edges": [
+    {
+      "from": "source",
+      "to": "convert",
+      "role": "branch"
+    },
+    {
+      "from": "convert",
+      "to": "structure",
+      "role": "branch"
+    },
+    {
+      "from": "structure",
+      "to": "review",
+      "role": "branch"
+    },
+    {
+      "from": "review",
+      "to": "graph",
+      "role": "branch"
+    },
+    {
+      "from": "request",
+      "to": "route",
+      "role": "main"
+    },
+    {
+      "from": "route",
+      "to": "resolve",
+      "role": "main"
+    },
+    {
+      "from": "resolve",
+      "to": "rank",
+      "role": "main"
+    },
+    {
+      "from": "rank",
+      "to": "model",
+      "role": "main"
+    },
+    {
+      "from": "model",
+      "to": "validate",
+      "role": "main"
+    },
+    {
+      "from": "validate",
+      "to": "deliver",
+      "role": "main"
+    },
+    {
+      "from": "graph",
+      "to": "resolve",
+      "role": "branch",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "lectura selectiva"
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "source",
+      "request"
+    ],
+    "allowedTerminals": [
+      "deliver"
+    ],
+    "requiredPaths": [
+      {
+        "from": "source",
+        "to": "resolve"
+      },
+      {
+        "from": "request",
+        "to": "deliver"
+      }
+    ]
+  },
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Lectura exacta o respaldo léxico",
+      "items": [
+        "El catálogo solo contiene la primera línea del artículo. Si el encabezado es inequívoco, se carga su rama. Si no hay destino exacto y procede buscar: BM25 de texto y metadatos + RRF."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Evidencia, no texto recortado",
+      "items": [
+        "24.000 bytes UTF-8 para evidencia, no tokens. Una consulta sin alcance inequívoco puede abstenerse. Un candidato editorial no publicado no entra a esta ruta."
+      ]
+    }
+  ]
+}

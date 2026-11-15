@@ -1,0 +1,162 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SAT-Graph · decisiones de _search()",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "lane0",
+      "label": "Ruta de referencia"
+    },
+    {
+      "id": "lane1",
+      "label": "Ruta de respaldo"
+    },
+    {
+      "id": "stop",
+      "label": "Sin alcance suficiente",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "plan",
+    "catalog",
+    "branch",
+    "resolve"
+  ],
+  "nodes": [
+    {
+      "id": "plan",
+      "label": "Leer consulta",
+      "sublabel": "Norma + nivel + historial",
+      "lane": "lane0",
+      "col": 0,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "catalog",
+      "label": "Filtrar encabezados",
+      "sublabel": "CLV: solo primera línea",
+      "lane": "lane0",
+      "col": 1,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "branch",
+      "label": "Cargar rama exacta",
+      "sublabel": "Rama con revisión igual",
+      "lane": "lane0",
+      "col": 2,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "resolve",
+      "label": "Resolver disposición",
+      "sublabel": "CLV del nivel solicitado",
+      "lane": "lane0",
+      "col": 3,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "scope",
+      "label": "Cargar alcance amplio",
+      "sublabel": "Norma única o grafo global",
+      "lane": "lane1",
+      "col": 1,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "rank",
+      "label": "Clasificar componentes",
+      "sublabel": "BM25 × 2 → RRF (k=60)",
+      "lane": "lane1",
+      "col": 2,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "pack",
+      "label": "Empaquetar contexto",
+      "sublabel": "CLVs completas y sin solape",
+      "lane": "lane1",
+      "col": 3,
+      "type": "backend",
+      "width": 174,
+      "height": 82
+    },
+    {
+      "id": "ask",
+      "label": "Pedir norma y artículo",
+      "sublabel": "Abstención · 0 evidencias",
+      "lane": "stop",
+      "col": 1,
+      "type": "security",
+      "width": 174,
+      "height": 82
+    }
+  ],
+  "edges": [
+    {
+      "from": "plan",
+      "to": "catalog"
+    },
+    {
+      "from": "catalog",
+      "to": "branch",
+      "label": "Work único"
+    },
+    {
+      "from": "branch",
+      "to": "resolve"
+    },
+    {
+      "from": "plan",
+      "to": "scope"
+    },
+    {
+      "from": "scope",
+      "to": "rank",
+      "label": "búsqueda"
+    },
+    {
+      "from": "scope",
+      "to": "ask",
+      "label": "literales sin alcance",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "from": "rank",
+      "to": "pack"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Traza exacta · artículo 170-A",
+      "items": [
+        "El catálogo devuelve 6.879 nodos; la rama, 39. Si sus revisiones difieren, se vuelve a resolver sobre un snapshot global."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Traza sin referencia · 0 hits",
+      "items": [
+        "«Dame los literales» sin historial consulta catálogo y snapshot global antes de abstenerse. No pasa por el ranking."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02a-plan-de-consulta.json",
+  "output": "D:\\Web\\IA_juridica\\docs\\sat-architecture\\figura-02a-plan-de-consulta.html",
+  "specification": {
+    "sha256": "9a6a7d99b85be3554612b666070d9a25ac203765e8fe0695e2238640b23bb572",
+    "bytes": 3350
+  },
+  "artifact": {
+    "sha256": "09032cf49dabdfa821a06bf1741bf30e054b886f2f324457bfe377ebc7691be2",
+    "bytes": 804333
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

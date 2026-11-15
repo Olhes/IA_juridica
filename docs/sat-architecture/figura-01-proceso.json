@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "SAT-Graph · proceso de extremo a extremo",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "offline",
+      "label": "A · Preparación del corpus"
+    },
+    {
+      "id": "online",
+      "label": "B · Consulta y recuperación"
+    },
+    {
+      "id": "out",
+      "label": "C · Validación y entrega"
+    }
+  ],
+  "mainPath": [
+    "request",
+    "route",
+    "resolve",
+    "rank",
+    "model",
+    "validate",
+    "deliver"
+  ],
+  "nodes": [
+    {
+      "id": "source",
+      "lane": "offline",
+      "col": 0,
+      "type": "external",
+      "label": "PDF oficial",
+      "sublabel": "Fuente de evidencia",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "convert",
+      "lane": "offline",
+      "col": 1,
+      "type": "backend",
+      "label": "Conversión documental",
+      "sublabel": "Markdown · artefacto Docling",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "structure",
+      "lane": "offline",
+      "col": 2,
+      "type": "backend",
+      "label": "Jerarquía candidata",
+      "sublabel": "Artículos e incisos",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "review",
+      "lane": "offline",
+      "col": 3,
+      "type": "security",
+      "label": "Publicación revisada",
+      "sublabel": "Valida texto y estructura",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "graph",
+      "lane": "offline",
+      "col": 4,
+      "type": "database",
+      "label": "Grafo normativo",
+      "sublabel": "PostgreSQL · Work / CTV / CLV",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "request",
+      "lane": "online",
+      "col": 0,
+      "type": "frontend",
+      "label": "Consulta jurídica",
+      "sublabel": "Pregunta · idioma · historial",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "route",
+      "lane": "online",
+      "col": 1,
+      "type": "backend",
+      "label": "Interpretar referencia",
+      "sublabel": "Norma · artículo · apartado",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "resolve",
+      "lane": "online",
+      "col": 2,
+      "type": "backend",
+      "label": "Seleccionar evidencia",
+      "sublabel": "Referencia exacta o BM25",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "rank",
+      "lane": "online",
+      "col": 3,
+      "type": "backend",
+      "label": "Preparar contexto",
+      "sublabel": "Secciones íntegras · 24 kB",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "model",
+      "lane": "online",
+      "col": 4,
+      "type": "cloud",
+      "label": "Generar respuesta",
+      "sublabel": "Cohere · texto incremental",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "validate",
+      "lane": "out",
+      "col": 4,
+      "type": "security",
+      "label": "Validar y citar",
+      "sublabel": "Contrasta con las fuentes",
+      "width": 160,
+      "height": 82
+    },
+    {
+      "id": "deliver",
+      "lane": "out",
+      "col": 5,
+      "type": "frontend",
+      "label": "Entregar respuesta",
+      "sublabel": "Eventos NDJSON e historial",
+      "width": 160,
+      "height": 82
+    }
+  ],
+  "edges": [
+    {
+      "from": "source",
+      "to": "convert",
+      "role": "branch"
+    },
+    {
+      "from": "convert",
+      "to": "structure",
+      "role": "branch"
+    },
+    {
+      "from": "structure",
+      "to": "review",
+      "role": "branch"
+    },
+    {
+      "from": "review",
+      "to": "graph",
+      "role": "branch"
+    },
+    {
+      "from": "request",
+      "to": "route",
+      "role": "main"
+    },
+    {
+      "from": "route",
+      "to": "resolve",
+      "role": "main"
+    },
+    {
+      "from": "resolve",
+      "to": "rank",
+      "role": "main"
+    },
+    {
+      "from": "rank",
+      "to": "model",
+      "role": "main"
+    },
+    {
+      "from": "model",
+      "to": "validate",
+      "role": "main"
+    },
+    {
+      "from": "validate",
+      "to": "deliver",
+      "role": "main"
+    },
+    {
+      "from": "graph",
+      "to": "resolve",
+      "role": "branch",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "lectura selectiva"
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "source",
+      "request"
+    ],
+    "allowedTerminals": [
+      "deliver"
+    ],
+    "requiredPaths": [
+      {
+        "from": "source",
+        "to": "resolve"
+      },
+      {
+        "from": "request",
+        "to": "deliver"
+      }
+    ]
+  },
+  "cards": []
+}
