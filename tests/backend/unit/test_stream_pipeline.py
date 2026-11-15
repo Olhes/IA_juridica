@@ -239,6 +239,22 @@ async def test_sat_exact_enumeration_is_used_as_guidance_for_generation():
     assert result["response"]["respuesta_espanol"] == "Texto distinto"
 
 
+async def test_sat_complete_enumeration_is_not_duplicated_in_prompt():
+    state = make_state()
+    citation = 'Artículo 8 de la Ley 30364, inciso d)'
+    body = '1. Alfa\n2. Beta'
+    state.query_retriever = SimpleNamespace(query_with_rerank=AsyncMock(return_value={
+        'method': 'sat', 'sat_reference': {'citation': citation, 'status': 'exact'},
+        'verbatim_answer': f'**{citation}:**\n\n{body}',
+        'answer': f'd) Supuestos\n{body}',
+        'documents': [{'content': f'd) Supuestos\n{body}', 'metadata': {'citation': citation}}],
+    }))
+    await answer_query(state, 'Enumera los supuestos', 'spanish')
+    call = state.legal_agent.respond_general.call_args.kwargs
+    assert body not in call['enriched_prompt']
+    assert body in call['context']['answer']
+
+
 async def test_live_deltas_arrive_before_final_and_only_final_is_persisted():
     from services.stream_guard import guard_stream
 

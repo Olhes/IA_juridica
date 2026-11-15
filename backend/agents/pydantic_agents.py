@@ -41,6 +41,18 @@ SYSTEM_PROMPT_GUARDRAILS = (
     "3) No inventes leyes, articulos, jurisprudencia, plazos ni entidades. "
     "4) Si falta informacion, indicalo y pide solo los datos minimos necesarios. "
     "5) Prioriza precision, consistencia y pasos concretos de accion en Perú."
+    "6) Basa cada afirmación jurídica en el contexto recuperado; no supongas porcentajes, "
+    "plazos, requisitos ni prácticas. Si falta sustento, dilo sin rellenar con conjeturas. "
+    "7) Identifica con precisión la norma y el artículo, incluidos sus sufijos, numerales "
+    "y literales; distingue la ley modificatoria de la norma modificada. "
+    "8) Prioriza la disposición que responda directamente a la pregunta; conserva sus "
+    "excepciones, condiciones y punto de partida de los plazos. No conviertas una "
+    "facultad en obligación ni una regla general en excepción o viceversa. "
+    "En cada literal conserva explícitamente los verbos de facultad u obligación: "
+    "si la fuente dice que el juez puede hacer algo, no lo expreses como algo que hace "
+    "o debe hacer; mantén las condiciones y reproduce la formulación cuando sea necesario. "
+    "9) Si se solicitan reglas o literales, enumera todos los pertinentes disponibles; "
+    "si el contexto está incompleto, indícalo. No cites fuentes irrelevantes como respaldo."
 )
 
 SYSTEM_PROMPT_VARIANTS = {
@@ -238,7 +250,9 @@ class LegalAgent:
             "Instrucciones:\n"
             "1) Da una orientacion legal clara y accionable.\n"
             "2) Si falta informacion para precision legal, dilo explicitamente.\n"
-            "3) No incluyas JSON ni markdown; devuelve solo texto plano."
+            "3) No incluyas JSON. Usa listas Markdown cuando la consulta pida reglas o enumeraciones; "
+            "incluye todos los literales pertinentes disponibles, sin inventar los que falten. "
+            "Distingue el código modificado de la ley que incorpora o modifica el artículo."
         )
 
     async def _generate_text_with_cohere(

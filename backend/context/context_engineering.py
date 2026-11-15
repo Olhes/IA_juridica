@@ -447,6 +447,7 @@ class ContextEngineer:
         language: str = "spanish",
         history=None,
         context=None,
+        include_documents=True,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Construye prompt legal optimizado para Cohere con contexto cultural.
@@ -508,6 +509,7 @@ class ContextEngineer:
                 language=language,
                 user_location=detected_location,
                 enriched_context=enriched_context,
+                include_documents=include_documents,
             )
 
             logger.info(

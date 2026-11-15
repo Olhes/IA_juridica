@@ -192,6 +192,9 @@ async def answer_query(
         language="spanish",
         history=history,
         context=context,
+        # The complete evidence is sent once via generation_context.answer.
+        # Avoid repeating its first 600 characters in the enriched prompt.
+        include_documents=False,
     )
     if reference and documents:
         enriched_prompt = (
@@ -207,10 +210,18 @@ async def answer_query(
         )
     if verbatim:
         enriched_prompt += (
-            "\nUsa esta lista como guía. Conserva todos sus elementos, orden y sentido. "
-            "Quita marcas de conversión como <!-- image --> y corrige solo cortes de palabras inequívocos.\n"
-            + verbatim.replace("<!-- image -->", "")
+            "\nLa evidencia completa contiene una lista estructurada. Conserva todos sus elementos, "
+            "orden y sentido. Quita marcas de conversión y corrige solo cortes de palabras inequívocos."
         )
+        # A normal SAT result already carries the full provision as evidence.
+        # Preserve the explicit guide for legacy/incomplete retrievers instead
+        # of silently dropping list items that are absent from their context.
+        guide = verbatim.replace('<!-- image -->', '')
+        body = guide.partition('\n\n')[2]
+        evidence = (rag_result.get('answer') or '').replace('<!-- image -->', '')
+        lines = [line.strip() for line in body.splitlines() if line.strip()]
+        if not lines or not all(line in evidence for line in lines):
+            enriched_prompt += '\n' + guide
     if documents:
         enriched_prompt = enriched_prompt.replace("<!-- image -->", "")
         generation_context = {**rag_result, "answer": (rag_result.get("answer") or "").replace("<!-- image -->", "")}

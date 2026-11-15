@@ -1,7 +1,150 @@
 import pytest
 
 from tests.backend.fixtures.sat_store import FixtureSATStore as SATGraphStore
-from retrieval.sat_chat import SATChatRetriever
+from retrieval.sat_chat import SATChatRetriever, _expand_ranked_component
+from retrieval.sat import SearchPlan
+from retrieval.sat_citations import match_article_heading, _marker
+
+
+def test_untitled_article_can_match_unambiguous_clv_heading():
+    class Headings:
+        def __init__(self, entries):
+            self.entries = entries
+        def eligible(self, plan):
+            return self.entries
+    def article(resource, label, text):
+        return {'work': {'kind': 'article', 'label': label, 'resource_id': resource},
+                'text': {'text': text}}
+    first = article('pe:ley:31464', 'Artículo 170-A', '## Artículo 170-A.- Audiencia única')
+    query = 'Cuáles son las reglas para una audiencia única en alimentos?'
+    assert match_article_heading(Headings([first]), SearchPlan(query=query), query) == ('pe:ley:31464', '170-a')
+    duplicate = article('pe:ley:10000', 'Artículo 44', 'Artículo 44.- Audiencia única')
+    assert match_article_heading(Headings([first, duplicate]), SearchPlan(query=query), query) is None
+    wrong_number = article('pe:ley:31464', 'Artículo 170-A', 'Artículo 171.- Audiencia única')
+    assert match_article_heading(Headings([wrong_number]), SearchPlan(query=query), query) is None
+
+
+def test_marker_accepts_human_readable_literal_and_inciso_labels():
+    assert _marker({'work': {'label': 'Literal a)'}}) == 'a'
+    assert _marker({'work': {'label': 'Inciso ñ)'}}) == 'ñ'
+    assert _marker({'work': {'label': '- b. Texto'}}) == 'b'
+
+
+def test_heading_lookup_loads_only_selected_article_and_checks_revision(tmp_path):
+    store = SATGraphStore(tmp_path / 'heading.sqlite3')
+    resource = 'pe:ley:31464'
+    with store._transaction() as db:
+        def add(key, kind, label, text, offset, parent=None):
+            work, version, clv = (f'{prefix}:{key}' for prefix in ('work', 'ctv', 'clv'))
+            store._node(db, work, 'Work', {'resource_id': resource, 'component': key, 'kind': kind, 'label': label})
+            store._node(db, version, 'CTV', {'work_id': work, 'scope': 'PE', 'provenance_state': 'user_attested_snapshot',
+                'snapshot_as_of': '2026-11-12', 'valid_from': None, 'valid_to': None,
+                'checked_through': '2026-11-12', 'review_id': 'r'})
+            store._node(db, clv, 'CLV', {'language': 'es', 'text': text, 'start': offset,
+                'source_url': 'https://example.org', 'evidence_id': 'source'})
+            store._edge(db, version, 'has_text', clv, {})
+            if parent:
+                store._edge(db, f'ctv:{parent}', 'contains_version', version, {})
+        add('3', 'article', 'Artículo 3. Incorporación en el Código', 'Incorporación', 0)
+        add('170', 'article', 'Artículo 170-A', '## Artículo 170-A.- Audiencia única\n- a) Uno\n- b) Dos', 20, '3')
+        add('a', 'inciso', 'Literal a)', '- a) Uno', 57, '170')
+        add('b', 'inciso', 'Literal b)', '- b) Dos', 67, '170')
+
+    graph = store.export()
+    class Selective:
+        def __init__(self, revision=1):
+            self.calls = []
+            self.revision = revision
+        def chat_heading_snapshot(self):
+            self.calls.append('headings')
+            return {**graph, 'chat_revision': 1}
+        def chat_article_snapshot(self, rid, wid):
+            self.calls.append(('article', rid, wid))
+            return {**graph, 'chat_revision': self.revision}
+        def chat_snapshot(self, resource=None):
+            self.calls.append(('global', resource))
+            return graph
+    query = 'Cuáles son las reglas de la audiencia única?'
+    selective = Selective()
+    result = SATChatRetriever(selective)._search(query, 5, 30)
+    assert selective.calls == ['headings', ('article', resource, 'work:170')]
+    assert result['reference']['article'] == '170-a'
+    assert 'Artículo 3. Incorporación en el Código' in result['reference']['citation']
+    assert result['verbatim_answer'].endswith('- a) Uno\n- b) Dos')
+    raced = Selective(revision=2)
+    result = SATChatRetriever(raced)._search(query, 5, 30)
+    assert raced.calls[-1] == ('global', None)
+    assert result['reference']['article'] == '170-a'
+
+
+def test_retriever_reuse_is_bound_to_snapshot_identity():
+    adapter = SATChatRetriever(object())
+    first = {'nodes': [], 'edges': []}
+    second = {'nodes': [], 'edges': []}
+    assert adapter._retriever_for(first) is adapter._retriever_for(first)
+    assert adapter._retriever_for(second) is not adapter._retriever_for(first)
+
+
+def test_expand_structured_article_preserves_identity_and_budget():
+    full = 'Artículo 170-A\n- a) ' + 'x' * 1100 + '\n- b) segunda\n- c) tercera'
+    item = {'version': {'id': 'v'}, 'work': {'kind': 'article', 'resource_id': 'r'}, 'text': {'id': 't', 'start': 0, 'text': full}}
+    child = {'version': {'id': 'child'}, 'work': {'kind': 'inciso', 'resource_id': 'r'}, 'text': {'start': 0, 'text': full[:20]}}
+    class Retriever:
+        outgoing = {('v', 'contains_version'): ['child']}
+        def eligible(self, plan):
+            return [item, child]
+    def result():
+        return {'hits': [{'version_id': 'v', 'content': full[:1000]}]}
+    plan = SearchPlan(query='reglas de audiencia', context_bytes=16000)
+    expanded = _expand_ranked_component(result(), Retriever(), plan)['hits'][0]
+    assert expanded['content'] == full and expanded['end'] == len(full)
+    assert expanded['text_sha256'] == __import__('hashlib').sha256(full.encode()).hexdigest()
+    small = plan.model_copy(update={'context_bytes': 1000})
+    limited = _expand_ranked_component(result(), Retriever(), small)
+    assert limited['hits'] == [] and limited['reason'] == 'complete_component_exceeds_budget'
+    child['text']['text'] = 'texto incompatible'
+    assert _expand_ranked_component(result(), Retriever(), plan)['reason'] == 'inconsistent_component_structure'
+
+
+def test_context_packing_prioritizes_complete_text_and_deduplicates_graph():
+    from collections import defaultdict
+    def item(key, text, start=0):
+        return {'version': {'id': key}, 'work': {'resource_id': 'r', 'kind': 'article'},
+                'text': {'id': 'text:' + key, 'text': text, 'start': start}}
+    parent = item('p', 'á' * 600)
+    child = item('c', 'á' * 200)
+    other = item('o', 'z' * 1000, 2000)
+    class Retriever:
+        outgoing = defaultdict(list, {('p', 'contains_version'): ['c']})
+        def eligible(self, plan):
+            return [parent, child, other]
+    result = {'hits': [{'version_id': key, 'content': body}
+                       for key, body in [('p', 'á' * 100), ('c', 'á' * 50), ('o', 'z' * 100)]]}
+    plan = SearchPlan(query='consulta sin palabras especiales', context_bytes=1300)
+    packed = _expand_ranked_component(result, Retriever(), plan)
+    assert [h['version_id'] for h in packed['hits']] == ['p']
+    assert packed['context_bytes'] == 1200  # UTF-8 bytes, not characters.
+    assert packed['hits'][0]['content'] == parent['text']['text']
+    assert [x['reason'] for x in packed['omitted_components']] == ['structural_overlap', 'complete_component_exceeds_budget']
+    assert SearchPlan(query='q').context_bytes == 24000
+
+
+def test_complete_leaf_between_old_and_new_budget_is_not_truncated():
+    from collections import defaultdict
+    full = 'contenido ' * 2000
+    class Retriever:
+        outgoing = defaultdict(list)
+        def eligible(self, plan):
+            return [{'version': {'id': 'v'}, 'work': {'resource_id': 'r', 'kind': 'article'},
+                     'text': {'id': 't', 'text': full, 'start': 15}}]
+    result = {'hits': [{'version_id': 'v', 'content': full[:1000]}]}
+    plan = SearchPlan(query='explícalo')
+    packed = _expand_ranked_component(result, Retriever(), plan)
+    assert packed['hits'][0]['content'] == full
+    assert packed['hits'][0]['start'] == 15
+    assert packed['hits'][0]['end'] == 15 + len(full)
+    assert packed['context_bytes'] == 20000
+    assert _expand_ranked_component(result, Retriever(), plan.model_copy(update={'context_bytes': 16000}))['state'] == 'abstain'
 
 
 @pytest.mark.asyncio

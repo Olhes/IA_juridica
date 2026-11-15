@@ -251,3 +251,16 @@ def test_rank_stages_are_independent_and_accounted(corpus, dense, rerank, strate
 def test_rank_stage_contract_rejects_coercion_and_unknown_flags(values):
     with pytest.raises(ValidationError):
         RankStages(**values)
+def test_cached_bm25_index_matches_uncached_for_many_queries():
+    import random
+    from retrieval.sat import _BM25Index, bm25
+
+    rng = random.Random(12345)
+    words = ['niñez', 'alimentos', 'ámbito', 'violencia', '170-A', 'familia', 'salud', 'sección']
+    texts = {str(i): ' '.join(rng.choices(words, k=rng.randrange(0, 40))) for i in range(100)}
+    index = _BM25Index(texts)
+    queries = ['NIÑEZ', 'NO EXISTE', ''] + [
+        ' '.join(rng.choices(words + ['no-existe'], k=rng.randrange(0, 8))) for _ in range(100)
+    ]
+    for query in queries:
+        assert index.score(query) == bm25(query, texts)

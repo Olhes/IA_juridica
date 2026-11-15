@@ -637,6 +637,7 @@ class PromptManager:
         language: str = "spanish",
         user_location: Optional[str] = None,
         enriched_context: Optional[Dict[str, Any]] = None,
+        include_documents: bool = True,
     ) -> str:
         """
         Construye prompt optimizado para Cohere con documentos rerankeados.
@@ -656,7 +657,7 @@ class PromptManager:
         base_template = self.templates.get_prompt(prompt_type, language)
         
         # Formatear documentos como contexto
-        context_text = self._format_documents_for_prompt(documents)
+        context_text = self._format_documents_for_prompt(documents) if include_documents else None
         
         # Información local si se detectó ubicación
         local_resources = ""
@@ -670,8 +671,7 @@ class PromptManager:
         
         final_prompt = f"""{base_template}
 
-=== CONTEXTO LEGAL RELEVANTE ===
-{context_text}
+{('=== CONTEXTO LEGAL RELEVANTE ===' + chr(10) + context_text) if context_text is not None else ''}
 
 {f'=== RECURSOS LOCALES ({user_location.upper()}) ===' + chr(10) + local_resources if local_resources else ''}
 

@@ -42,7 +42,19 @@ def match_article_heading(retriever, plan, query):
         if not m:
             continue
         heading = terms(label[m.end():])
-        if len(heading) >= 4 and " " + " ".join(heading) + " " in current:
+        minimum = 4
+        if len(heading) < 4:
+            # Some reviewed works label only the number, while the title is
+            # preserved in the first line of the corresponding CLV.
+            first_line = item['text']['text'].split('\n', 1)[0]
+            full_label = fold(first_line).lstrip('# «“\" ')
+            header = _ARTICLE.match(full_label)
+            if header and header[1] == m[1]:
+                candidate = terms(full_label[header.end():])
+                if len([word for word in candidate if len(word) >= 3]) >= 2:
+                    heading = candidate
+                    minimum = 2
+        if len(heading) >= minimum and " " + " ".join(heading) + " " in current:
             matches.add((len(heading), work["resource_id"], m[1]))
     if not matches:
         return None
@@ -87,7 +99,12 @@ def with_prior_reference(parsed, prior_questions):
 
 
 def _marker(item):
-    match = _LABEL_MARK.match(item["work"]["label"].casefold())
+    label = item["work"]["label"].casefold().strip()
+    for prefix in ('literal ', 'inciso '):
+        if label.startswith(prefix):
+            label = label[len(prefix):].lstrip()
+            break
+    match = _LABEL_MARK.match(label)
     return match[1] if match else None
 
 
@@ -139,6 +156,14 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
     if len(matches) != 1:
         return result
     target = matches[0]
+    # A law can quote an article of a different code in its own modifying
+    # article. Preserve this parent in the citation rather than attributing the
+    # quoted article number directly to the amending instrument.
+    parents = [eligible[e['source']] for e in retriever.edges
+               if e['type'] == 'contains_version' and e['target'] == target['version']['id']
+               and e['source'] in eligible
+               and eligible[e['source']]['work'].get('kind') == 'article'
+               and eligible[e['source']]['work']['resource_id'] == resource_id]
     def matching(parent, marker, kinds):
         return [i for i in children(parent) if i["work"].get("kind") in kinds and _marker(i) == marker]
 
@@ -167,6 +192,9 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
     citation = f"Artículo {number.upper()} de la {label[kind]} {norm_number.upper()}" if kind != "ds" else (
         f"Artículo {number.upper()} del Decreto Supremo {norm_number.upper()}"
     )
+    if len(parents) == 1:
+        citation = (f"Artículo {number.upper()} (texto contenido en {parents[0]['work']['label']})"
+                    f" — {label[kind]} {norm_number.upper()}")
     if numeral_first:
         citation += f", numeral {numeral}, literal {inciso}"
     elif inciso:
@@ -215,8 +243,12 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
             return {**result, "warning": "No encontré una lista completa e inequívoca de literales en la referencia solicitada."}
     hits = [hit(target)]
     if sum(len(h["content"].encode()) for h in hits) > plan.context_bytes:
-        return result
-    path = [label[kind] + " " + norm_number.upper(), f"Artículo {number.upper()}"]
+        return {**result, "reason": "complete_component_exceeds_budget",
+                "warning": "La sección solicitada supera el presupuesto de contexto. Precisa un numeral o literal para recibir su texto completo; no se ha truncado la sección."}
+    path = [label[kind] + " " + norm_number.upper()]
+    if len(parents) == 1:
+        path.append(parents[0]['work']['label'])
+    path.append(f"Artículo {number.upper()}")
     if numeral_first:
         path += [f"Numeral {numeral}", f"Literal {inciso}"]
     else:

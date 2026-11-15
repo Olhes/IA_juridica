@@ -47,7 +47,8 @@ class SearchPlan(BaseModel):
     candidates: int = Field(default=30, ge=1, le=100)
     chunk_chars: int = Field(default=1000, ge=100, le=4000)
     # Presupuesto de bytes UTF-8, no se declara como conteo exacto de tokens.
-    context_bytes: int = Field(default=16000, ge=100, le=64000)
+    context_bytes: int = Field(default=24000, ge=100, le=64000)
+    structural_units: bool = False
     include_documentary: bool = False  # opt-in de pruebas; no acredita vigencia histórica
 
     @field_validator("as_of", mode="before")
@@ -110,6 +111,37 @@ def bm25(query: str, texts: dict[str, str]) -> dict[str, float]:
     return scores
 
 
+class _BM25Index:
+    """Reusable corpus statistics; scoring remains identical to bm25()."""
+
+    def __init__(self, texts):
+        self.counts = {identity: Counter(terms(text)) for identity, text in texts.items()}
+        self.lengths = {identity: sum(counter.values()) for identity, counter in self.counts.items()}
+        self.average = sum(self.lengths.values()) / len(self.lengths) if self.lengths else 0
+        self.average = self.average or 1
+        self.df = Counter(term for counter in self.counts.values() for term in counter)
+        self.postings = defaultdict(set)
+        for identity, counter in self.counts.items():
+            for term in counter:
+                self.postings[term].add(identity)
+
+    def score(self, query):
+        query_terms = set(terms(query))
+        matched = set().union(*(self.postings.get(term, set()) for term in query_terms))
+        scores = {}
+        for identity in matched:
+            counter = self.counts[identity]
+            score = 0.0
+            for term in query_terms:
+                freq = counter[term]
+                if freq:
+                    idf = math.log(1 + (len(self.counts) - self.df[term] + 0.5) / (self.df[term] + 0.5))
+                    score += idf * freq * 2.2 / (freq + 1.2 * (0.25 + 0.75 * self.lengths[identity] / self.average))
+            if score > 0:
+                scores[identity] = score
+        return scores
+
+
 def ranked(scores: dict[str, float]) -> list[str]:
     return sorted(scores, key=lambda identity: (-scores[identity], identity))
 
@@ -150,6 +182,11 @@ class SATRetriever:
         self.revision = fingerprint(snapshot)
         self.nodes = {node["id"]: node for node in snapshot["nodes"]}
         self.edges = snapshot["edges"]
+        # Per immutable snapshot only: never reuse eligibility across revisions.
+        self._eligible_cache = {}
+        self._rank_cache = None
+        from threading import RLock
+        self._rank_cache_lock = RLock()
         self.outgoing = defaultdict(list)
         for edge in self.edges:
             self.outgoing[(edge["source"], edge["type"])].append(edge["target"])
@@ -162,6 +199,10 @@ class SATRetriever:
         ]
 
     def eligible(self, plan: SearchPlan) -> list[dict]:
+        cache_key = (plan.as_of, plan.scope, plan.language, tuple(plan.resource_ids), plan.component)
+        cached = self._eligible_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
         when = plan.as_of.isoformat() if plan.as_of else None
         groups = defaultdict(list)
         for node in self.nodes.values():
@@ -207,7 +248,9 @@ class SATRetriever:
             if len(texts) != 1:
                 continue
             result.append({"version": version, "work": work, "text": texts[0]})
-        return sorted(result, key=lambda item: item["version"]["id"])
+        result = sorted(result, key=lambda item: item["version"]["id"])
+        self._eligible_cache[cache_key] = tuple(result)
+        return list(result)
 
     def chunks(self, plan: SearchPlan) -> list[dict]:
         result = []
@@ -216,8 +259,9 @@ class SATRetriever:
             body = text["text"]
             resource = self.nodes[work["resource_id"]]
             # Sin overlap: la evidencia canónica no se duplica ni se altera.
-            for start in range(0, len(body), plan.chunk_chars):
-                end = min(len(body), start + plan.chunk_chars)
+            step = max(len(body), 1) if plan.structural_units else plan.chunk_chars
+            for start in range(0, len(body), step):
+                end = min(len(body), start + step)
                 content = body[start:end]
                 result.append(
                     {
@@ -345,18 +389,19 @@ class SATRetriever:
         self, plan: SearchPlan, *, provider=None, stages: RankStages | None = None
     ) -> dict:
         stages = stages or RankStages()
-        chunks = self.chunks(plan)
+        # One cached index per immutable snapshot; changing any field that
+        # affects eligibility/chunking rebuilds it. Never cache user queries.
+        cache_key = plan.model_dump_json(exclude={'query', 'top_k', 'candidates', 'strategy', 'context_bytes'})
+        with self._rank_cache_lock:
+            if self._rank_cache is None or self._rank_cache[0] != cache_key:
+                chunks = self.chunks(plan)
+                raw_index = _BM25Index({c['id']: c['content'] for c in chunks})
+                metadata_index = _BM25Index({c['id']: f'{c["resource_label"]} {c["label"]} {c["component"]} {c["content"]}' for c in chunks})
+                self._rank_cache = (cache_key, chunks, raw_index, metadata_index)
+            _, chunks, raw_index, metadata_index = self._rank_cache
         by_id = {chunk["id"]: chunk for chunk in chunks}
-        raw = bm25(plan.query, {c["id"]: c["content"] for c in chunks})
-        metadata = bm25(
-            plan.query,
-            {
-                c[
-                    "id"
-                ]: f'{c["resource_label"]} {c["label"]} {c["component"]} {c["content"]}'
-                for c in chunks
-            },
-        )
+        raw = raw_index.score(plan.query)
+        metadata = metadata_index.score(plan.query)
         rankings = [ranked(raw)]
         weights = [1.0]
         if plan.strategy != "bm25":
@@ -478,6 +523,8 @@ class SATRetriever:
                 continue
             size = len(chunk["content"].encode("utf-8"))
             if used + size > plan.context_bytes:
+                if plan.structural_units and not hits:
+                    break
                 continue
             hits.append({**chunk, "score": scores[identity]})
             seen_versions.add(chunk["version_id"])
