@@ -36,6 +36,8 @@ body {
   color: var(--text-primary);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 
 /* ── Focus styles ───────────────────────────────────────────────── */
 button:focus-visible,
@@ -45,6 +47,11 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+/* Prefer standard scrollbars; keep WebKit styling for older browsers. */
+html { scrollbar-color: #896c82 #fff8f0; scrollbar-width: thin; }
+html.dark { scrollbar-color: #a990b6 #1c0f26; }
+@supports not (scrollbar-color: auto) {
+html { scrollbar-width: auto; }
 /* ── Scrollbar (light) ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -54,6 +61,7 @@ input:focus-visible {
 /* ── Scrollbar (dark) ────────────────────────────────────────── */
 .dark ::-webkit-scrollbar-thumb { background: #4A2D5E; }
 .dark ::-webkit-scrollbar-thumb:hover { background: #6A5470; }
+}
 
 /* ── Animations ─────────────────────────────────────────────────── */
 @keyframes fadeIn {

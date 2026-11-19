@@ -135,7 +135,7 @@ export function useChatSessions() {
           // Si se eliminó la activa, pasar a la más reciente o crear nueva
           if (activeSessionId === id) {
             if (updated.length > 0) {
-              const next = [...updated].sort(
+            const next = updated.toSorted(
                 (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
               )[0];
               setActiveSessionId(next.id);

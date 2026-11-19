@@ -15,6 +15,10 @@ consentimiento explícito.
 
 ## Comandos por objetivo
 
+La prueba `frontend/component/AuthModal.test.tsx`,
+`modal de acceso ofrece Google y cierra por cancelación`, verifica la acción
+de Google y el cierre nativo, sin mostrar el formulario de contraseña inactivo.
+
 | Objetivo | Comando |
 |---|---|
 | Backend / frontend | `pnpm test:backend` / `pnpm test:frontend` |

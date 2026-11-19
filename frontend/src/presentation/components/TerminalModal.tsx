@@ -106,7 +106,7 @@ export function TerminalModal({
   }, [recoveredDraft, onDraftRecovered]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
@@ -164,20 +164,13 @@ export function TerminalModal({
 
   useEffect(() => {
     if (!isOpen) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
     const previous = document.activeElement as HTMLElement | null;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeRef.current();
-      if (event.key === 'Tab') {
-        const controls = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
-        if (!controls?.length) return;
-        const first = controls[0]; const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    document.addEventListener('keydown', closeOnEscape);
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
     return () => {
-      document.removeEventListener('keydown', closeOnEscape);
+      if (dialog.open && typeof dialog.close === 'function') dialog.close();
       if (previous?.isConnected && previous !== document.body && previous !== document.documentElement) previous.focus();
       else returnFocusRef?.current?.focus();
     };
@@ -204,7 +197,7 @@ export function TerminalModal({
     <div className="fixed inset-0 z-[9990] flex items-end justify-center p-4 pointer-events-none sm:items-center">
 
       {/* Ventana flotante (diseño A: crema, bordes rosados, esquinas amplias) */}
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="terminal-title" className="relative z-10 w-[94vw] max-w-7xl h-[92vh] bg-slate-50 text-[#26162F] border border-slate-200 rounded-3xl shadow-[0_25px_60px_-15px_rgba(43,24,56,0.55)] flex flex-col overflow-hidden font-sans pointer-events-auto">
+      <dialog ref={dialogRef} aria-labelledby="terminal-title" onCancel={(event) => { event.preventDefault(); closeRef.current(); }} className="relative z-10 m-auto w-[94vw] max-w-7xl h-[92vh] bg-slate-50 text-[#26162F] border border-slate-200 rounded-3xl shadow-[0_25px_60px_-15px_rgba(43,24,56,0.55)] open:flex flex-col overflow-hidden font-sans pointer-events-auto backdrop:bg-slate-900/30">
 
         {/* Encabezado Superior */}
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-white">
@@ -407,7 +400,7 @@ export function TerminalModal({
             </div>
           </form>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

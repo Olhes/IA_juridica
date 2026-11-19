@@ -34,7 +34,6 @@ export function useSpeechToText(onFinalText: (text: string) => void, onEnd?: () 
     rec.continuous = false;
 
     rec.onresult = (e: any) => {
-      console.log('[useSpeechToText] onresult:', e);
       let finalText = '';
       let partial = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -141,7 +140,6 @@ export function useQuechuaTextToSpeech() {
       setLoading(true);
       stop();
 
-      console.log('[useQuechuaTextToSpeech] Requesting TTS for:', text.substring(0, 50));
 
       const response = await fetch(`${API_BASE}/tts/synthesize`, {
         method: 'POST',
@@ -158,8 +156,6 @@ export function useQuechuaTextToSpeech() {
       console.log('[useQuechuaTextToSpeech] Response status:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[useQuechuaTextToSpeech] Error response:', errorText);
         throw new Error(`Failed to synthesize audio: ${response.status}`);
       }
 

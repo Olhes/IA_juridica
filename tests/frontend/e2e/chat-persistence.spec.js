@@ -28,8 +28,10 @@ test('terminal accesible permite teclado Escape y devuelve foco', async ({ page 
   await page.goto('/'); await page.getByRole('button', { name: 'Comenzar consulta' }).click();
   await expect(page.getByRole('textbox')).toBeFocused(); await page.getByRole('textbox').fill('Consulta de teclado');
   await page.keyboard.press('Tab'); await expect(page.getByRole('button', { name: 'Enviar consulta' })).toBeFocused();
-  await page.keyboard.press('Tab'); await expect(page.getByRole('button', { name: 'Cerrar', exact: true })).toBeFocused();
-  await page.keyboard.press('Shift+Tab'); await expect(page.getByRole('button', { name: 'Enviar consulta' })).toBeFocused();
+  await page.keyboard.press('Tab'); await expect(page.getByRole('dialog')).toContainText('Asistente IA Jurídico');
+  await expect(page.getByRole('dialog')).toHaveJSProperty('open', true);
+  expect(await page.getByRole('dialog').evaluate(el => el.matches(':modal'))).toBe(true);
+  await page.getByRole('textbox').focus();
   await expect(page.getByRole('dialog')).toBeVisible(); await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Abrir terminal', exact: true })).toBeFocused();
 });
@@ -37,5 +39,5 @@ test('pantalla y terminal no tienen violaciones axe serias o críticas', async (
   await page.goto('/'); await expect(page.getByRole('button', { name: 'Comenzar consulta' })).toBeVisible();
   let results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
   await page.getByRole('button', { name: 'Comenzar consulta' }).click();
-  results = await new AxeBuilder({ page }).include('[role="dialog"]').analyze(); expect(results.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
+  results = await new AxeBuilder({ page }).include('dialog[open]').analyze(); expect(results.violations.filter(v => ['serious', 'critical'].includes(v.impact))).toEqual([]);
 });

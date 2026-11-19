@@ -114,10 +114,11 @@ export function ChatInput({
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) { e.preventDefault(); handleSend(); }
   };
 
   const handleInput = () => {
+    if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content')) return;
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
@@ -219,7 +220,7 @@ export function ChatInput({
             placeholder={placeholder}
             rows={1}
             disabled={isLoading}
-            className="flex-1 resize-none bg-transparent
+            className="flex-1 resize-none bg-transparent [field-sizing:content]
               text-sm md:text-base
               text-slate-800 dark:text-slate-200
               placeholder-slate-400 dark:placeholder-slate-600

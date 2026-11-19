@@ -107,17 +107,12 @@ function SessionRow({
           ? 'bg-[#33203F] border-amber-400 text-white'
           : 'border-transparent hover:bg-slate-800 text-slate-100'
       }`}
-      onClick={onSelect}
-      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
-      // biome-ignore lint/a11y/useSemanticElements: composite widget
-      role="button"
-      tabIndex={0}
     >
       {/* Icon */}
       <MessagesSquare className={`w-4 h-4 mt-1 flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-300'}`} />
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
+      <button type="button" onClick={onSelect} className="flex-1 min-w-0 text-left" aria-label={`Seleccionar ${session.title}`}>
         <p className={`text-[15px] truncate ${isActive ? 'font-bold text-white' : 'font-semibold text-slate-100'}`}>
           {session.title}
         </p>
@@ -136,7 +131,7 @@ function SessionRow({
             </span>
           )}
         </div>
-      </div>
+      </button>
 
       {/* Menu button */}
       <div
@@ -150,7 +145,7 @@ function SessionRow({
           id={`session-menu-${session.id}`}
           aria-label={`Opciones de ${session.title}`}
           onClick={() => setMenuOpen((v) => !v)}
-          className={`w-7 h-7 rounded-md flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 hover:bg-slate-700 text-slate-300 ${menuOpen ? 'opacity-100' : ''}`}
+          className={`w-7 h-7 rounded-md flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-slate-700 text-slate-300 ${menuOpen ? 'opacity-100' : ''}`}
         >
           <MoreVertical className="w-3.5 h-3.5" />
         </button>
@@ -216,7 +211,7 @@ export function ChatSidebar({
   const t = i18n[language];
 
   // Ordenar por updatedAt desc
-  const sorted = [...sessions].sort(
+  const sorted = sessions.toSorted(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 

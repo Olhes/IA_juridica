@@ -62,25 +62,19 @@ export function HistoryPanel({
           sessions.map((session) => (
             <div
               key={session.id}
-              role="button" tabIndex={0} aria-label={`Seleccionar ${session.title}`}
-              onKeyDown={(event) => {
-                if (event.target !== event.currentTarget) return;
-                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectSession(session.id); }
-              }}
               className="group relative p-4 rounded-md bg-[#33203F] hover:bg-slate-800 border-l-4 border-transparent hover:border-amber-400 transition-colors cursor-pointer"
-              onClick={() => onSelectSession(session.id)}
             >
               <div className="flex items-start justify-between mb-2">
-                <h3 className="font-medium text-white text-sm line-clamp-1">
+                <h3 className="font-medium text-white text-sm line-clamp-1"><button type="button" onClick={() => onSelectSession(session.id)} aria-label={`Seleccionar ${session.title}`}>
                   {session.title}
-                </h3>
+                </button></h3>
                 <button
                   aria-label={`Eliminar ${session.title}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteSession(session.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-600 rounded transition-all"
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 hover:bg-gray-600 rounded transition-all"
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />
                 </button>

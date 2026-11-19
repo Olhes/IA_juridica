@@ -1,5 +1,5 @@
 import { test, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TerminalModal } from '../../../frontend/src/presentation/components/TerminalModal';
 
@@ -24,7 +24,7 @@ test('terminal cargando bloquea envío y representa mensajes y estado', () => {
 test('terminal Escape y cerrar notifican cierre y devuelven foco', async () => {
   const close = vi.fn(); const user = userEvent.setup();
   const { rerender } = render(<><button autoFocus>Abrir</button><TerminalModal isOpen onSend={vi.fn()} onClose={close} messages={[]} /></>);
-  await user.keyboard('{Escape}'); expect(close).toHaveBeenCalledTimes(1);
+  fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: false, cancelable: true })); expect(close).toHaveBeenCalledTimes(1);
   await user.click(screen.getByRole('button', { name: 'Cerrar' })); expect(close).toHaveBeenCalledTimes(2);
   rerender(<><button>Abrir</button><TerminalModal isOpen={false} onSend={vi.fn()} onClose={close} messages={[]} /></>);
   expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus();

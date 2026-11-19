@@ -1,5 +1,5 @@
 import { test, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatInput } from '../../../frontend/src/presentation/components/chat/ChatInput';
 const auth = vi.hoisted(() => ({ isAuthenticated: true })); const push = vi.hoisted(() => vi.fn());
@@ -10,6 +10,8 @@ test('entrada no envía espacios y Enter recorta texto mientras Shift Enter crea
   auth.isAuthenticated = true; const send = vi.fn(); const user = userEvent.setup();
   render(<ChatInput language="spanish" isLoading={false} onSend={send} />);
   const input = screen.getByRole('textbox'); await user.type(input, '   {Enter}'); expect(send).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: '漢' } });
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 }); expect(send).not.toHaveBeenCalled();
   await user.clear(input); await user.type(input, 'consulta{Shift>}{Enter}{/Shift}otra'); expect(input).toHaveValue('consulta\notra');
   await user.keyboard('{Enter}'); expect(send).toHaveBeenCalledWith('consulta\notra'); expect(input).toHaveValue('');
 });

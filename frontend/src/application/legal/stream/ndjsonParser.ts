@@ -318,7 +318,7 @@ export function finishStream(state: ParserState, now: number): { state: ParserSt
 }
 
 export function summarise(state: ParserState, now: number): StreamSummary {
-  const events = [...state.events].sort((a, b) => {
+  const events = state.events.toSorted((a, b) => {
     if (a.seq === null || b.seq === null) return 0;
     return a.seq - b.seq;
   });
