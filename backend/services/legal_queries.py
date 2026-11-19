@@ -189,7 +189,6 @@ async def answer_query(
     enriched_prompt, enriched_context = state.context_engineer.build_legal_prompt(
         query=processed_query,
         documents=documents,
-        language="spanish",
         history=history,
         context=context,
         # The complete evidence is sent once via generation_context.answer.
@@ -197,22 +196,8 @@ async def answer_query(
         include_documents=False,
     )
     if reference and documents:
-        enriched_prompt = (
-            f"{enriched_prompt or ''}\n\nReferencia exacta recuperada: {reference['citation']}. "
-            "Cita esta referencia. Responde solo sobre el nivel solicitado; no lo sustituyas por "
-            "sus apartados hermanos o por una lista general del artículo."
-        )
-    if documents:
-        enriched_prompt = (
-            f"{enriched_prompt or ''}\n\nEmpieza por la respuesta, sin saludo ni introducción. "
-            "Usa solo la evidencia recuperada. No deduzcas obligaciones de la lógica de la norma; "
-            "si la fuente no responde la pregunta, dilo brevemente. Conserva la numeración pertinente."
-        )
+        enriched_prompt = f"{enriched_prompt or ''}\n\nReferencia exacta recuperada: {reference['citation']}"
     if verbatim:
-        enriched_prompt += (
-            "\nLa evidencia completa contiene una lista estructurada. Conserva todos sus elementos, "
-            "orden y sentido. Quita marcas de conversión y corrige solo cortes de palabras inequívocos."
-        )
         # A normal SAT result already carries the full provision as evidence.
         # Preserve the explicit guide for legacy/incomplete retrievers instead
         # of silently dropping list items that are absent from their context.
@@ -221,9 +206,9 @@ async def answer_query(
         evidence = (rag_result.get('answer') or '').replace('<!-- image -->', '')
         lines = [line.strip() for line in body.splitlines() if line.strip()]
         if not lines or not all(line in evidence for line in lines):
-            enriched_prompt += '\n' + guide
+            enriched_prompt = f"{enriched_prompt or ''}\n\n{guide}"
     if documents:
-        enriched_prompt = enriched_prompt.replace("<!-- image -->", "")
+        enriched_prompt = (enriched_prompt or "").replace("<!-- image -->", "")
         generation_context = {**rag_result, "answer": (rag_result.get("answer") or "").replace("<!-- image -->", "")}
     if documents:
         try:

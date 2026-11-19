@@ -638,7 +638,7 @@ async def query_document(
         if not legal_agent.cohere_client:
             raise HTTPException(500, "Cohere client not initialized")
 
-        from agents.pydantic_agents import GLOBAL_SYSTEM_PROMPT, SYSTEM_PROMPT_GUARDRAILS
+        from context.prompt_templates import get_legal_system_prompt
 
         if use_rag_fallback:
             # Fallback: Usar RAG temporal para documentos grandes
@@ -670,9 +670,7 @@ async def query_document(
                 # Construir prompt con el contexto recuperado del RAG
                 retrieved_context = rag_result.get("answer", "No se encontró información relevante")
 
-                system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
-
-{SYSTEM_PROMPT_GUARDRAILS}
+                system_prompt = f"""{get_legal_system_prompt()}
 
 INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS GRANDES:
 1. El documento proporcionado es muy grande, por lo que se recuperaron fragmentos relevantes usando búsqueda semántica
@@ -728,9 +726,7 @@ Responde en {language}."""
                 )
         else:
             # Contexto largo para documentos pequeños
-            system_prompt = f"""{GLOBAL_SYSTEM_PROMPT}
-
-{SYSTEM_PROMPT_GUARDRAILS}
+            system_prompt = f"""{get_legal_system_prompt()}
 
 INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS:
 1. Analiza el documento proporcionado en formato Markdown

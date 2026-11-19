@@ -85,6 +85,7 @@ async def test_quechua_answer_keeps_the_notice_out_of_the_text_and_adds_quality(
     state = make_state()
     state.response_validator.validate.return_value.answer_data = {"respuesta_espanol": spanish}
     result = await answer_query(state, "Consulta", "quechua")
+    assert state.legal_agent.respond_general.await_args.kwargs["language"] == "spanish"
     response, translation = result["response"], result["metadata"]["translation"]
     assert response["respuesta_quechua"] == quechua and response["respuesta_espanol"] == spanish
     assert "[Aviso" not in response["respuesta_quechua"] and "[Aviso" not in response["answer"]

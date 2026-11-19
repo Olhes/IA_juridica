@@ -9,26 +9,15 @@ from pathlib import Path
 from loguru import logger
 
 from .chunking_strategies import ContextualChunker
-from .prompt_templates import PromptManager, PromptType
+from .prompt_templates import CULTURAL_TERMS, format_legal_context, get_legal_system_prompt
 from .conversation_prompt import with_conversation
 from modules.language.services.language_detector import LanguageDetector
-
-# Mapeo de tipos de consulta a PromptType
-_QUERY_TYPE_TO_PROMPT: Dict[str, PromptType] = {
-    "violencia_familiar": PromptType.VIOLENCE_FAMILY,
-    "pensión_alimentos": PromptType.PENSION_FOOD,
-    "identidad": PromptType.IDENTITY_RIGHTS,
-    "demanda": PromptType.GENERAL_LEGAL,
-    "general": PromptType.GENERAL_LEGAL,
-}
-
 
 class ContextEngineer:
     """Orquestador principal de Context Engineering"""
 
     def __init__(self, cultural_db_path: Optional[str] = None):
         self.chunker = ContextualChunker()
-        self.prompt_manager = PromptManager()
         self.language_detector = LanguageDetector()
 
         # Base de datos cultural local
@@ -423,58 +412,40 @@ class ContextEngineer:
                     detected_location
                 ]
 
-            # Obtener prompt apropiado
-            language_for_prompt = (
-                "quechua" if query_language == "qu" else query_language
-            )
-            prompt = self.prompt_manager.get_system_prompt(
-                agent_type=agent_type,
-                language=language_for_prompt,
-                context=enriched_context,
-            )
-
+            context = format_legal_context(query, [], context=enriched_context)
+            prompt = f"{get_legal_system_prompt()}\n\n{context}"
             return prompt, enriched_context
 
         except Exception as e:
             logger.error(f"Error generando prompt contextualizado: {str(e)}")
             # Alternativa: instrucción básica
-            return self.prompt_manager.get_system_prompt(agent_type), {}
+            return get_legal_system_prompt(), {}
 
     def build_legal_prompt(
         self,
         query: str,
         documents: List[Dict[str, Any]],
-        language: str = "spanish",
         history=None,
         context=None,
         include_documents=True,
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        Construye prompt legal optimizado para Cohere con contexto cultural.
-
-        Integra: clasificación de consulta → detección de ubicación →
-        enriquecimiento cultural → PromptManager.build_prompt_for_cohere()
+        Prepara los datos del turno sin duplicar el preámbulo del asistente.
 
         Argumentos:
             query: Consulta del usuario
             documents: Documentos rerankeados desde query_with_rerank()
-            language: Idioma de respuesta
 
         Retorna:
-            Tuple (prompt_completo, contexto_enriquecido)
+            Tuple (mensaje del turno, contexto_enriquecido)
         """
         try:
             # 1. Detectar idioma de la consulta
             query_language = self.language_detector.detect_language(query)
-            if query_language == "qu":
-                language = "quechua"
 
             # 2. Clasificar tipo de consulta
             query_lower = query.lower()
             legal_type = self._detect_legal_type(query_lower)
-            prompt_type = _QUERY_TYPE_TO_PROMPT.get(
-                legal_type, PromptType.GENERAL_LEGAL
-            )
 
             # 3. Detectar ubicación
             detected_location = self._detect_location(query)
@@ -501,14 +472,11 @@ class ContextEngineer:
                     detected_location
                 ]
 
-            # 6. Construir prompt con PromptManager
-            prompt = self.prompt_manager.build_prompt_for_cohere(
-                prompt_type=prompt_type,
+            # 6. Solo datos: el agente añade una vez el preámbulo de sistema.
+            prompt = format_legal_context(
                 query=query,
                 documents=documents,
-                language=language,
-                user_location=detected_location,
-                enriched_context=enriched_context,
+                context=enriched_context,
                 include_documents=include_documents,
             )
 
@@ -521,11 +489,10 @@ class ContextEngineer:
 
         except Exception as e:
             logger.error(f"Error construyendo prompt legal: {e}")
-            # Alternativa: instrucción básica sin enriquecimiento
-            basic_prompt = self.prompt_manager.get_system_prompt("general", language)
+            # Conservar los datos sin añadir un segundo preámbulo.
             return (
                 with_conversation(
-                    f"{basic_prompt}\n\nConsulta: {query}", history, context
+                    format_legal_context(query, []), history, context
                 ),
                 {},
             )
@@ -676,7 +643,12 @@ class ContextEngineer:
         return {
             "cultural_database_size": len(self.cultural_db["communities"]),
             "supported_locations": list(self.cultural_db["communities"].keys()),
-            "available_prompts": self.prompt_manager.get_all_templates_info(),
+            "available_prompts": {
+                "available_types": ["general_legal"],
+                "supported_languages": ["spanish"],
+                "cultural_terms": dict(CULTURAL_TERMS),
+                "total_templates": 1,
+            },
             "cache_size": len(self.context_cache),
             "cultural_protocols": list(self.cultural_db["cultural_protocols"].keys()),
         }

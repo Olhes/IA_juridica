@@ -6,7 +6,6 @@ import asyncio
 import re
 from loguru import logger
 
-import os
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -14,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from config.settings import settings
+from context.prompt_templates import format_legal_context, get_legal_system_prompt
 
 try:
     import cohere
@@ -24,71 +24,6 @@ except ImportError:
     COHERE_SDK_AVAILABLE = False
 
 COHERE_MODEL_NAME = settings.COHERE_LLM_MODEL
-GLOBAL_SYSTEM_PROMPT = (
-    os.getenv("SYSTEM_PROMPT")
-    or os.getenv("LEGAL_SYSTEM_PROMPT")
-    or (
-        "Eres un asistente legal peruano especializado en derecho familiar. "
-        "Tu prioridad es brindar orientacion juridica precisa, clara y accionable, "
-        "con rigor tecnico y lenguaje comprensible para personas no especialistas."
-    )
-)
-
-SYSTEM_PROMPT_GUARDRAILS = (
-    "Reglas obligatorias: "
-    "1) Nunca digas ni sugieras que eres un modelo de lenguaje, un LLM o una IA. "
-    "2) No te salgas de tu rol de asistente legal; evita temas ajenos a orientacion juridica. "
-    "3) No inventes leyes, articulos, jurisprudencia, plazos ni entidades. "
-    "4) Si falta informacion, indicalo y pide solo los datos minimos necesarios. "
-    "5) Prioriza precision, consistencia y pasos concretos de accion en Perú."
-    "6) Basa cada afirmación jurídica en el contexto recuperado; no supongas porcentajes, "
-    "plazos, requisitos ni prácticas. Si falta sustento, dilo sin rellenar con conjeturas. "
-    "7) Identifica con precisión la norma y el artículo, incluidos sus sufijos, numerales "
-    "y literales; distingue la ley modificatoria de la norma modificada. "
-    "8) Prioriza la disposición que responda directamente a la pregunta; conserva sus "
-    "excepciones, condiciones y punto de partida de los plazos. No conviertas una "
-    "facultad en obligación ni una regla general en excepción o viceversa. "
-    "En cada literal conserva explícitamente los verbos de facultad u obligación: "
-    "si la fuente dice que el juez puede hacer algo, no lo expreses como algo que hace "
-    "o debe hacer; mantén las condiciones y reproduce la formulación cuando sea necesario. "
-    "9) Si se solicitan reglas o literales, enumera todos los pertinentes disponibles; "
-    "si el contexto está incompleto, indícalo. No cites fuentes irrelevantes como respaldo."
-)
-
-SYSTEM_PROMPT_VARIANTS = {
-    "violence": (
-        "Enfoque de atencion: violencia familiar en Peru. "
-        "Prioriza la seguridad, entrega pasos inmediatos, recursos locales y fuentes legales. "
-        "Responde con la estructura Pydantic solicitada."
-    ),
-    "pension": (
-        "Enfoque de atencion: pension de alimentos en Peru. "
-        "Explica proceso, documentos, plazos y recursos aplicables. "
-        "Responde con la estructura Pydantic solicitada."
-    ),
-    "general": (
-        "Redacta exclusivamente en español. No añadas traducciones ni secciones en quechua. "
-        "Si la consulta pide explicar un artículo, identifica la norma y conserva la "
-        "estructura de los numerales o literales pertinentes. No omitas puntos necesarios "
-        "por brevedad ni agregues recomendaciones ajenas a lo que se preguntó."
-    ),
-    "stream": (
-        "Responde exclusivamente en español, sin traducciones. Usa Markdown si facilita una lista. "
-        "Si falta informacion para precision legal, dilo explicitamente. "
-        "Sé conciso, pero conserva todos los puntos que pide la consulta. "
-        "Ve directo al punto sin explicaciones innecesarias."
-    ),
-}
-
-
-def get_system_prompt(variant: str) -> str:
-    variant_prompt = SYSTEM_PROMPT_VARIANTS.get(variant, "")
-    base_prompt = f"{GLOBAL_SYSTEM_PROMPT}\n\n{SYSTEM_PROMPT_GUARDRAILS}"
-    if not variant_prompt:
-        return base_prompt
-    return f"{base_prompt}\n\n{variant_prompt}"
-
-
 # Enumeraciones para respuestas estructuradas
 class UrgencyLevel(str, Enum):
     BAJO = "bajo"
@@ -233,7 +168,7 @@ class LegalAgent:
     def _build_user_prompt(
         self, query: str, context: Dict[str, Any], language: str
     ) -> str:
-        normalized_language = "español (sin traducción)" if language in {"spanish", "quechua"} else language
+        drafting_language = "español" if language in {"spanish", "quechua"} else language
         context_answer = str(context.get("answer", "")).strip()
         context_sources = context.get("sources", [])
         sources_text = (
@@ -241,18 +176,33 @@ class LegalAgent:
             if context_sources
             else "Sin fuentes"
         )
+        evidence_blocks = []
+        if context.get("method") == "sat":
+            for document in context.get("documents", ()):
+                metadata = document.get("metadata") or {}
+                attribution = metadata.get("prompt_attribution") or {}
+                source = metadata.get("title") or metadata.get("filename")
+                norm = attribution.get("norm") or source
+                section = attribution.get("section") or metadata.get("section_label")
+                content = (document.get("content") or "").replace("<!-- image -->", "").strip()
+                if not norm or not content:
+                    continue
+                label = f"E{len(evidence_blocks) + 1} — {norm}"
+                if section:
+                    label += f" — {section}"
+                modifier = attribution.get("modifier") or source
+                if attribution.get("relation") and modifier:
+                    label += f" · {attribution['relation']}: {modifier}"
+                evidence_blocks.append(f"{label}\n{content}")
+        evidence_prompt = (
+            "\n\n".join(evidence_blocks) + "\n\n"
+            if evidence_blocks else f"{context_answer}\n\nFuentes detectadas: {sources_text}\n\n"
+        )
 
         return (
-            f"Idioma de salida: {normalized_language}.\n"
-            f"Consulta del usuario:\n{query}\n\n"
-            f"Contexto recuperado por RAG:\n{context_answer}\n\n"
-            f"Fuentes detectadas: {sources_text}\n\n"
-            "Instrucciones:\n"
-            "1) Da una orientacion legal clara y accionable.\n"
-            "2) Si falta informacion para precision legal, dilo explicitamente.\n"
-            "3) No incluyas JSON. Usa listas Markdown cuando la consulta pida reglas o enumeraciones; "
-            "incluye todos los literales pertinentes disponibles, sin inventar los que falten. "
-            "Distingue el código modificado de la ley que incorpora o modifica el artículo."
+            f"Idioma de redacción indicado: {drafting_language}.\n\n"
+            f"{query}\n\n"
+            f"Contexto recuperado por RAG:\n{evidence_prompt}"
         )
 
     async def _generate_text_with_cohere(
@@ -260,19 +210,18 @@ class LegalAgent:
         query: str,
         context: Dict[str, Any],
         language: str,
-        prompt_variant: str,
         enriched_prompt: Optional[str] = None,
     ) -> str:
         if not self.cohere_client:
             raise RuntimeError("COHERE_API_KEY no configurada en backend.")
 
-        user_query = enriched_prompt if enriched_prompt else query
+        user_query = enriched_prompt or format_legal_context(query, [])
         user_prompt = self._build_user_prompt(user_query, context, language)
 
         response = await self.cohere_client.chat(
             message=user_prompt,
             model=self.model_name,
-            preamble=get_system_prompt(prompt_variant),
+            preamble=get_legal_system_prompt(),
             temperature=settings.COHERE_TEMPERATURE,
             max_tokens=settings.COHERE_MAX_TOKENS,
         )
@@ -290,7 +239,7 @@ class LegalAgent:
         try:
             if self.cohere_client:
                 text_response = await self._generate_text_with_cohere(
-                    query, context, "spanish", "violence"
+                    query, context, "spanish"
                 )
                 return self._build_violence_response(text_response, query)
 
@@ -306,7 +255,7 @@ class LegalAgent:
         try:
             if self.cohere_client:
                 text_response = await self._generate_text_with_cohere(
-                    query, context, "spanish", "pension"
+                    query, context, "spanish"
                 )
                 return self._build_pension_response(text_response)
 
@@ -329,7 +278,6 @@ class LegalAgent:
                     query,
                     context,
                     language,
-                    "general",
                     enriched_prompt=enriched_prompt,
                 )
                 return self._build_general_response(text_response, query)
@@ -352,14 +300,14 @@ class LegalAgent:
                 "COHERE_API_KEY no configurada en backend para streaming."
             )
 
-        user_query = enriched_prompt if enriched_prompt else query
+        user_query = enriched_prompt or format_legal_context(query, [])
         user_prompt = self._build_user_prompt(user_query, context, language)
 
         try:
             stream = self.cohere_client.chat_stream(
                 message=user_prompt,
                 model=self.model_name,
-                preamble=get_system_prompt("stream"),
+                preamble=get_legal_system_prompt(),
                 temperature=settings.COHERE_TEMPERATURE,
                 max_tokens=settings.COHERE_MAX_TOKENS,
             )
@@ -640,7 +588,6 @@ class LegalAgent:
         return PensionResponse(
             tipo_pension="Alimentos para menores",
             obligados=["Padres", "Abuelos"],
-            calculo_basico="Generalmente 25% del ingreso del obligado",
             pasos_proceso=[
                 LegalStep(
                     paso=1,
@@ -659,7 +606,7 @@ class LegalAgent:
                 ),
             ],
             documentos_necesarios=["DNI", "partidas", "comprobantes de ingresos"],
-            plazos=["No hay plazo para solicitar", "Proceso dura 6-12 meses"],
+            plazos=[],
             recursos=[
                 LegalResource(
                     nombre="Juzgado de Familia",
