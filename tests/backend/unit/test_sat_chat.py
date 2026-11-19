@@ -211,6 +211,10 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
         provision("8", "Artículo 8. Registro", "article", "Artículo 8. Registro", 0)
         provision("80", "Artículo 80. Otro", "article", "Artículo equivocado", 100)
         provision("other-law", "Artículo 8. Otro", "article", "Ley equivocada", 0, resource="pe:ley:30364")
+        provision("cpc96", "Artículo 96.- Audiencia complementaria", "article",
+                  "Texto del Código Procesal Civil.", 0, resource="pe:dl:768")
+        provision("cna96", "Artículo 96.- Competencia", "article",
+                  "Texto del Código de los Niños y Adolescentes.", 0, resource="pe:ley:27337")
         provision("c", "c) Hermano", "inciso", "c) No corresponde", 20, "8")
         provision("d", "d) Supuestos", "inciso", "d) Supuestos\n1. Alfa\n2. Beta", 40, "8")
         provision("d2", "2. Beta", "numeral", "2. Beta", 60, "d")
@@ -238,6 +242,13 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
         provision("decree8a", "- a. Uno.", "inciso", "- a. Uno.", 125, "decree8", resource=decree)
 
     adapter = SATChatRetriever(store)
+    for reference in ("Código Procesal Civil", "DL 768", "TUO del CPC", "CPC (Decreto Legislativo 768)"):
+        answer = await adapter.query_with_rerank(f"¿Qué dice el artículo 96 del {reference}?")
+        assert answer["sat_reference"]["citation"] == "Artículo 96 del Código Procesal Civil (Decreto Legislativo 768)"
+        assert [d["document_id"] for d in answer["documents"]] == ["work:cpc96"]
+    missing = await adapter.query_with_rerank("¿Qué dice el artículo 568 del Código Procesal Civil?")
+    assert missing["documents"] == []
+    assert missing["sat_reference"]["status"] == "unresolved"
     question = ("En el artículo 8 de la Ley N.º 28970, ¿cuáles son los supuestos del inciso d)?"
                 "\nContexto de preguntas anteriores:\nArtículo 80 de la Ley 30364")
     answer = await adapter.query_with_rerank(question, top_k=1)

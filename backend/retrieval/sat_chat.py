@@ -3,11 +3,45 @@ import asyncio
 from collections import OrderedDict
 from hashlib import sha256
 from datetime import date
+import re
 from threading import RLock
 
 from ingestion.sat_graph.store import SATGraphStore
 from retrieval.sat import SATRetriever, SearchPlan, fingerprint
-from retrieval.sat_citations import match_article_heading, references, requests_literals, resolve_reference, with_prior_reference
+from retrieval.sat_citations import article_number, match_article_heading, references, requests_literals, resolve_reference, with_prior_reference
+
+
+_ARTICLE_HEADING = re.compile(r"^Art[ií]culo\s+\d+(?:-[A-Z0-9]+)?", re.IGNORECASE)
+_AMENDING_CODE = re.compile(
+    r"\bC[oó]digo (?:de los Niños y Adolescentes|Procesal Civil|Civil|Procesal Penal|Penal)\b",
+    re.IGNORECASE,
+)
+_AMENDING_ACTION = re.compile(r"\b(incorporaci[oó]n|modificaci[oó]n)\b", re.IGNORECASE)
+
+
+def _prompt_attribution(hit):
+    section = hit.get('article_label') or hit.get('label')
+    match = _ARTICLE_HEADING.match(section or '')
+    heading = hit.get('amending_heading') or ''
+    if modifier := hit.get('amending_source'):
+        path = (hit.get('sat_section') or {}).get('path', ())
+        return {'norm': hit['resource_label'], 'section': ', '.join(path[1:]) if path else (match.group() if match else section),
+                'relation': 'Modificado por', 'modifier': modifier['title']}
+    action = _AMENDING_ACTION.search(heading)
+    codes = {match.group() for match in _AMENDING_CODE.finditer(heading)}
+    if match and action and len(codes) == 1:
+        path = (hit.get('sat_section') or {}).get('path', ())
+        article = match.group()
+        if article in path:
+            article = ', '.join(path[path.index(article):])
+        return {
+            'norm': codes.pop(),
+            'section': article,
+            'relation': 'Incorporado por' if action.group().lower().startswith('incorp') else 'Modificado por',
+        }
+    return {'norm': hit['resource_label'],
+            'section': (hit.get('sat_section') or {}).get('title') or
+                       (match.group() if match else section)}
 
 
 def _expand_ranked_component(result, retriever, plan):
@@ -23,6 +57,13 @@ def _expand_ranked_component(result, retriever, plan):
     by_version = {}
     for item in eligible:
         by_version.setdefault(item['version']['id'], []).append(item)
+
+    article_parents = {}
+    for (parent_id, predicate), children in retriever.outgoing.items():
+        parent = by_version.get(parent_id, ())
+        if predicate == 'contains_version' and len(parent) == 1 and parent[0]['work']['kind'] == 'article':
+            for child_id in children:
+                article_parents.setdefault(child_id, []).append(parent[0]['work'])
 
     def descendants(version):
         seen, pending = set(), [version]
@@ -73,7 +114,12 @@ def _expand_ranked_component(result, retriever, plan):
                         'warning': 'No puedo entregar íntegra la sección principal dentro del contexto disponible o con su estructura actual. Precisa un numeral o literal; no presentaré un fragmento como respuesta completa.'}
             continue
         size = len(text.encode('utf-8'))
+        work = item['work']
+        parents = article_parents.get(hit['version_id'], ())
+        heading = (parents[0].get('label') if work['kind'] == 'article' and len(parents) == 1
+                   and parents[0]['resource_id'] == work['resource_id'] else None)
         packed.append({**hit, 'content': text, 'start': start, 'end': start + len(text),
+                       'amending_heading': heading,
                        'text_sha256': sha256(text.encode('utf-8')).hexdigest(),
                        'id': 'tu:' + fingerprint([hit['version_id'], node['id'], 0, len(text)]),
                        'context_complete': True})
@@ -127,28 +173,44 @@ class SATChatRetriever:
         parsed = with_prior_reference(references(current), prior_questions)
         q, resources, articles, incisos, numerals, ambiguous = parsed
         snapshot = getattr(self.store, 'chat_snapshot', None)
-        # Only an unambiguous, fully specified statute can be scoped before
-        # loading the graph; abbreviated decrees require global resolution.
-        selected = next(iter(resources)) if len(resources) == 1 and ':ley:' in next(iter(resources)) else None
+        # Abbreviated supreme decrees and ministerial resolutions may omit the
+        # ministry; law and legislative-decree IDs are complete at this stage.
+        identity = next(iter(resources)) if len(resources) == 1 else None
+        selected = identity if identity and identity.split(':')[1] in {'ley', 'dl'} else None
         headings = getattr(self.store, 'chat_heading_snapshot', None)
         article_loader = getattr(self.store, 'chat_article_snapshot', None)
         header_retriever = None
-        number = articles[0][1] if selected and len(articles) == 1 and not ambiguous else None
+        number = articles[0][1] if resources and len(articles) == 1 and not ambiguous else None
         if callable(headings) and ((not resources and not articles and not ambiguous and not prior_questions)
-                                   or (selected and number and callable(article_loader))):
+                                   or (number and callable(article_loader) and (selected or len(resources) == 2))):
             header_graph = headings()
             header_retriever = self._retriever_for(header_graph)
             header_plan = SearchPlan(query=current[:4000], as_of=self.as_of)
-            if not selected:
+            if not resources:
                 matched = match_article_heading(header_retriever, header_plan, current)
                 if matched:
                     selected, number = matched
+
+        def same_article(item):
+            return item['work'].get('kind') == 'article' and article_number(item['work']['label']) == number
+
+        if number and resources and header_retriever:
+            explicit_article = selected and any(same_article(item) for item in header_retriever.eligible(
+                header_plan.model_copy(update={'resource_ids': [selected]})))
+            if not explicit_article:
+                # «Art. 564 según Ley 32006» apunta al artículo del CPC, no
+                # a un artículo 564 de la modificatoria. Solo con arista explícita.
+                targets = {item['work']['resource_id'] for item in header_retriever.eligible(header_plan)
+                           if (modifier := item['version'].get('amending_source')) and same_article(item)
+                           and resources in ({modifier['id']}, {modifier['id'], item['work']['resource_id']})}
+                if len(targets) == 1:
+                    selected = next(iter(targets))
+                    resources = {selected}
         work_ids = set()
         if selected and number and header_retriever and callable(article_loader):
             scope = header_plan.model_copy(update={'resource_ids': [selected]})
             for item in header_retriever.eligible(scope):
-                matches = references(item['work']['label'])[2]
-                if len(matches) == 1 and matches[0][1] == number:
+                if same_article(item):
                     work_ids.add(item['work']['id'])
         if len(work_ids) == 1:
             graph = article_loader(selected, next(iter(work_ids)))
@@ -214,13 +276,14 @@ class SATChatRetriever:
                          # Etiqueta estructural del work (p. ej. "Artículo 3"): permite
                          # agrupar los fragmentos recuperados por norma y artículo.
                          'section_label': h.get('label'),
+                         'prompt_attribution': _prompt_attribution(h),
                          'sat_section': h.get('sat_section'),
                          'context_complete': h.get('context_complete'),
                          'snapshot_as_of': h.get('snapshot_as_of')},
         } for h in result['hits']]
         if trace is not None:
             trace.update(sat_result=result)
-        warning = result['warning']
+        warning = result.get('warning')
         if not result['eligible_chunks'] and not result.get('reference'):
             warning = ('No hay versiones SAT disponibles para la fecha consultada; el sistema se abstiene.'
                        if self.as_of else 'No hay versiones SAT disponibles en el grafo.')

@@ -7,11 +7,13 @@ from utils.text_match import fold
 
 _N = r"(?:n\s*[.°ºo]*\s*)?"
 _LAW = re.compile(rf"\bley\s+{_N}(\d{{4,6}})\b")
+_CPC = re.compile(r"\bcodigo\s+procesal\s+civil\b|\b(?:tuo\s+del\s+)?cpc\b")
+_LEGISLATIVE_DECREE = re.compile(rf"\b(?:decreto\s+legislativo|d\s*\.?\s*l\.?)\s+{_N}(\d{{1,5}})\b")
 _DECREE = re.compile(
     rf"\b(decreto supremo|d\s*\.?\s*s\.?|resolucion ministerial|r\s*\.?\s*m\.?)\s*(?:-\s*)?"
     rf"{_N}(\d{{1,4}})\s*-\s*(\d{{4}})(?:\s*-\s*([a-z]+))?\b"
 )
-_ARTICLE = re.compile(r"\b(?:articulos?|arts?\.?)\s*(\d{1,4}(?:-[a-z])?)(?![a-z0-9])")
+_ARTICLE = re.compile(r"\b(?:articulos?|arts?\.?)\s*(\d{1,4}(?:-[a-z])?|unico|viii|vii|iii|vi|iv|ix|ii|i|v|x)(?![a-z0-9])")
 _ADDITIONAL = re.compile(r"^\s*[°º]?(?:\s*(?:,|y|e|a|al|[-–])\s*\d)")
 _INCISO = re.compile(r"\b(?:inciso|literal|inc\.|lit\.)\s*\(?([a-zñ])\b")
 _NUMERAL = re.compile(r"\b(?:numeral|num\.)\s*(\d+(?:\.\d+)*)\b")
@@ -29,13 +31,19 @@ def requests_literals(query):
     return bool(match and match[1] in {"literales", "incisos"})
 
 
+def article_number(label):
+    """Leer el identificador inicial; una cita dentro de la sumilla no cambia el artículo."""
+    match = _ARTICLE.match(fold(label).lstrip('# «“" '))
+    return match[1] if match else None
+
+
 def match_article_heading(retriever, plan, query):
     """Match a full, distinctive heading in the current turn, not in history."""
     current = " " + " ".join(terms(query)) + " "
     matches = set()
     for item in retriever.eligible(plan):
         work = item["work"]
-        if work.get("kind") != "article":
+        if work.get("kind") != "article" or item.get("version", {}).get("historical_quotation"):
             continue
         label = fold(work["label"]).lstrip("# ")
         m = _ARTICLE.match(label)
@@ -66,6 +74,9 @@ def match_article_heading(retriever, plan, query):
 def references(query):
     q = "".join("ñ" if char in "Ññ" else fold(char) for char in query)
     resources = {f"pe:ley:{m[1]}" for m in _LAW.finditer(q)}
+    resources.update(f"pe:dl:{int(m[1])}" for m in _LEGISLATIVE_DECREE.finditer(q))
+    if _CPC.search(q):
+        resources.add("pe:dl:768")
     for m in _DECREE.finditer(q):
         kind = "ds" if m[1].startswith("d") else "rm"
         resources.add(f"pe:{kind}:{int(m[2]):03d}-{m[3]}" + (f"-{m[4]}" if m[4] else ""))
@@ -152,10 +163,11 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
         )
 
     matches = [i for i in eligible.values() if i["work"].get("kind") == "article"
-               and (m := _ARTICLE.match(fold(i["work"]["label"]).lstrip("# "))) and m[1] == number]
+               and article_number(i["work"]["label"]) == number]
     if len(matches) != 1:
         return result
     target = matches[0]
+    article = "único" if number == "unico" else number.upper()
     # A law can quote an article of a different code in its own modifying
     # article. Preserve this parent in the citation rather than attributing the
     # quoted article number directly to the amending instrument.
@@ -187,14 +199,21 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
                 return result
             target = matches[0]
 
-    label = {"ley": "Ley", "ds": "Decreto Supremo", "rm": "Resolución Ministerial"}
+    label = {"ley": "Ley", "ds": "Decreto Supremo", "rm": "Resolución Ministerial", "dl": "Decreto Legislativo"}
     _, kind, norm_number = resource_id.split(":")
-    citation = f"Artículo {number.upper()} de la {label[kind]} {norm_number.upper()}" if kind != "ds" else (
-        f"Artículo {number.upper()} del Decreto Supremo {norm_number.upper()}"
+    norm = "Código Procesal Civil (Decreto Legislativo 768)" if resource_id == "pe:dl:768" else (
+        f"{label[kind]} {norm_number.upper()}"
     )
+    connector = "del" if kind in {"ds", "dl"} else "de la"
+    citation = f"Artículo {article} {connector} {norm}"
     if len(parents) == 1:
-        citation = (f"Artículo {number.upper()} (texto contenido en {parents[0]['work']['label']})"
+        citation = (f"Artículo {article} (texto contenido en {parents[0]['work']['label']})"
                     f" — {label[kind]} {norm_number.upper()}")
+    if modifier := target["version"].get("amending_source"):
+        citation += f" — modificado por {modifier['title'].split(' — ', 1)[0]}"
+    historical = target["version"].get("historical_quotation")
+    if historical:
+        citation += " (publicación histórica; contiene texto sustituido)"
     if numeral_first:
         citation += f", numeral {numeral}, literal {inciso}"
     elif inciso:
@@ -211,6 +230,10 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
             "resource_label": retriever.nodes[resource_id].get("title", resource_id),
             "source_url": text["source_url"], "provenance_state": version["provenance_state"],
             "snapshot_as_of": version.get("snapshot_as_of"), "citation": citation,
+            "label": work["label"],
+            "article_label": f"Artículo {article}",
+            "amending_heading": parents[0]["work"]["label"] if len(parents) == 1 else None,
+            "amending_source": version.get("amending_source"),
         }
 
     # Use the complete CLV of the exact provision, never a ranked/truncated fragment.
@@ -245,10 +268,10 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
     if sum(len(h["content"].encode()) for h in hits) > plan.context_bytes:
         return {**result, "reason": "complete_component_exceeds_budget",
                 "warning": "La sección solicitada supera el presupuesto de contexto. Precisa un numeral o literal para recibir su texto completo; no se ha truncado la sección."}
-    path = [label[kind] + " " + norm_number.upper()]
+    path = [norm]
     if len(parents) == 1:
         path.append(parents[0]['work']['label'])
-    path.append(f"Artículo {number.upper()}")
+    path.append(f"Artículo {article}")
     if numeral_first:
         path += [f"Numeral {numeral}", f"Literal {inciso}"]
     else:
@@ -260,7 +283,8 @@ def resolve_reference(retriever, plan, parsed, *, heading_list=False):
         "title": citation, "path": path, "version_id": hits[0]["version_id"],
         "source_url": hits[0]["source_url"],
     }
-    return {**result, "state": "retrieved", "reason": None, "warning": None,
+    return {**result, "state": "retrieved", "reason": None,
+            "warning": "La publicación contiene texto sustituido; no es la redacción actual." if historical else None,
             "eligible_chunks": len(eligible), "candidate_count": len(hits), "hits": hits,
             "reference": {**result["reference"], "status": "exact", "citation": citation, "numeral": numeral},
             "verbatim_answer": enumeration}

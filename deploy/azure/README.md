@@ -130,7 +130,11 @@ esquema `sat_graph` de PostgreSQL, no desde LightRAG. `bootstrap-secrets.sh` esc
 ambas claves y las agrega a un `backend.env` anterior sin pisar el resto.
 
 - `deploy.sh` restaura `backend/docs/sat_graph.pg_dump` cuando el esquema no tiene
-  ninguna revisión publicada. Si ya hay corpus —o venís de una migración— no lo toca.
+  ninguna revisión publicada. El respaldo solo contiene `sat_graph`; no contiene
+  usuarios, conversaciones ni credenciales de la aplicación.
+- Si el corpus ya existe, el despliegue no restaura el respaldo encima de él:
+  publica el TUO del Código Procesal Civil y la Ley 32006 con el importador
+  idempotente de la entrega. El resto del corpus se conserva.
 - Sin corpus la API **igual arranca**: `/health` responde, `/ready` devuelve 503 y el
   editor `/sat-graph/review` sigue disponible para publicar el primer documento.
   Cuando la publicación termina, `/ready` pasa a 200 sin reiniciar.

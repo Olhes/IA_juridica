@@ -14,7 +14,7 @@ import re
 from ingestion.source_evidence import SourceEvidence
 from ingestion.legal_structure import parse_legal_structure
 from .catalog import load_catalog
-from .contracts import ReviewManifest, ReviewedUnit, Span
+from .contracts import ReviewManifest, ReviewedUnit, SNAPSHOT_STATES, Span
 
 
 def canonical(value) -> str:
@@ -448,7 +448,7 @@ class SATGraphStore(ABC):
             raise ValueError("Objetivos de Action duplicados")
         old = [self._get(db, identity, "CTV") for identity in action.terminates]
         new = [self._get(db, identity, "CTV") for identity in action.produces]
-        if any(v.get("provenance_state") == "user_attested_snapshot" for v in old + new):
+        if any(v.get("provenance_state") in SNAPSHOT_STATES for v in old + new):
             raise ValueError("Una acción histórica no puede modificar snapshots sin intervalo legal")
         if action.kind == "amend" and (
             not old
@@ -506,7 +506,7 @@ class SATGraphStore(ABC):
             version = json.loads(payload)
             if version.get("editorial_superseded_by"):
                 continue
-            if version.get("provenance_state") == "user_attested_snapshot":
+            if version.get("provenance_state") in SNAPSHOT_STATES or version.get("provenance_state") == "documentary_reference":
                 continue
             groups.setdefault((version["work_id"], version["scope"]), []).append(
                 version
@@ -537,11 +537,11 @@ class SATGraphStore(ABC):
             (parent["work_id"], child["work_id"]),
         ).fetchone():
             raise ValueError("Membresía sin estructura Work explícita")
-        if parent.get("provenance_state") == child.get("provenance_state") == "user_attested_snapshot":
+        if parent.get("provenance_state") == child.get("provenance_state") and parent.get("provenance_state") in SNAPSHOT_STATES:
             if parent.get("snapshot_as_of") != child.get("snapshot_as_of"):
                 raise ValueError("Membresía de snapshots en fechas distintas")
             return
-        if parent.get("provenance_state") == "user_attested_snapshot" or child.get("provenance_state") == "user_attested_snapshot":
+        if parent.get("provenance_state") in SNAPSHOT_STATES or child.get("provenance_state") in SNAPSHOT_STATES:
             raise ValueError("Membresía entre snapshot y versión histórica no verificada")
         if child["valid_from"] > parent["valid_from"] or (
             child["valid_to"] is not None

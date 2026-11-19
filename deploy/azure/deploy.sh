@@ -42,6 +42,10 @@ if [[ ${revisions:-0} == 0 ]]; then
   fi
 fi
 
+# Los despliegues sobre un corpus existente no restauran el dump encima de
+# la BD. Aplica solo las fuentes normativas de esta entrega, de forma idempotente.
+"${COMPOSE[@]}" run --rm --no-deps -T backend /app/.venv/bin/python -m scripts.publish_cpc_tuo --apply
+
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # /health responde aunque el corpus falle; /ready exige el corpus cargado.

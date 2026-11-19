@@ -13,6 +13,8 @@ import re
 import unicodedata
 from typing import Literal
 
+from ingestion.sat_graph.contracts import SNAPSHOT_STATES
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -21,7 +23,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-
 
 class RankStages(BaseModel):
     """Ablación explícita; no altera filtros, presupuestos ni estrategias públicas."""
@@ -208,7 +209,7 @@ class SATRetriever:
         for node in self.nodes.values():
             if node.get("editorial_superseded_by"):
                 continue
-            if when is None and node["type"] == "CTV" and node.get("provenance_state") in {"user_attested_snapshot", "reviewed"}:
+            if when is None and node["type"] == "CTV" and node.get("provenance_state") in SNAPSHOT_STATES | {"reviewed"}:
                 if node["scope"] == plan.scope:
                     groups[node["work_id"]].append(node)
             elif node["type"] == "CTV" and node.get("provenance_state") == "user_attested_snapshot":
@@ -236,7 +237,7 @@ class SATRetriever:
             if when is None and version.get("valid_to") is not None:
                 continue
             work = self.nodes[wid]
-            if version.get("provenance_state") == "user_attested_snapshot" and work.get("kind") not in {"article", "numeral", "inciso", "subinciso", "disposition"}:
+            if version.get("provenance_state") in SNAPSHOT_STATES and work.get("kind") not in {"article", "numeral", "inciso", "subinciso", "disposition"}:
                 continue
             if when is not None and when > version["checked_through"]:
                 continue
@@ -256,6 +257,10 @@ class SATRetriever:
         result = []
         for item in self.eligible(plan):
             version, work, text = item["version"], item["work"], item["text"]
+            # La publicación modificatoria anterior se conserva para citas
+            # explícitas; no es evidencia para preguntas sobre la regla actual.
+            if plan.as_of is None and version.get("historical_quotation"):
+                continue
             body = text["text"]
             resource = self.nodes[work["resource_id"]]
             # Sin overlap: la evidencia canónica no se duplica ni se altera.
@@ -289,6 +294,7 @@ class SATRetriever:
                         "scope": plan.scope,
                         "provenance_state": version["provenance_state"],
                         "snapshot_as_of": version.get("snapshot_as_of"),
+                        "amending_source": version.get("amending_source"),
                         "text_review_state": version.get("text_review_state"),
                     }
                 )
@@ -547,7 +553,6 @@ class SATRetriever:
             "dense_status": dense_status,
             "rerank_status": rerank_status,
             "ppr_status": ppr_status,
-            "warning": ("Se utilizan las versiones más recientes almacenadas, asumidas vigentes por la administración del corpus." if plan.as_of is None else ("Incluye CTV con vigencia declarada por el usuario únicamente para la fecha del snapshot; no acredita intervalos históricos." if any(c.get("provenance_state") == "user_attested_snapshot" for c in chunks) else ("Incluye documentos para pruebas con vigencia supuesta, no verificada; no sirve para consultas históricas." if getattr(plan, "include_documentary", False) else "Recuperación experimental; no determina aplicabilidad al caso concreto."))),
         }
 
     def history(self, resource_id: str, component: str) -> dict:
@@ -584,5 +589,5 @@ class SATRetriever:
                 if e["source"] in action_ids
                 and e["type"] in {"terminates", "produces", "source"}
             ],
-            "policy": ("reviewed_history_and_attested_snapshots_not_current_applicability" if any(v.get("provenance_state") == "user_attested_snapshot" for v in versions) else "all_reviewed_history_not_current_applicability"),
+            "policy": ("reviewed_history_and_attested_snapshots_not_current_applicability" if any(v.get("provenance_state") in SNAPSHOT_STATES for v in versions) else "all_reviewed_history_not_current_applicability"),
         }

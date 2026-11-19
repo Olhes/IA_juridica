@@ -4,7 +4,8 @@ Original evidence is immutable. Publishing creates a new documentary/CTV/CLV
 edition and retires the previous editorial edition in one transaction.
 No legal dates are inferred. Work identities survive corrections.
 """
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -15,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest, work_id
 from ingestion.sat_graph.postgres import PostgresSATGraphStore
+from ingestion.source_evidence import SourceEvidence
 from retrieval.sat import SATRetriever, SearchPlan
 
 
@@ -50,6 +52,18 @@ class TextEdit(BaseModel):
     edition: Edition
     component_id: str
     text: str = Field(min_length=1, max_length=5_000_000)
+
+
+@dataclass(frozen=True)
+class OfficialEditionSource:
+    """Datos del importador local, no aceptados desde el endpoint de edición."""
+    evidence: SourceEvidence
+    pdf_name: str
+    url: str
+    edition_as_of: date
+    resource: dict
+    historical_quotations: tuple[str, ...] = ()
+    amendments: tuple[tuple[str, str], ...] = ()
 
 
 def validate_edition(edition):
@@ -238,24 +252,38 @@ class CorpusEditor:
     def get(self, resource_id):
         return document(self.store.export(), resource_id)
 
-    def apply(self, resource_id, publication, actor, *, candidate=None):
+    def apply(self, resource_id, publication, actor, *, candidate=None, official=None):
         edition = validate_edition(publication.edition)
         if not publication.reason.strip():
             raise ValueError("Indique el motivo de la corrección")
+        if official and (candidate or official.resource["id"] != resource_id or
+                         official.resource["kind"] != "norm" or official.evidence.markdown_sha256 != digest(edition.markdown)):
+            raise ValueError("La edición oficial no corresponde a la evidencia registrada")
         with self.store._transaction() as db:
             graph = snapshot(db)
             by_id = {n["id"]: n for n in graph["nodes"]}
-            if candidate:
+            if official:
+                # La revisión documental retiene el PDF anterior y sus CTV
+                # archivadas. La nueva evidencia no modifica el Resource legal.
+                if resource_id not in by_id:
+                    by_id[resource_id] = {k: v for k, v in official.resource.items() if k != "id"}
+                    self.store._node(db, resource_id, "Resource", by_id[resource_id])
+                exists = any(n["type"] == "Work" and n.get("resource_id") == resource_id for n in graph["nodes"])
+                current = document(graph, resource_id) if exists else {
+                    "editable": True, "edition": {"revision": "new:official-source", "components": []}, "versions": []}
+                old_rev = by_id.get(edition.revision)
+                self.store._node(db, official.evidence.evidence_id, "Source", asdict(official.evidence))
+            elif candidate:
                 if any(candidate_already_published(candidate, n) for n in by_id.values()):
                     raise Conflict("Este candidato ya fue publicado. Edítelo desde el corpus publicado.")
-                official = by_id.get(candidate.get("official_id"), {})
-                existing = any(n["type"]=="Work" and n.get("resource_id")==official.get("id")
+                candidate_resource = by_id.get(candidate.get("official_id"), {})
+                existing = any(n["type"]=="Work" and n.get("resource_id")==candidate_resource.get("id")
                                for n in by_id.values())
                 # Never overwrite an existing norm with an annex or another extraction.
-                archive_only = existing or official.get("kind")!="norm" or candidate["reference_only"]
-                resource_id = candidate["id"].replace("candidate:", "local:documentary:", 1) if archive_only else official["id"]
+                archive_only = existing or candidate_resource.get("kind")!="norm" or candidate["reference_only"]
+                resource_id = candidate["id"].replace("candidate:", "local:documentary:", 1) if archive_only else candidate_resource["id"]
                 if archive_only:
-                    by_id[resource_id] = {"title": candidate["title"], "url": candidate["source_url"] or official.get("url"),
+                    by_id[resource_id] = {"title": candidate["title"], "url": candidate["source_url"] or candidate_resource.get("url"),
                                           "kind": "documentary_reference"}
                     self.store._node(db, resource_id, "Resource", by_id[resource_id])
                 if candidate["evidence_id"] not in by_id:
@@ -278,19 +306,30 @@ class CorpusEditor:
                     raise ValueError("Identidad de componente ajena al documento")
             rev_id = "documentary-revision:" + digest(canonical(edition.model_dump()))
             review_id = "editorial-review:" + str(uuid.uuid4())
-            audit = {"rule": "human-corpus-editor-v1", "review_id": review_id,
+            audit = {"rule": "official-document-editor-v1" if official else "human-corpus-editor-v1", "review_id": review_id,
                      "reviewer": actor, "recorded_at": datetime.now(timezone.utc).isoformat()}
-            rev_payload = {k: v for k, v in old_rev.items() if k not in {"id", "type", "editorial_superseded_by"}}
+            rev_payload = {k: v for k, v in (old_rev or {}).items() if k not in {"id", "type", "editorial_superseded_by"}}
+            if official:
+                rev_payload.update(directory=None, origin_candidate=None, candidate_pdf=official.pdf_name,
+                                   evidence_id=official.evidence.evidence_id, source_url=official.url,
+                                   official_edition_as_of=official.edition_as_of.isoformat(),
+                                   source_markdown_sha256=official.evidence.markdown_sha256)
             rev_payload.update(markdown=edition.markdown, markdown_sha256=digest(edition.markdown),
                                review_hash=review_id, previous_revision=edition.revision, **audit)
             self.store._node(db, rev_id, "DocumentaryRevision", rev_payload)
             old_versions = {v["component_id"]: by_id[v["id"]] for v in current["versions"] if not v["archived"]}
-            exemplar = next(iter(old_versions.values()), {
-                "scope": "PE", "valid_from": None, "valid_to": None, "checked_through": None,
-                "snapshot_as_of": None, "provenance_state": "documentary_reference"
-                if candidate and archive_only else "user_attested_snapshot",
-            })
+            if official:
+                exemplar = {"scope": "PE", "valid_from": None, "valid_to": None, "checked_through": None,
+                            "snapshot_as_of": official.edition_as_of.isoformat(),
+                            "provenance_state": "official_document_snapshot"}
+            else:
+                exemplar = next(iter(old_versions.values()), {
+                    "scope": "PE", "valid_from": None, "valid_to": None, "checked_through": None,
+                    "snapshot_as_of": None, "provenance_state": "documentary_reference"
+                    if candidate and archive_only else "user_attested_snapshot",
+                })
             mapping = {}
+            amendments = dict(official.amendments) if official else {}
             for n in edition.components:
                 old = old_versions.get(n.id)
                 source_id = by_id[n.id]["source_node_id"] if not candidate and n.id in old_components else n.id
@@ -300,8 +339,8 @@ class CorpusEditor:
                 vid = "ctv-editorial:" + digest(canonical([rev_id, wid, digest(text)]))
                 tid = "clv-editorial:" + digest(canonical([vid, "es", digest(text)]))
                 span_audit = {**audit, "start": n.start, "end": n.end, "text_sha256": digest(text),
-                              "documentary_revision": rev_id, "evidence_id": old_rev["evidence_id"],
-                              "source_url": by_id[resource_id]["url"]}
+                              "documentary_revision": rev_id, "evidence_id": rev_payload["evidence_id"],
+                              "source_url": rev_payload.get("source_url", by_id[resource_id]["url"])}
                 self.store._node(db, cid, "DocumentaryComponent", {
                     "revision_id": rev_id, "source_node_id": source_id, "kind": n.kind, "label": n.label,
                     **span_audit, "provenance_state": "user_approved_documentary"})
@@ -310,11 +349,16 @@ class CorpusEditor:
                 work.update(label=n.label, kind=n.kind)
                 db.execute("INSERT INTO sat_nodes VALUES (?, 'Work', ?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (wid, canonical(work)))
                 payload = {k: v for k, v in (old or exemplar).items() if k not in {"id", "type", "editorial_superseded_by"}}
+                if modifier := amendments.get(n.id):
+                    legal_source = self.store._get(db, modifier, "Resource")
+                    payload["amending_source"] = {"id": modifier, "title": legal_source["title"], "url": legal_source["url"]}
                 payload.update(work_id=wid, **span_audit)
                 self.store._node(db, vid, "CTV", payload)
                 self.store._node(db, tid, "CLV", {"language": "es", "text": text, **span_audit})
+                if amending_source := payload.get("amending_source"):
+                    self.store._edge(db, vid, "amended_by", amending_source["id"], span_audit)
                 for s, p, t in ((cid, "part_of_revision", rev_id), (vid, "version_of", wid),
-                                (vid, "has_text", tid), (tid, "evidenced_by", old_rev["evidence_id"]),
+                                (vid, "has_text", tid), (tid, "evidenced_by", rev_payload["evidence_id"]),
                                 (vid, "derived_from_documentary", cid), (wid, "instrument", resource_id)):
                     self.store._edge(db, s, p, t, audit)
                 mapping[n.id] = (cid, wid, vid)
@@ -328,10 +372,17 @@ class CorpusEditor:
                     cc, cw, cv = mapping[n.id]
                     for s, p, t in ((pc, "documentary_has_part", cc), (pw, "has_part", cw), (pv, "contains_version", cv)):
                         self.store._edge(db, s, p, t, audit)
-            for old in ([] if candidate else [old_rev, *old_versions.values()]):
+            for old in ([] if candidate or old_rev is None else [old_rev, *old_versions.values()]):
                 payload = {k: v for k, v in old.items() if k not in {"id", "type"}}
                 payload["editorial_superseded_by"] = rev_id
                 db.execute("UPDATE sat_nodes SET payload=? WHERE id=?", (canonical(payload), old["id"]))
+            if official:
+                # Dejar la fuente de la cita disponible para lectura exacta e
+                # histórica, pero no reutilizar la cita antigua como regla actual.
+                for identity in official.historical_quotations:
+                    payload = self.store._get(db, identity, "CTV")
+                    payload["historical_quotation"] = {"source": resource_id, "review": review_id}
+                    db.execute("UPDATE sat_nodes SET payload=? WHERE id=?", (canonical(payload), identity))
             self.store._node(db, review_id, "EditorialReview", {**audit, "resource_id": resource_id,
                 "reason": publication.reason, "previous_revision": edition.revision, "revision": rev_id,
                 "component_count": len(edition.components), "previous_edition": current["edition"]})

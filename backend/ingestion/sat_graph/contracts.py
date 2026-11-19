@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+SNAPSHOT_STATES = frozenset({"user_attested_snapshot", "official_document_snapshot"})
+
+
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
