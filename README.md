@@ -29,7 +29,7 @@ if (-not (Test-Path frontend/.env.local)) {
 }
 ```
 
-Completa `backend/.env`: `COHERE_API_KEY`, secretos propios y conexión PostgreSQL.
+Completa `backend/.env`: `COHERE_API_KEY`, secretos propios y conexión SurrealDB.
 El ejemplo es para desarrollo. Para cargar un corpus local existente activa
 `LOAD_LOCAL_KG=true`; el checkout no garantiza un número fijo de documentos.
 Si el corpus no está listo, `/ready` responde 503 y el launcher no anuncia éxito.
@@ -38,13 +38,14 @@ Si el corpus no está listo, `/ready` responde 503 y el launcher no anuncia éxi
 pnpm dev:full
 ```
 
-El launcher usa **Docker**, levanta PostgreSQL/Redis, espera su salud, inicia el
-backend y comprueba `/ready` antes del frontend.
+El launcher usa **Docker**, levanta SurrealDB y Redis, inicializa el corpus SAT y
+comprueba `/ready` antes de iniciar el frontend.
 Si usas Podman, arranca los servicios mediante tu proveedor Compose y
 ejecuta backend/frontend por separado; no hay detección automática de Podman:
 
 ```powershell
-docker compose up -d postgres redis
+docker compose up -d --wait surreal redis
+uv run python backend/scripts/bootstrap_sat_corpus.py
 pnpm backend:dev:safe
 # En otra terminal
 pnpm frontend:dev
@@ -55,7 +56,7 @@ Swagger/OpenAPI se habilitan por defecto en desarrollo, no en producción.
 No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin backup.
 
 Para probar el motor normativo **SAT-Graph** sobre el corpus que ya viene en el
-repositorio, arranca con `pnpm dev:full --sat`; sin el flag se usa LightRAG. La
+repositorio, arranca con `pnpm dev:full`. Usa `--lightrag` para comparar motores. La
 revisión editorial del corpus y de su estructura (página aparte, no es una
 pantalla de la web oficial) se abre con `pnpm sat:review`. Detalle en
 [SAT-Graph beta](docs/SAT_CORPUS_EDITOR.md).
@@ -75,18 +76,10 @@ namespace `ia_juridica` y siete databases que reflejan los esquemas PostgreSQL
 levanta el servicio con almacenamiento SurrealKV; el pool se ajusta con
 `SURREAL_POOL_SIZE` (8 por defecto).
 
-PostgreSQL **sigue levantado y no se elimina**: es la fuente de rollback y la
-entrada de la migración. Para revertir, define `DATABASE_BACKEND=postgres` y
-mantén las variables `DATABASE_*` y `SQLALCHEMY_DATABASE_URL`. Para migrar:
-
-```bash
-python backend/scripts/migrate_postgres_to_surrealdb.py --apply --batch-size 1000
-python backend/scripts/migrate_postgres_to_surrealdb.py --verify-only
-```
-
-`--apply` reconstruye las tablas desde PostgreSQL y valida conteo y checksum;
-`--verify-only` solo compara, sin escribir. `deploy/azure/deploy.sh` ejecuta el
-`--apply` de forma idempotente antes de activar el backend. Más detalle en
+El corpus SAT de instalación se carga desde `backend/docs/sat_graph.surql.gz`
+cuando SurrealDB está vacío. Tanto `dev:full` como el despliegue en Azure usan
+ese respaldo. Para consultar el PostgreSQL histórico desde el backend directo,
+selecciona `DATABASE_BACKEND=postgres` y configura sus variables de conexión.
 [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md).
 
 ## Arquitectura que está activa
@@ -97,7 +90,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
                  → FastAPI (cookies, propietario, límites)
                  → recuperación LightRAG + reranking
                  → generación Cohere → validación/corrección → traducción
-                 → contenido final validado (JSON o NDJSON) → PostgreSQL
+                 → contenido final validado (JSON o NDJSON) → SurrealDB
                  → TTS (Web Speech API español, MMS-TTS quechua)
 ```
 
@@ -110,7 +103,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
 | Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada          |
 | RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                                |
 | Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática       |
-| Persistencia         | PostgreSQL para chat; Redis para caché/sesiones auxiliares y límites compartidos                       |
+| Persistencia         | SurrealDB para chat; Redis para caché/sesiones auxiliares y límites compartidos                       |
 | Voz (STT/TTS)        | `frontend/src/application/legal/use-cases/useSpeech.ts`, `backend/modules/voice/services/tts_service.py` |
 | Tests                | Solo `tests/<backend                                                                                     |
 

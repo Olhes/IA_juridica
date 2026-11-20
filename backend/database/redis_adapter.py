@@ -3,6 +3,9 @@ Redis Adapter para IA Jurídica
 Cache y sesiones con Redis para alto rendimiento
 """
 
+import asyncio
+from contextlib import suppress
+
 import redis.asyncio as redis
 import json
 import pickle
@@ -16,6 +19,7 @@ class RedisAdapter:
     
     def __init__(self):
         self.client = None
+        self._init_lock = asyncio.Lock()
         self.config = {
             'url': settings.REDIS_URL,
             'encoding': 'utf-8',
@@ -26,36 +30,26 @@ class RedisAdapter:
         }
     
     async def initialize(self):
-        """Inicializar cliente Redis (idempotente).
+        """Publish the shared client only after its initial ping succeeds."""
+        async with self._init_lock:
+            if self.client is not None:
+                return
+            client = redis.from_url(**self.config)
+            try:
+                await client.ping()
+            except BaseException:
+                with suppress(Exception):
+                    await client.aclose()
+                raise
+            self.client = client
 
-        Cada llamada creaba un cliente nuevo y abandonaba el pool anterior con
-        sus sockets asyncio abiertos; con el tiempo eso rompía el event loop al
-        cerrar. Si ya hay cliente, se reutiliza.
-        """
-        if self.client is not None:
-            return
-        try:
-            self.client = redis.from_url(**self.config)
-            await self.client.ping()
-            print("✅ Cliente Redis inicializado")
-        except Exception as e:
-            self.client = None
-            print(f"❌ Error inicializando Redis: {e}")
-            raise
-    
     async def close(self):
-        """Cerrar cliente Redis y liberar el pool (idempotente)."""
-        client, self.client = self.client, None
-        if client is None:
-            return
-        try:
-            # `aclose()` es el cierre asíncrono real; `close()` es legacy y no
-            # espera la desconexión de los sockets.
-            await client.aclose()
-        except Exception as e:
-            print(f"❌ Error cerrando Redis: {e}")
-        print("✅ Cliente Redis cerrado")
-    
+        """Close the shared client and its pool."""
+        async with self._init_lock:
+            client, self.client = self.client, None
+            if client is not None:
+                await client.aclose()
+
     # === Operaciones de Cache ===
     
     async def set_cache(self, key: str, value: Any, ttl: int = None) -> bool:

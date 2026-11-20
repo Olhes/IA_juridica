@@ -399,8 +399,8 @@ class SurrealSATGraphStore(SATGraphStore):
 
     @contextmanager
     def _transaction(self):
-        with self._connection() as conn:
-            yield _SurrealSQL(conn)
+        with self._connection() as conn, conn.begin_transaction() as transaction:
+            yield _SurrealSQL(transaction)
 
     @contextmanager
     def _reader(self):

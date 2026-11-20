@@ -43,7 +43,7 @@ def connect_surreal(database: str | None = None) -> Surreal:
     try:
         user, password = surreal_credentials()
         conn.signin({"username": user, "password": password})
-        conn.use(SURREAL_NAMESPACE, database or "sat_graph")
+        conn.use(settings.SURREAL_NAMESPACE, database or "sat_graph")
     except Exception:
         try:
             conn.close()

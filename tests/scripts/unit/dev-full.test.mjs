@@ -52,34 +52,33 @@ test("readiness checks the selected backend rather than the default", async () =
 });
 
 test("development startup brings up the database the backend defaults to", () => {
-  assert.deepEqual(CORE_SERVICES, ["surreal", "postgres", "redis"]);
-  assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "surreal", "postgres", "redis"]);
+  assert.deepEqual(CORE_SERVICES, ["surreal", "redis"]);
+  assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "surreal", "redis"]);
 });
 
-test("SAT corpus is restored only when the local schema is empty", async () => {
+test("SAT uses the SurrealDB corpus initializer", async () => {
   const calls = [];
-  const recorder = (code, stdout = "") => async (_command, args) => {
+  const recorder = (code, stdout = "", stderr = "") => async (...args) => {
     calls.push(args);
-    return { code, stdout, stderr: "" };
+    return { code, stdout, stderr };
   };
 
   assert.equal(await ensureSatCorpus({
-    RAG_ENGINE: "lightrag", runProcess: recorder(0, "0"),
+    RAG_ENGINE: "lightrag", runProcess: recorder(0),
   }), "skipped");
   assert.deepEqual(calls, []);
 
-  assert.equal(await ensureSatCorpus({
-    RAG_ENGINE: "sat", runProcess: recorder(0, "9\n"),
-  }), "present");
-  assert.equal(calls.length, 1);
-
-  calls.length = 0;
-  assert.equal(await ensureSatCorpus({
-    RAG_ENGINE: "sat", runProcess: recorder(0, ""),
-  }), "restored");
-  assert.equal(calls.length, 3);
-  assert.match(calls[1].join(" "), /compose cp backend\/docs\/sat_graph\.pg_dump/);
-  assert.match(calls[2].join(" "), /pg_restore/);
+  for (const status of ["present", "restored"]) {
+    assert.equal(await ensureSatCorpus({
+      RAG_ENGINE: "sat", runProcess: recorder(0, status + "\n"),
+    }), status);
+  }
+  assert.deepEqual(calls, Array.from({ length: 2 }, () => [
+    "uv", ["run", "python", "-m", "scripts.bootstrap_sat_corpus"], { cwd: "backend" },
+  ]));
+  await assert.rejects(ensureSatCorpus({
+    RAG_ENGINE: "sat", runProcess: recorder(1, "", "connection failed"),
+  }), /SurrealDB: connection failed/);
 });
 
 test("host processes require running containers with healthy checks", () => {

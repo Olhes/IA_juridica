@@ -18,60 +18,39 @@ class PostgreSQLAdapter:
     
     def __init__(self):
         self.conn = None
-    
+        self._init_lock = asyncio.Lock()
+
     async def initialize(self):
-        """Inicializar conexión PostgreSQL"""
-        max_retries = 3
-        for attempt in range(max_retries):
+        """Connect once when the legacy PostgreSQL adapter is selected."""
+        def connect_sync():
+            conn = connect_postgres()
             try:
-                print(f"🔍 Conectando a PostgreSQL (intento {attempt + 1}/{max_retries})...")
-                
-                # Usar conexión simple
-                loop = asyncio.get_event_loop()
-                
-                def connect_sync():
-                    conn = connect_postgres()
-                    try:
-                        conn.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
-                        conn.commit()
-                        return conn
-                    except Exception:
-                        conn.close()
-                        raise
-                
-                self.conn = await loop.run_in_executor(None, connect_sync)
-                
-                # Probar conexión simple
-                def test_sync():
-                    with self.conn.cursor() as cursor:
-                        cursor.execute("SELECT version()")
-                        version = cursor.fetchone()[0]
-                        return version
-                
-                version = await loop.run_in_executor(None, test_sync)
-                print(f"✅ PostgreSQL conectado: {version[:50]}...")
-                print("✅ Conexión PostgreSQL inicializada")
+                conn.execute("SET search_path TO conversations_schema, auth_schema, rag_schema, legal_schema, public")
+                conn.commit()
+                return conn
+            except BaseException:
+                conn.close()
+                raise
+
+        async with self._init_lock:
+            if self.is_connected():
                 return
-                
-            except Exception:
-                print(f"PostgreSQL connection attempt {attempt + 1} failed")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(3)
-                else:
-                    print("PostgreSQL unavailable; continuing without persistence")
+            for attempt in range(3):
+                try:
+                    self.conn = await asyncio.to_thread(connect_sync)
                     return
-    
+                except Exception:
+                    if attempt < 2:
+                        await asyncio.sleep(3)
+            print("PostgreSQL unavailable; continuing without persistence")
+
     async def close(self):
-        """Cerrar conexión"""
-        if self.conn:
-            loop = asyncio.get_event_loop()
-            
-            def close_sync():
-                self.conn.close()
-            
-            await loop.run_in_executor(None, close_sync)
-            print("✅ Conexión PostgreSQL cerrada")
-    
+        """Release the shared PostgreSQL connection."""
+        async with self._init_lock:
+            conn, self.conn = self.conn, None
+            if conn is not None:
+                await asyncio.to_thread(conn.close)
+
     async def health_check(self) -> Dict[str, Any]:
         """Verificar salud de PostgreSQL"""
         if not self.conn:
@@ -107,7 +86,7 @@ class PostgreSQLAdapter:
     
     def is_connected(self) -> bool:
         """Verificar si la conexión está activa"""
-        return self.conn is not None
+        return self.conn is not None and not getattr(self.conn, "closed", False)
     
     # ── Métodos para Context Engineering ─────────────────────────────────────
     async def create_conversation(self, user_id: str, title: str = None, language: str = "spanish") -> Dict[str, Any]:

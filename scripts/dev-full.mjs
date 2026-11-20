@@ -2,9 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 
-// El backend usa SurrealDB por defecto (DATABASE_BACKEND=surrealdb), así que
-// dev:full debe levantarlo igual que PostgreSQL y Redis.
-export const CORE_SERVICES = ["surreal", "postgres", "redis"];
+export const CORE_SERVICES = ["surreal", "redis"];
 export const BACKEND_HEALTH_URL = "http://localhost:8000/ready";
 const READINESS_TIMEOUT_MS = 120_000;
 const READINESS_POLL_MS = 1_000;
@@ -31,6 +29,7 @@ export function profileEnvironment(profile) {
   const frontend = `http://localhost:${profile.DEV_FRONTEND_PORT}`;
   return {
     ...profile,
+    DATABASE_BACKEND: "surrealdb",
     PYTHONIOENCODING: "utf-8",
     NEXT_PUBLIC_API_URL: api,
     BACKEND_URL: api,
@@ -165,52 +164,29 @@ async function waitForInfrastructure() {
 }
 
 async function startInfrastructure(profile) {
-  console.log("Starting PostgreSQL and Redis...");
+  console.log("Starting SurrealDB and Redis...");
   const result = await run("docker", composeUpArgs(), { stdio: "inherit" });
   if (result.code !== 0) {
-    throw new Error("Docker Compose could not start PostgreSQL and Redis.");
+    throw new Error("Docker Compose could not start SurrealDB and Redis.");
   }
 
-  console.log("Waiting for PostgreSQL and Redis health checks...");
   await waitForInfrastructure();
   const corpus = await ensureSatCorpus(profile);
-  if (corpus === "restored") console.log("Corpus SAT restaurado desde el respaldo del repositorio.");
-  console.log("PostgreSQL and Redis are healthy. Starting backend...");
+  if (corpus !== "skipped") console.log(`Corpus SAT: ${corpus}.`);
 }
 
-const CORPUS_DUMP = "backend/docs/sat_graph.pg_dump";
-
-/**
- * SAT responde desde el corpus, que es dato y no código. En una base local nueva
- * el esquema queda vacío y /ready responde 503; se restaura el respaldo
- * versionado una sola vez, igual que hace deploy/azure/deploy.sh.
- */
 export async function ensureSatCorpus({
   RAG_ENGINE,
   runProcess = run,
-  dumpPath = CORPUS_DUMP,
 } = {}) {
   if (RAG_ENGINE !== "sat") return "skipped";
-
-  const count = await runProcess("docker", [
-    "compose", "exec", "-T", "postgres", "psql", "-U", "juridica_user", "-d", "juridica_db",
-    "-tAc", "SELECT count(*) FROM sat_graph.sat_nodes WHERE kind='DocumentaryRevision'",
-  ], { stdio: ["ignore", "pipe", "ignore"] });
-  if (count.code === 0 && Number(count.stdout.trim()) > 0) return "present";
-
-  await runProcess("docker", ["compose", "cp", dumpPath, "postgres:/tmp/sat_graph.pg_dump"],
-    { stdio: "inherit" });
-  const restore = await runProcess("docker", [
-    "compose", "exec", "-T", "postgres", "pg_restore", "-U", "juridica_user",
-    // Sin --schema: pg_restore filtra también el CREATE SCHEMA y falla en una
-    // base nueva; el dump solo contiene objetos de sat_graph.
-    "-d", "juridica_db", "--clean", "--if-exists",
-    "--no-owner", "--no-privileges", "--exit-on-error", "/tmp/sat_graph.pg_dump",
-  ], { stdio: "inherit" });
-  if (restore.code !== 0) {
-    throw new Error(`No se pudo restaurar ${dumpPath}; publica documentos en /sat-graph/review.`);
+  const result = await runProcess("uv", [
+    "run", "python", "-m", "scripts.bootstrap_sat_corpus",
+  ], { cwd: "backend" });
+  if (result.code !== 0) {
+    throw new Error(`No se pudo inicializar el corpus SAT en SurrealDB: ${result.stderr.trim()}`);
   }
-  return "restored";
+  return result.stdout.trim();
 }
 
 function startPnpm(args, {

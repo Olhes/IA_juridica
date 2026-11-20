@@ -35,13 +35,10 @@ async def roles_from_session(request: Request) -> Optional[list]:
         return None
     database = get_database_adapter(postgres_module.PostgreSQLAdapter)
     await database.initialize()
-    try:
-        user = await database.get_user_by_id(payload.get("user_id"))
-        if not user or not user.get("is_active"):
-            return None
-        return [r["name"] for r in await database.get_user_roles(user["id"])]
-    finally:
-        await database.close()
+    user = await database.get_user_by_id(payload.get("user_id"))
+    if not user or not user.get("is_active"):
+        return None
+    return [r["name"] for r in await database.get_user_roles(user["id"])]
 
 
 async def require_quality_admin(request: Request, api_key: Optional[str] = Security(admin_api_key_header)) -> str:
