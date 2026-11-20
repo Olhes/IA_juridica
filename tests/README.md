@@ -58,7 +58,7 @@ usa `PLAYWRIGHT_CHANNEL=msedge` en el entorno. El modo simulado arranca Next
 en `localhost:3100`; deja libre el puerto.
 
 Para el modo real, arranca primero una instalación **local de prueba** con
-frontend, backend, PostgreSQL y Redis. Configura `PLAYWRIGHT_TARGET_URL` y
+frontend, backend, SurrealDB y Redis. Configura `PLAYWRIGHT_TARGET_URL` y
 `PLAYWRIGHT_API_URL` con direcciones loopback y ejecuta
 `pnpm test:e2e:real --run-model-evals`. Puede facturar; no uses cuentas, datos
 personales ni entornos de producción. Verifica el flujo HTTP, no la calidad jurídica.

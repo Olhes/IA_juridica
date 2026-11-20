@@ -1,215 +1,76 @@
 # IA Jurídica
 
-Asistente experimental de orientación legal bilingüe español/quechua, con
-recuperación documental, validación de respuestas, conversaciones persistentes
-y autenticación Google OAuth 2.0.
-No sustituye la revisión de un profesional ni certifica la vigencia de una norma.
+IA Jurídica es un asistente experimental de orientación legal en español y
+quechua. En la rama `v8`, busca fuentes en un corpus normativo versionado
+con **SAT-Graph**, genera respuestas con **Cohere** y presenta las citas
+recuperadas. El corpus y las conversaciones se guardan en **SurrealDB**.
+**Redis** apoya la caché y los límites de solicitudes.
 
-**Estado documentado: rama `v8` · Actualización: 2026-10-24.**
-`v8` identifica la rama de trabajo, no una release semántica. No hay tags de
-release en el historial consultado. Los manifiestos conservan `1.0.0` (Node)
-y `0.1.0` (Python); la API usa `APP_VERSION=v8` por defecto, configurable por entorno.
+## Arranque local
 
-## Empezar en local
+Instala Python y Node según [.python-version](.python-version) y
+[.node-version](.node-version), además de uv, la versión de pnpm que fija el
+[manifiesto raíz](package.json) y Docker Compose.
 
-Necesitas Python **3.14.10** (`.python-version`), UV, Node **24.22.1 o posterior de la rama 24**,
-pnpm **10.30.2** y Docker Compose o el equivalente de Podman para los servicios.
-Los locks, no este documento, son la fuente de versiones reproducibles.
-
-```powershell
-# Desde la raíz; instalar backend y ambos paquetes Node
+```bash
 uv sync --frozen --extra dev --inexact
 pnpm install --frozen-lockfile
 pnpm --dir frontend install --frozen-lockfile
-
-# Crear solo si aún no existen: no sobrescribir secretos/configuración
-if (-not (Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
-if (-not (Test-Path frontend/.env.local)) {
-  Set-Content frontend/.env.local 'NEXT_PUBLIC_API_URL=http://localhost:8000'
-}
 ```
 
-Completa `backend/.env`: `COHERE_API_KEY`, secretos propios y conexión SurrealDB.
-El ejemplo es para desarrollo. Para cargar un corpus local existente activa
-`LOAD_LOCAL_KG=true`; el checkout no garantiza un número fijo de documentos.
-Si el corpus no está listo, `/ready` responde 503 y el launcher no anuncia éxito.
+Copia [backend/.env.example](backend/.env.example) a `backend/.env` si todavía
+no tienes ese archivo. Configura `COHERE_API_KEY` y los secretos locales.
+Completa las credenciales de Google si vas a probar el inicio de sesión.
+[Configuración de OAuth](OAUTH_SETUP.md).
 
-```powershell
+```bash
 pnpm dev:full
 ```
 
-El launcher usa **Docker**, levanta SurrealDB y Redis, inicializa el corpus SAT y
-comprueba `/ready` antes de iniciar el frontend.
-Si usas Podman, arranca los servicios mediante tu proveedor Compose y
-ejecuta backend/frontend por separado; no hay detección automática de Podman:
+El comando levanta SurrealDB y Redis, importa
+`backend/docs/sat_graph.surql.gz` si la base está vacía y espera a que
+FastAPI responda a `/ready` antes de iniciar Next.js. Los arranques
+posteriores usan el corpus del volumen persistente.
 
-```powershell
-docker compose up -d --wait surreal redis
-uv run python backend/scripts/bootstrap_sat_corpus.py
-pnpm backend:dev:safe
-# En otra terminal
-pnpm frontend:dev
-```
+| Servicio | Dirección local |
+| --- | --- |
+| Interfaz Next.js | [localhost:3000](http://localhost:3000) |
+| API FastAPI | [localhost:8000](http://localhost:8000) |
+| Estado del corpus | [localhost:8000/ready](http://localhost:8000/ready) |
+| SurrealDB | `ws://127.0.0.1:8010/rpc` |
 
-Interfaz: `http://localhost:3000`. API: `http://localhost:8000`.
-Swagger/OpenAPI se habilitan por defecto en desarrollo, no en producción.
-No ejecutes comandos que eliminen volúmenes para solucionar un arranque sin backup.
+## Recuperación y datos
 
-Para probar el motor normativo **SAT-Graph** sobre el corpus que ya viene en el
-repositorio, arranca con `pnpm dev:full`. Usa `--lightrag` para comparar motores. La
-revisión editorial del corpus y de su estructura (página aparte, no es una
-pantalla de la web oficial) se abre con `pnpm sat:review`. Detalle en
-[SAT-Graph beta](docs/SAT_CORPUS_EDITOR.md).
+| Componente | Función |
+| --- | --- |
+| SAT-Graph | Recupera normas, artículos y referencias desde el corpus de SurrealDB. Es el motor que arranca con `RAG_ENGINE=sat`. |
+| Cohere y validación | Generan la respuesta a partir del contexto recuperado y aplican los controles de la aplicación. El flujo puede abstenerse si falta evidencia. |
+| Next.js y FastAPI | Gestionan las consultas, las sesiones anónimas, el acceso con Google y las conversaciones. La API ofrece respuestas JSON y streaming NDJSON. |
+| SurrealDB y Redis | SurrealDB conserva el corpus y los datos de la aplicación. Redis apoya la caché y el control de solicitudes. |
 
-Si PostgreSQL local no conecta, revisa `docker compose ps postgres` y
-`docker compose logs --tail 50 postgres`. Usa `localhost:5433` desde el host o
-`postgres:5432` desde Compose; `DATABASE_URL` prevalece sobre `DATABASE_*`.
-No borres volúmenes para diagnosticar la conexión.
+El editor del corpus se abre con `pnpm sat:review`. La ingestión administrativa
+registra el documento y su evidencia antes de la revisión editorial.
+[Corpus e ingesta](KNOWLEDGE_GRAPH_SETUP.md) · [Editor de SAT-Graph](docs/SAT_CORPUS_EDITOR.md).
 
-## Backend de datos: SurrealDB v4.0.1 por defecto
+La interfaz ofrece dictado en español, lectura en español mediante el
+navegador y síntesis de voz en quechua desde el backend para usuarios autenticados.
 
-El backend usa **SurrealDB v4.0.1** por defecto (`DATABASE_BACKEND=surrealdb`):
-`ws://127.0.0.1:8010/rpc` en local y `ws://surreal:8000/rpc` dentro de Compose,
-namespace `ia_juridica` y siete databases que reflejan los esquemas PostgreSQL
-(`sat_graph`, `sat_candidates`, `sat_voyage`, `auth_schema`,
-`conversations_schema`, `rag_schema`, `legal_schema`). `docker compose up -d surreal`
-levanta el servicio con almacenamiento SurrealKV; el pool se ajusta con
-`SURREAL_POOL_SIZE` (8 por defecto).
+La orientación es informativa. Para usar una cita en un trámite o proceso,
+consulta la fuente oficial y verifica su vigencia.
 
-El corpus SAT de instalación se carga desde `backend/docs/sat_graph.surql.gz`
-cuando SurrealDB está vacío. Tanto `dev:full` como el despliegue en Azure usan
-ese respaldo. Para consultar el PostgreSQL histórico desde el backend directo,
-selecciona `DATABASE_BACKEND=postgres` y configura sus variables de conexión.
-[Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md).
+## Pruebas y despliegue
 
-## Arquitectura que está activa
+| Objetivo | Comando o guía |
+| --- | --- |
+| Pruebas offline de Python, Node y React | `pnpm test` |
+| Evaluación offline del pipeline | `pnpm test:harness` |
+| Playwright con API simulada | `pnpm test:e2e` |
+| Evaluación con proveedores reales | [Guía de pruebas](tests/README.md) |
+| Frontend en Vercel y backend en Azure | [Guía de despliegue](deploy/azure/README.md) |
+| Rutas y permisos | [API](API_DOC.md) |
+| Validación de respuestas | [Pipeline de validación](backend/VALIDATION_GUIDE.md) |
 
-```text
-Next App Router → ChatPage → useChat / useChatSessions / apiService
-                 → Google OAuth 2.0 (autenticación opcional)
-                 → FastAPI (cookies, propietario, límites)
-                 → recuperación LightRAG + reranking
-                 → generación Cohere → validación/corrección → traducción
-                 → contenido final validado (JSON o NDJSON) → SurrealDB
-                 → TTS (Web Speech API español, MMS-TTS quechua)
-```
-
-
-| Capa                 | Ubicación / contrato                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next.js y React ([versiones](frontend/package.json))                                 |
-| Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies              |
-| API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                        |
-| Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada          |
-| RAG e ingesta        | `backend/modules/rag/services/`, `backend/ingestion/`, `backend/context/`                                |
-| Validación          | `backend/modules/validation/`; comprobaciones heurísticas, no verificación jurídica automática       |
-| Persistencia         | SurrealDB para chat; Redis para caché/sesiones auxiliares y límites compartidos                       |
-| Voz (STT/TTS)        | `frontend/src/application/legal/use-cases/useSpeech.ts`, `backend/modules/voice/services/tts_service.py` |
-| Tests                | Solo `tests/<backend                                                                                     |
-
-El NDJSON transporta contenido **después** de la validación; no publica borradores
-provisionales del modelo. Sin documentos recuperados se devuelve abstención explícita.
-La caché de respuestas es exacta, con SHA-256 sobre consulta, idioma, propietario,
-historial/contexto, conversación y revisión del corpus; no es una caché semántica.
-`LegalAssistantPage`, `useBackendChat` y `usePersistentChat` son alternativas
-heredadas, no el flujo de inicio actual.
-
-La configuración de modelos, embeddings y reranking de Cohere está centralizada
-en [settings.py](backend/config/settings.py); usa sus valores vigentes en vez de
-copiar versiones de la migración histórica.
-
-## Capacidades de voz (STT/TTS)
-
-El sistema soporta entrada y salida de voz en español y quechua:
-
-**Speech-to-Text (STT) - Español:**
-
-- Usa Web Speech API del navegador (nativo)
-- Micrófono estilo WhatsApp: mantener presionado para grabar, soltar para enviar
-- Animación visual roja pulsante mientras graba
-- Solo disponible en español (Web Speech API no soporta quechua nativamente)
-- Requiere autenticación
-
-**Text-to-Speech (TTS):**
-
-- **Español:** Web Speech API del navegador (voz nativa)
-- **Quechua:** MMS-TTS del backend (`facebook/mms-tts-quz`)
-- Reproducción automática de respuestas del asistente
-- Botón para detener reproducción
-- Limpieza automática de artefactos en respuestas quechua
-- Requiere autenticación
-
-**Limitaciones:**
-
-- STT solo funciona en español (Web Speech API no tiene soporte para quechua)
-- TTS en quechua requiere el modelo MMS-TTS cargado (~145MB)
-- Respuestas en quechua pueden tener calidad variable dependiendo del modelo de traducción
-
-## Pruebas y cobertura
-
-```powershell
-pnpm test                 # Python + Node + React, offline
-pnpm test:coverage        # Mismo alcance + XML Python y LCOV frontend
-pnpm deps:check           # Locks y requirements exportados
-```
-
-La [guía de pruebas](tests/README.md) explica cómo ejecutar y descubrir casos.
-Las pruebas de navegador son separadas:
-`pnpm test:e2e` usa API simulada, no acredita integración real con modelos.
-
-**Evaluaciones facturables requieren opt-in:**
-`pnpm test:quality --run-model-evals` o `pnpm test:all --run-model-evals`.
-No confundas pruebas unitarias de chunking con calidad RAG: RAGAS complementa
-esas pruebas con evaluación del retrieval sobre un dataset de referencia.
-Los casos reales actuales del generador utilizan DeepEval; no son un benchmark
-comparativo RAGAS de estrategias de chunking.
-
-Medición **2026-10-06**, mismo alcance/exclusiones antes y después:
-
-
-| Componente     | Líneas antes → después | Ramas antes → después |
-| ---------------- | --------------------------- | ------------------------- |
-| Backend Python | 46,62 % →**57,24 %**     | 29,91 % →**45,25 %**   |
-| Frontend       | 41,68 % →**80,52 %**     | 43,70 % →**72,51 %**   |
-
-Validación: **302 Python**, **23 Node**, **94 React** y **5 E2E con API simulada**
-aprobados; 3 evaluaciones reales omitidas y 2 xfail estrictos existentes.
-TypeScript, build Next y locks verificados. No se ejecutó scanner SonarQube ni
-evaluación facturable. Quedan áreas con poca cobertura, especialmente pantallas
-heredadas y scripts operativos; los porcentajes no son garantía del Quality Gate.
-
-## Seguridad y despliegue
-
-- `/session/bootstrap` emite una identidad anónima firmada en cookie HttpOnly;
-  consultas y conversaciones requieren esa identidad y validan propietario.
-  Google OAuth 2.0 permite autenticación con cuenta de Google; los usuarios
-  autenticados con Google tienen su información (nombre, foto) guardada en
-  PostgreSQL. Los tokens JWT se almacenan en cookies httpOnly (más seguro que localStorage).
-- Administración: `ADMIN_ENDPOINTS_ENABLED=true` y una `ADMIN_API_KEY` independiente.
-  No hay bypass por estar en desarrollo. No pongas esa clave en el navegador.
-- Producción: orígenes CORS explícitos, secretos aleatorios, HTTPS, cookies y
-  límites compartidos entre workers. Consulta [seguridad](docs/SECURITY.md).
-- Docker/Podman **no eliminan exposición de red**: `0.0.0.0` dentro del contenedor
-  permite llegar al servicio; revisa puertos publicados, proxy y firewall del host.
-  Compose de desarrollo limita sus servicios a loopback, pero usa PostgreSQL
-  `trust` y credenciales de prueba: **no es configuración de producción**.
-- Ingesta conserva PDF/Markdown y evidencia SHA-256. Un `evidence_id` o
-  `graph_write_state=unverified` no acredita fuente oficial ni vigencia legal.
-
-## Documentación por objetivo
-
-
-| Quiero…                                        | Documento                                                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Usar la API y entender errores/permisos         | [API](API_DOC.md)                                                                                         |
-| Ejecutar y ampliar tests                        | [Guía única](tests/README.md)                                                                           |
-| Entender el frontend activo                     | [Arquitectura frontend](frontend/README_ARCHITECTURE.md)                                                  |
-| Operar el despliegue actual                     | [Next.js en Vercel y backend Docker en una VM de Azure](deploy/azure/README.md), [plantilla de entorno](env.production.example) |
-| Cargar/revisar corpus y grafo                   | [Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md)                                                               |
-| Probar SAT-Graph y revisar su corpus           | [SAT-Graph beta: chat y revisión del corpus](docs/SAT_CORPUS_EDITOR.md)                                   |
-| Entender validación y abstención              | [Pipeline](backend/VALIDATION_GUIDE.md)                                                                   |
-| Configurar OAuth local                          | [OAuth](OAUTH_SETUP.md)                                                                                   |
-| Importar cobertura a SonarQube                  | [SonarQube](docs/SONARQUBE.md)                                                                            |
-| Consultar antecedentes, no capacidades actuales | [Auditoría 2026-10-01](docs/AUDITORIA-2026-10-01.md) |
-| Revisar trabajo pendiente                       | [PDF cloud](CLOUD_PDF_PIPELINE.md), [pendientes SAT-Graph](docs/SAT-GRAPH-INGESTION.md#antes-de-activar-sat-en-el-chat) |
-| Seguir el plan del harness de evaluación       | [Plan del harness](docs/HARNESS-IMPLEMENTATION-PLAN.md)                                                   |
+GitHub Actions ejecuta las pruebas al abrir o actualizar un pull request y en
+los pushes a `main` y `v8`. El despliegue del backend usa el runner de Azure,
+mientras que Vercel publica el frontend. [CI](.github/workflows/ci.yml) ·
+[Despliegue de Azure](.github/workflows/deploy-azure.yml).

@@ -16,12 +16,12 @@ GUIDES = [
 ]
 
 
-def test_current_guides_identify_branch_date_and_existing_local_links():
+def test_current_guides_identify_branch_and_have_existing_local_links():
     for name in [*GUIDES, "tests/README.md"]:
         path = ROOT / name
         content = path.read_text(encoding="utf-8")
         if name in GUIDES:
-            assert "v8" in content and "2026-10-06" in content, name
+            assert "v8" in content, name
         for link in re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", content):
             if "://" in link or link.startswith("#"):
                 continue
@@ -35,8 +35,10 @@ def test_frontend_guide_links_to_manifests_and_documents_existing_commands():
     assert "](../package.json)" in guide
     for name in [*GUIDES, "tests/README.md"]:
         content = (ROOT / name).read_text(encoding="utf-8")
-        for command in re.findall(r"\bpnpm (?!-)([\w:-]+)", content):
-            assert command in root["scripts"] or command in {"exec", "install"}, (name, command)
+        snippets = re.findall(r"```[^\n]*\n(.*?)```|`([^`\n]+)`", content, re.S)
+        for block, inline in snippets:
+            for command in re.findall(r"(?m)^[ \t]*pnpm[ \t]+(?!-)([\w:-]+)", block or inline):
+                assert command in root["scripts"] or command in {"exec", "install"}, (name, command)
 
 
 def test_api_documented_explicit_routes_exist_in_current_source():

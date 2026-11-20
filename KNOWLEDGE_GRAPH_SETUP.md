@@ -1,87 +1,44 @@
-# Corpus y Knowledge Graph — rama v8
+# Corpus SAT-Graph en v8
 
-Actualización: **2026-10-06**. LightRAG recupera documentos y relaciones; su
-presencia no garantiza respuestas correctas, fuentes oficiales ni vigencia normativa.
-El número de documentos/chunks depende de tus artefactos, no de una cifra fija del README.
+SAT-Graph usa SurrealDB para guardar el corpus normativo versionado que consulta
+el asistente. El corpus conserva documentos, estructura, relaciones y evidencia
+para recuperar referencias a las fuentes.
 
-## Preparar un corpus local
+## Inicializar el corpus
 
-En `backend/.env`: `LOAD_LOCAL_KG=true`, `NEO4J_ENABLED=false`.
-El opt-in habilita carga de artefactos locales existentes; no genera por sí solo
-un corpus nuevo ni asegura su compatibilidad con embeddings/modelos actuales.
-Guarda backup antes de reprocesar o regenerar índices.
-
-Rutas usadas por `main.py`, ancladas al directorio backend:
-
-| Ruta | Contenido |
-|---|---|
-| `backend/docs/raw_pdfs/` | PDF de entrada |
-| `backend/docs/processed/` | Markdown procesado |
-| `backend/docs/source_evidence/` | Evidencia inmutable publicada por upload |
-| `backend/docs/knowledge_graph/` | Artefactos LightRAG/document store |
-
-Los nombres internos pueden incluir `documents_store.json`,
-`kv_store_text_chunks.json`, `kv_store_full_docs.json`, archivos vectoriales
-`vdb_*.json` y grafo `graph_chunk_entity_relation.graphml`.
-No edites manualmente un solo artefacto suponiendo consistencia del resto.
-Las variables de rutas de Settings no redirigen automáticamente todas las rutas
-ancladas de la API; comprueba consumidores antes de mover datos.
-
-## Ingesta y estados
-
-`POST /upload-pdf` requiere admin habilitado y `X-API-Key` independiente.
-Valida tipo, tamaño y firma, conserva Markdown/PDF con evidencia SHA-256 e intenta
-ingesta RAG. El resultado `graph_write_state=unverified` significa que la escritura
-del grafo no queda certificada por el recibo de fuente. `POST /batch-process`
-procesa entradas locales; no implementa el pipeline cloud propuesto.
-
-Comprueba `/health` para componentes y `/ready` para disponibilidad del corpus.
-Durante carga/fallo no anuncies listo solo porque responde HTTP.
-Cuando el retrieval falla la consulta devuelve 503; si no recupera documentos,
-el pipeline produce abstención explícita y no inventa fuentes.
-
-## Backend de datos: SurrealDB v4.0.1 (por defecto)
-
-Esta rama usa **SurrealDB v4.0.1** como backend por defecto
-(`DATABASE_BACKEND=surrealdb`). El endpoint local es
-`ws://127.0.0.1:8010/rpc` y dentro de Compose `ws://surreal:8000/rpc`;
-el namespace es `ia_juridica` y hay siete databases que reflejan los esquemas
-PostgreSQL: `sat_graph`, `sat_candidates`, `sat_voyage`, `auth_schema`,
-`conversations_schema`, `rag_schema` y `legal_schema`. El pool se ajusta con
-`SURREAL_POOL_SIZE` (8 por defecto). Las credenciales root/root son solo de
-desarrollo; en producción se generan con `bootstrap-secrets.sh`.
-
-El arranque carga `backend/docs/sat_graph.surql.gz` en un volumen vacío de
-SurrealDB. Para inspeccionar o migrar un respaldo histórico de PostgreSQL de
-manera puntual, restaura el `.pg_dump` en una instancia temporal y usa:
+Desde la raíz del repositorio, `pnpm dev:full` levanta SurrealDB y Redis,
+inicializa el corpus y espera a `/ready`. Para preparar únicamente los servicios
+y el corpus:
 
 ```bash
-uv run python backend/scripts/migrate_postgres_to_surrealdb.py --apply --sat-only
-uv run python backend/scripts/migrate_postgres_to_surrealdb.py --verify-only --sat-only
+docker compose up -d --wait surreal redis
+uv run python backend/scripts/bootstrap_sat_corpus.py
 ```
 
-`--apply` exige tablas vacías y valida el conteo y checksum antes del commit.
-`--verify-only` solo compara. El lanzamiento de Azure usa la exportación
-nativa y el volumen persistente de SurrealDB.
+El inicializador importa `backend/docs/sat_graph.surql.gz` si la base está
+vacía y comprueba las siete tablas antes de confirmar la operación. Si ya hay
+revisiones publicadas, usa el corpus existente. El runner de Azure aplica el
+mismo flujo con un volumen persistente. [Operación en Azure](deploy/azure/README.md).
 
-## Neo4j opcional
+| Parámetro | Valor predeterminado |
+| --- | --- |
+| Motor | `RAG_ENGINE=sat` |
+| Persistencia | `DATABASE_BACKEND=surrealdb` |
+| Endpoint desde el host local | `ws://127.0.0.1:8010/rpc` |
+| Endpoint dentro de la red de Azure Compose | `ws://surreal:8000/rpc` |
+| Namespace y base del corpus | `ia_juridica` / `sat_graph` |
 
-Settings expone `NEO4J_ENABLED`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` y
-`NEO4J_DATABASE`. Configurar estas variables no es una migración automática de
-los artefactos locales: verifica almacenamiento seleccionado, conectividad,
-compatibilidad y corpus cargado. Guarda secretos fuera de Git.
-No se promete mejor precisión o rendimiento solo por elegir Neo4j.
+## Ingesta, revisión y recuperación
 
-## Evaluar sin confundir objetivos
+- `POST /upload-pdf` requiere acceso administrativo. Valida el archivo y registra
+  evidencia SHA-256 para la revisión del corpus.
+- `pnpm sat:review` abre el editor local. La publicación editorial incorpora las
+  revisiones al corpus consultable. [Editor de SAT-Graph](docs/SAT_CORPUS_EDITOR.md).
+- `/ready` verifica si el corpus está disponible. Si falta, devuelve HTTP 503.
+- El asistente puede abstenerse cuando la consulta carece de evidencia recuperada.
+  [Contratos de la API](API_DOC.md) · [Validación de respuestas](backend/VALIDATION_GUIDE.md).
 
-- Unitarios del chunker: estructura, orden, metadatos y errores, offline.
-- Contratos RAG/HTTP: autoridad de evidencias, abstención, validación y errores.
-- Evaluación de calidad: preguntas con referencias y fuentes identificables;
-  comparar estrategias manteniendo constante retrieval/generador y presupuesto.
-  [RAGAS Context Precision/Recall](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/) puede complementar las pruebas; no se obtiene
-  esa evidencia de porcentajes de cobertura ni de mocks de embeddings.
-
-Consulta [tests](tests/README.md), [validación](backend/VALIDATION_GUIDE.md),
-[evaluación SAT/Graph](docs/SAT-GRAPH-EVALUATION-PLAN.md) y [API](API_DOC.md).
-Los planes SAT/Graph siguen siendo propuestas salvo implementación demostrada;
-ingesta exitosa no equivale a corpus jurídico auditado.
+Para recuperar un respaldo histórico de PostgreSQL, consulta el
+[migrador de SAT](backend/scripts/migrate_postgres_to_surrealdb.py). La opción
+`--apply --sat-only` importa a tablas vacías. La opción
+`--verify-only --sat-only` compara datos sin escribir.
