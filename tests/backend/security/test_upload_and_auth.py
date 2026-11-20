@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from tests.backend.fixtures.sat_store import FixtureSATStore
+
 
 def _upload(
     client,
@@ -48,6 +50,7 @@ def test_upload_is_confined_and_passes_sanitized_metadata(api, monkeypatch, tmp_
     client, main, _ = api
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")
+    monkeypatch.setattr(main, "sat_graph_store", lambda: FixtureSATStore(tmp_path / "sat.sqlite3"))
     monkeypatch.setattr(
         main.app.state,
         "pdf_processor",
@@ -89,6 +92,7 @@ def test_pdf_size_exact_boundary_is_accepted_but_one_byte_more_is_not(
     client, main, _ = api
     monkeypatch.setattr(main, "RAW_PDFS_DIR", tmp_path / "raw")
     monkeypatch.setattr(main, "PROCESSED_DIR", tmp_path / "processed")
+    monkeypatch.setattr(main, "sat_graph_store", lambda: FixtureSATStore(tmp_path / "sat.sqlite3"))
     monkeypatch.setattr(
         main.app.state,
         "pdf_processor",

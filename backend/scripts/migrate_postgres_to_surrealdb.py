@@ -1,8 +1,4 @@
-"""Migrate every PostgreSQL-backed table into SurrealDB.
-
-PostgreSQL is intentionally left untouched: it remains the rollback source.
-Run with --apply to write, --verify-only to compare counts/checksums.
-"""
+"""One-off copy from PostgreSQL into empty SurrealDB tables."""
 
 from __future__ import annotations
 
@@ -12,6 +8,7 @@ import hashlib
 import json
 import sys
 import uuid
+from contextlib import ExitStack, nullcontext
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -198,7 +195,11 @@ def _surreal_rows(conn: Surreal, table: str) -> list[dict[str, Any]]:
         result = conn.query(f"SELECT * FROM {table}").execute()
     except NotFoundError:
         return []
-    return result[0] if result else []
+    rows = result[0] if result else []
+    for row in rows:
+        key = row["id"].id
+        row["__pk"] = _pk_string(tuple(key)) if isinstance(key, list) else str(key)
+    return rows
 
 
 def _strip_none(value: Any) -> Any:
@@ -224,53 +225,48 @@ def _checksum(rows: list[dict[str, Any]]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply", action="store_true", help="write data into SurrealDB")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--apply", action="store_true", help="copy into empty target tables")
+    mode.add_argument("--verify-only", action="store_true", help="compare counts and checksums")
+    parser.add_argument("--sat-only", action="store_true", help="only process the published SAT corpus")
     parser.add_argument("--batch-size", type=int, default=1000)
-    parser.add_argument("--verify-only", action="store_true", help="only compare PostgreSQL and SurrealDB")
     args = parser.parse_args()
+    if args.batch_size < 1:
+        parser.error("--batch-size must be positive")
 
-    pg = _pg_connect()
-    targets: dict[str, Surreal] = {}
-    failures: list[str] = []
+    schemas = ("sat_graph",) if args.sat_only else TABLES
+    failures = []
     try:
-        with pg.cursor() as cur:
-            for schema, (database, tables) in TABLES.items():
-                if database not in targets:
-                    targets[database] = _surreal_connect(database)
-                db = targets[database]
-                print(f"\n=== {schema} -> {getattr(settings,'SURREAL_NAMESPACE','ia_juridica')}/{database} ===")
-                for table, pk in tables:
-                    source = _fetch_pg(cur, schema, table, pk)
-                    src_sum = _checksum(source)
-                    if args.apply:
-                        db.query(f"REMOVE TABLE IF EXISTS {table};").execute()
-                        for start in range(0, len(source), args.batch_size):
-                            batch = _to_surreal_rows(table, source[start : start + args.batch_size], pk)
-                            if batch:
-                                db.query(f"INSERT INTO {table} $rows", {"rows": batch}).execute()
-                    target = _surreal_rows(db, table)
-                    tgt_sum = _checksum(target)
-                    ok = len(source) == len(target) and src_sum == tgt_sum
-                    status = "OK" if ok else "MISMATCH"
-                    print(
-                        f"  {table:<24} pg={len(source):>6} surreal={len(target):>6} "
-                        f"{status} sha={src_sum[:12]}"
-                    )
-                    if not ok:
-                        failures.append(f"{schema}.{table}: pg={len(source)} surreal={len(target)} "
-                                        f"sha_pg={src_sum[:16]} sha_surreal={tgt_sum[:16]}")
-    finally:
-        for conn in targets.values():
-            conn.close()
-        pg.close()
-
-    if failures:
-        print("\nMISMATCHES:")
-        for failure in failures:
-            print(" -", failure)
+        with ExitStack() as stack:
+            pg = stack.enter_context(_pg_connect())
+            with pg.cursor() as cur:
+                cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                for schema in schemas:
+                    database, tables = TABLES[schema]
+                    with _surreal_connect(database) as target, target.timeout(300):
+                        context = target.begin_transaction() if args.apply else nullcontext(target)
+                        with context as db:
+                            for table, pk in tables:
+                                source = _fetch_pg(cur, schema, table, pk)
+                                before = _surreal_rows(db, table)
+                                if args.apply:
+                                    if before:
+                                        raise RuntimeError(f"Target {database}.{table} contains data")
+                                    for start in range(0, len(source), args.batch_size):
+                                        batch = _to_surreal_rows(table, source[start : start + args.batch_size], pk)
+                                        db.query(f"INSERT INTO {table} $rows", {"rows": batch}).execute()
+                                rows = _surreal_rows(db, table) if args.apply else before
+                                ok = len(source) == len(rows) and _checksum(source) == _checksum(rows)
+                                label = f"{schema}.{table}"
+                                print(f"{label}: pg={len(source)} surreal={len(rows)} {'OK' if ok else 'MISMATCH'}")
+                                if not ok:
+                                    if args.apply:
+                                        raise RuntimeError(f"Count or checksum mismatch in {label}")
+                                    failures.append(label)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    print("\nAll tables migrated with count and checksum parity.")
-    return 0
+    return int(bool(failures))
 
 
 if __name__ == "__main__":

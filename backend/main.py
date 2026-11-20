@@ -47,6 +47,7 @@ from retrieval.voyage import VoyageProvider, VoyageError, connect_surreal_voyage
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
 from database.redis_adapter import redis_adapter
+from database.surreal_connection import close_all_surreal
 from modules.chat.services.chat_service import chat_service
 from modules.chat.routes.chat_routes import router as chat_router
 from modules.auth.routes.auth_routes import router as auth_router
@@ -355,6 +356,7 @@ async def lifespan(app: FastAPI):
                 await resource.close()
             except Exception as error:
                 _log_failure("storage_shutdown_failed", error)
+        await asyncio.to_thread(close_all_surreal)
 
 
 async def load_heavy_components(rag_engine, processed_dir):

@@ -4,9 +4,8 @@
 Navegador ──> https://ia-juridica-pe.vercel.app  (Next.js en Vercel)
                  └─ /api/*  ──rewrite──> https://api.68-211-73-117.sslip.io  (Caddy, HTTPS)
                                               └─> backend:8000 (FastAPI, 1 worker)
-                                                   ├─ postgres 18.7 (volumen postgres_data_pg18)
-                                                   ├─ redis 8.10    (volumen redis_data)
-                                                   └─ corpus SAT en el esquema sat_graph de postgres
+                                                   ├─ SurrealDB 4.0.1 (volumen surreal_data)
+                                                   └─ Redis 8.10 (volumen redis_data)
 ```
 
 El navegador solo habla con el dominio de Vercel, así que las cookies de sesión
@@ -88,7 +87,17 @@ El runner hace checkout en `~/actions-runner/_work/...` y levanta el mismo proye
 Compose (`iajuridica`), así que reutiliza volúmenes y secretos. `/opt/ia-juridica` queda
 como copia para deploys manuales.
 
-Deploy manual: `cd /opt/ia-juridica && git pull && bash deploy/azure/deploy.sh`
+Si la VM ya tiene secretos de una versión anterior a SurrealDB, ejecuta
+`sudo bash deploy/azure/bootstrap-secrets.sh` una vez para añadirlos. Una VM nueva
+requiere `COHERE_API_KEY`, `API_DOMAIN` y `FRONTEND_ORIGIN` al ejecutar ese script.
+
+Deploy manual con los secretos configurados:
+
+```bash
+cd /opt/ia-juridica
+git pull
+bash deploy/azure/deploy.sh
+```
 
 ## 3. Operación
 
@@ -98,64 +107,44 @@ $C ps
 $C logs -f --tail=100 backend
 $C restart backend
 docker stats --no-stream
-# Backup manual de Postgres (guárdalo fuera de la VM)
-$C exec -T postgres pg_dump -U juridica_user juridica_db | gzip > backup-$(date +%F).sql.gz
+bash deploy/azure/backup.sh
 ```
 
 Backup automático: `deploy/azure/backup.sh` corre a las 04:00 (cron de `azureuser`) y
-deja 7 días de dumps en `/srv/ia-juridica/backups`. Instalación:
+deja 7 días de exportaciones gzip por base en `/srv/ia-juridica/backups`. Instalación:
 `(crontab -l 2>/dev/null; echo "0 4 * * * /opt/ia-juridica/deploy/azure/backup.sh") | crontab -`
 
-Rol admin (panel `/calidad/admin`) para una cuenta de Google:
+Para autorizar el panel `/calidad/admin`, inicia sesión con Google y asigna el rol
+a esa cuenta desde Azure. Vuelve a entrar al panel tras renovar la sesión.
 
 ```bash
-$C exec -T postgres psql -U juridica_user -d juridica_db -c "
-INSERT INTO auth_schema.user_roles (user_id, role_id, assigned_by)
-SELECT u.id, r.id, u.id FROM auth_schema.users u, auth_schema.roles r
-WHERE u.email = 'tu@gmail.com' AND r.name = 'admin' ON CONFLICT DO NOTHING;"
+$C exec -T backend /app/.venv/bin/python -m scripts.grant_surreal_admin correo@ejemplo.com
 ```
 
 - Nunca `docker compose down -v`: borra la base de datos.
 - Para ahorrar créditos: Azure → VM → **Detener** (que quede "Desasignada"). Al encenderla,
   Docker levanta todo solo (`restart: unless-stopped`).
 - Rotar un secreto: edita `/etc/ia-juridica/backend.env` y `$C up -d --force-recreate backend`.
-  Las contraseñas de Postgres/Redis solo se aplican sobre volúmenes nuevos.
 - Rate limit por IP: Caddy confía en `X-Forwarded-For` (lo pone Vercel). Quien llame
   directo a la API puede falsearlo; aceptable para la demo.
 
-## 4. Motor SAT y corpus normativo
+## 4. Corpus SAT
 
-Producción corre `RAG_ENGINE=sat`: el chat responde desde el corpus versionado del
-esquema `sat_graph` de PostgreSQL, no desde LightRAG. `bootstrap-secrets.sh` escribe
-ambas claves y las agrega a un `backend.env` anterior sin pisar el resto.
+El despliegue levanta SurrealDB y Redis. El inicializador importa
+`backend/docs/sat_graph.surql.gz` dentro de una transacción en un volumen vacío,
+verifica las siete tablas y exige al menos una revisión publicada. A continuación,
+FastAPI arranca y el script espera a `/ready`.
 
-- `deploy.sh` restaura `backend/docs/sat_graph.pg_dump` cuando el esquema no tiene
-  ninguna revisión publicada. El respaldo solo contiene `sat_graph`; no contiene
-  usuarios, conversaciones ni credenciales de la aplicación.
-- Si el corpus ya existe, el despliegue no restaura el respaldo encima de él:
-  publica el TUO del Código Procesal Civil y la Ley 32006 con el importador
-  idempotente de la entrega. El resto del corpus se conserva.
-- Sin corpus la API **igual arranca**: `/health` responde, `/ready` devuelve 503 y el
-  editor `/sat-graph/review` sigue disponible para publicar el primer documento.
-  Cuando la publicación termina, `/ready` pasa a 200 sin reiniciar.
-- Los candidatos pendientes de revisión viven en `/srv/ia-juridica/temp/sat-corpus-work`
-  (`SAT_CANDIDATES_DIR`), no en la capa efímera del contenedor.
-- `SAT_AS_OF` (opcional, `YYYY-MM-DD`) fija la fecha de corte del snapshot. Vacío =
-  versiones más recientes almacenadas.
+Al volver a desplegar, la presencia de revisiones hace que se omita la carga del
+corpus. Las ediciones posteriores se guardan en el volumen y en los respaldos de
+SurrealDB. Si se detecta un corpus parcial, el inicializador se detiene para
+permitir recuperar un respaldo. Para recuperar un despliegue anterior, restaura su
+export en un volumen de SurrealDB vacío y valida el corpus antes de usarlo.
 
-### Migrar de PostgreSQL 15 a 18
+El respaldo de instalación contiene el corpus publicado del commit
+`4c08e7acec`, procedente de `backend/docs/sat_graph.pg_dump`. PostgreSQL queda
+disponible para recuperación histórica desde un checkout de su despliegue anterior.
 
-PostgreSQL 18 no abre un directorio de datos de 15 y además cambió `PGDATA`. Por eso el
-compose usa un volumen nuevo (`postgres_data_pg18`) y `deploy.sh` **se detiene** si detecta
-datos en el volumen viejo sin migrar, para no crear una base vacía en silencio.
-
-```bash
-# En la VM, antes del siguiente deploy:
-cd /opt/ia-juridica && git pull
-sudo bash deploy/azure/upgrade-postgres-18.sh          # muestra el plan
-sudo bash deploy/azure/upgrade-postgres-18.sh --execute
-```
-
-El script respalda (`/srv/ia-juridica/backups/pg15-<fecha>.{sql.gz,dump}`), para el
-stack, levanta 18 sobre el volumen nuevo, restaura la base y vuelve a desplegar. El
-volumen `iajuridica_postgres_data` queda intacto hasta que confirmes los datos.
+Los candidatos pendientes también dependen de los archivos en
+`/srv/ia-juridica/temp/sat-corpus-work`. `SAT_AS_OF` fija opcionalmente una fecha de
+corte del snapshot con formato `YYYY-MM-DD`.

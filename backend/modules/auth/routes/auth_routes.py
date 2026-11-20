@@ -11,6 +11,7 @@ from .schemas import TokenResponseSchema, RefreshTokenRequest, UserResponse
 from ..services.auth_service import AuthService
 from ..services.security import AuthService as SecurityService
 from database.adapter import get_database_adapter
+from database.redis_adapter import redis_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 from config.settings import settings
 import httpx
@@ -95,8 +96,6 @@ async def refresh_token(request: Request, response: Response):
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(request: Request):
     """Obtiene información del usuario actual desde el token JWT en cookie con cache en Redis"""
-    from database.redis_adapter import redis_adapter
-
     # Obtener token de la cookie
     access_token = request.cookies.get("access_token")
     if not access_token:

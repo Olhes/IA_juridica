@@ -1,44 +1,23 @@
-# Stack de producción para la VM de Azure (backend + Postgres + Redis + Caddy).
+# Stack de producción para la VM de Azure (backend + SurrealDB + Redis + Caddy).
 # El frontend vive en Vercel y llega aquí vía rewrite (/api/* -> API_DOMAIN).
 #
 # Secretos fuera del repo (los crea deploy/azure/bootstrap-secrets.sh):
-#   /etc/ia-juridica/compose.env  -> API_DOMAIN, POSTGRES_PASSWORD, REDIS_PASSWORD, SURREAL_PASSWORD
-#   /etc/ia-juridica/backend.env  -> variables del backend (SurrealDB por defecto;
-#                                    PostgreSQL permanece como rollback)
+#   /etc/ia-juridica/compose.env  -> API_DOMAIN, REDIS_PASSWORD, SURREAL_PASSWORD
+#   /etc/ia-juridica/backend.env  -> variables del backend
 #
 # Uso: bash deploy/azure/deploy.sh
 name: iajuridica
 
 services:
-  postgres:
-    image: postgres:18.7-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: juridica_db
-      POSTGRES_USER: juridica_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
-    volumes:
-      # PostgreSQL 18 cambió PGDATA a /var/lib/postgresql/18/docker y declara el
-      # VOLUME en /var/lib/postgresql. El volumen anterior era de PostgreSQL 15 y
-      # no es compatible en formato: se migra con deploy/azure/upgrade-postgres-18.sh.
-      - postgres_data_pg18:/var/lib/postgresql
-      # Solo se ejecutan sobre un volumen vacío (primer arranque).
-      - ../../backend/database/init_multi_schema.sql:/docker-entrypoint-initdb.d/01_init_multi_schema.sql:ro
-      - ../../backend/database/migrations/001_add_auth_roles_permissions.sql:/docker-entrypoint-initdb.d/02_auth_roles_permissions.sql:ro
-      - ../../backend/database/migrations/002_add_picture_column.sql:/docker-entrypoint-initdb.d/03_picture_column.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U juridica_user -d juridica_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  # SurrealDB v4.0.1 es el backend por defecto. No publica puerto: solo el
-  # backend lo alcanza por la red interna (ws://surreal:8000/rpc). PostgreSQL
-  # se mantiene como rollback y fuente de la migración.
+  # Endpoint interno para la aplicación y el inicializador del corpus.
   surreal:
     image: surrealdb/surrealdb:v4.0.1
     restart: unless-stopped
     command: start --user ${SURREAL_USER:-root} --pass ${SURREAL_PASSWORD:?falta SURREAL_PASSWORD} --bind 0.0.0.0:8000 --log info surrealkv:///data/surreal.db
+    environment:
+      SURREAL_USER: ${SURREAL_USER:-root}
+      SURREAL_PASS: ${SURREAL_PASSWORD:?falta SURREAL_PASSWORD}
+      SURREAL_NAMESPACE: ${SURREAL_NAMESPACE:-ia_juridica}
     volumes:
       - surreal_data:/data
     healthcheck:
@@ -73,13 +52,12 @@ services:
     env_file:
       - /etc/ia-juridica/backend.env
     # SurrealDB por defecto; los secretos vienen de compose.env (bootstrap-secrets.sh).
-    # PostgreSQL sigue disponible como rollback con DATABASE_BACKEND=postgres.
     environment:
       DATABASE_BACKEND: surrealdb
       SURREAL_URL: ws://surreal:8000/rpc
       SURREAL_USER: ${SURREAL_USER:-root}
       SURREAL_PASSWORD: ${SURREAL_PASSWORD:?falta SURREAL_PASSWORD}
-      SURREAL_NAMESPACE: ia_juridica
+      SURREAL_NAMESPACE: ${SURREAL_NAMESPACE:-ia_juridica}
       SURREAL_POOL_SIZE: "8"
     # --proxy-headers: la IP real del cliente llega en X-Forwarded-For (Vercel -> Caddy),
     # necesaria para que el rate limit no sea global. El puerto 8000 no se publica:
@@ -100,8 +78,6 @@ services:
       - /srv/ia-juridica/logs:/app/backend/logs
       - /srv/ia-juridica/temp:/app/backend/temp
     depends_on:
-      postgres:
-        condition: service_healthy
       surreal:
         condition: service_healthy
       redis:
@@ -124,7 +100,6 @@ services:
       - backend
 
 volumes:
-  postgres_data_pg18:
   surreal_data:
   redis_data:
   caddy_data:

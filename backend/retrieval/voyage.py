@@ -1,7 +1,7 @@
 """Voyage REST con cache contextual, cuota local persistente y errores sin secretos.
 
 Solo reintenta 429 explícitos, nunca timeouts ambiguos. La reserva se conserva
-ante error. Los procesos de la aplicación comparten caché y cuota en PostgreSQL.
+ante error. Los procesos de la aplicación comparten caché y cuota en la base de datos.
 """
 
 from contextlib import closing, contextmanager
@@ -563,17 +563,15 @@ class _SurrealVoyageCursor:
 
 
 class _SurrealVoyageConnection:
-    """psycopg-like connection backed by the sat_voyage SurrealDB database.
-
-    Each statement is auto-committed by SurrealDB, so commit()/rollback() are
-    explicit no-ops. The advisory lock and search_path concerns do not apply.
-    """
+    """Use an interactive transaction for each Voyage storage operation."""
 
     def __init__(self):
         self.connection = connect_surreal("sat_voyage")
         try:
-            for table in _VOYAGE_TABLES:
-                self._run(f"DEFINE TABLE IF NOT EXISTS {table} SCHEMALESS")
+            with self.connection.begin_transaction() as transaction:
+                for table in _VOYAGE_TABLES:
+                    transaction.query(f"DEFINE TABLE IF NOT EXISTS {table} SCHEMALESS").execute()
+            self.transaction = self.connection.begin_transaction()
         except Exception:
             close_surreal(self.connection)
             raise
@@ -582,7 +580,13 @@ class _SurrealVoyageConnection:
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        self.close()
+        try:
+            if exc_type is None:
+                self.commit()
+            else:
+                self.rollback()
+        finally:
+            self.close()
         return False
 
     def close(self):
@@ -590,14 +594,18 @@ class _SurrealVoyageConnection:
         self.connection = None
 
     def commit(self):
-        pass
+        if self.transaction is not None:
+            self.transaction.commit()
+            self.transaction = None
 
     def rollback(self):
-        pass
+        if self.transaction is not None:
+            self.transaction.cancel()
+            self.transaction = None
 
     def _run(self, sql, params=None):
         try:
-            result = self.connection.query(sql, params or {}).execute()
+            result = self.transaction.query(sql, params or {}).execute()
         except NotFoundError:
             return []
         return result[0] if result else []

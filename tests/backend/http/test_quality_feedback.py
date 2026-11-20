@@ -195,7 +195,7 @@ async def test_session_roles_are_read_from_a_real_access_token(monkeypatch):
     assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": stranger})) is None
     refresh = SecurityService().create_refresh_token({"user_id": "u-admin"})
     assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": refresh})) is None
-    assert len(closed) == 3  # cada consulta cierra su conexión
+    assert closed == []  # las consultas dejan abierto el adaptador compartido
 
 
 async def test_an_admin_user_without_the_api_key_is_accepted_and_others_are_not(monkeypatch):

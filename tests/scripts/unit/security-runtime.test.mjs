@@ -35,7 +35,11 @@ test('ambas etapas Docker usan una base Node parcheada', () => {
 });
 
 test('Next y las transitivas de desarrollo conservan sus parches de seguridad', () => {
-  assert.equal(manifest('frontend/package.json').dependencies.next, '16.4.3');
+  const next = manifest('frontend/package.json').dependencies.next;
+  assert.match(next, /^\d+\.\d+\.\d+$/, 'Next debe fijarse a una versión estable');
+  const [major, minor, patch] = next.split('.').map(Number);
+  assert.ok(major > 16 || (major === 16 && (minor > 4 || (minor === 4 && patch >= 3))),
+    `Next ${next} está por debajo del mínimo 16.4.3`);
   const overrides = manifest('package.json').pnpm.overrides;
   assert.equal(overrides['shell-quote@<1.11.0'], '1.11.0');
   assert.equal(overrides['undici@>=7.0.0 <7.30.1'], '7.30.1');

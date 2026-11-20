@@ -2,12 +2,8 @@
 # Una sola vez en la VM: genera /etc/ia-juridica/{compose.env,backend.env}.
 # Uso: sudo COHERE_API_KEY=... API_DOMAIN=api.example.com FRONTEND_ORIGIN=https://x.vercel.app \
 #        bash deploy/azure/bootstrap-secrets.sh
-# No sobrescribe archivos existentes (rotar = borrar el archivo a mano y relanzar).
+# En una VM existente agrega parámetros nuevos usando los secretos ya guardados.
 set -euo pipefail
-
-: "${COHERE_API_KEY:?falta COHERE_API_KEY}"
-: "${API_DOMAIN:?falta API_DOMAIN}"
-: "${FRONTEND_ORIGIN:?falta FRONTEND_ORIGIN}"
 
 DIR=/etc/ia-juridica
 install -d -m 750 -o root -g docker "$DIR"
@@ -18,10 +14,10 @@ install -d -o 1000 -g 1000 /srv/ia-juridica/data /srv/ia-juridica/logs \
 rand() { openssl rand -hex 32; }
 
 if [[ ! -f $DIR/compose.env ]]; then
+  : "${API_DOMAIN:?falta API_DOMAIN}"
   umask 027
   cat >"$DIR/compose.env" <<EOF
 API_DOMAIN=$API_DOMAIN
-POSTGRES_PASSWORD=$(rand)
 REDIS_PASSWORD=$(rand)
 SURREAL_PASSWORD=$(rand)
 EOF
@@ -40,6 +36,8 @@ fi
 SURREAL_USER=${SURREAL_USER:-root}
 
 if [[ ! -f $DIR/backend.env ]]; then
+  : "${COHERE_API_KEY:?falta COHERE_API_KEY}"
+  : "${FRONTEND_ORIGIN:?falta FRONTEND_ORIGIN}"
   umask 027
   cat >"$DIR/backend.env" <<EOF
 ENVIRONMENT=production
@@ -75,15 +73,6 @@ SURREAL_USER=$SURREAL_USER
 SURREAL_PASSWORD=$SURREAL_PASSWORD
 SURREAL_NAMESPACE=ia_juridica
 SURREAL_POOL_SIZE=8
-
-# PostgreSQL: rollback/fallback (DATABASE_BACKEND=postgres). No eliminar.
-DATABASE_HOST=postgres
-DATABASE_PORT=5432
-DATABASE_NAME=juridica_db
-DATABASE_USER=juridica_user
-DATABASE_PASSWORD=$POSTGRES_PASSWORD
-DATABASE_URL=postgresql://juridica_user:$POSTGRES_PASSWORD@postgres:5432/juridica_db
-SQLALCHEMY_DATABASE_URL=postgresql+psycopg://juridica_user:$POSTGRES_PASSWORD@postgres:5432/juridica_db
 
 REDIS_HOST=redis
 REDIS_PORT=6379

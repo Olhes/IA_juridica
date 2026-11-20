@@ -1,5 +1,6 @@
 """Google OAuth through real HTTP routes; provider and database stay offline."""
 
+import json
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from types import SimpleNamespace
@@ -58,6 +59,15 @@ def google_oauth(monkeypatch):
         get_user_roles=AsyncMock(return_value=[{"name": "user"}]),
     )
     monkeypatch.setattr(auth_routes, "PostgreSQLAdapter", lambda: db)
+    cache = {}
+    async def write_profile(key, value, _ttl):
+        cache[key] = json.loads(value)
+
+    monkeypatch.setattr(auth_routes, "redis_adapter", SimpleNamespace(
+        initialize=AsyncMock(),
+        get_cache=AsyncMock(side_effect=cache.get),
+        set_cache=AsyncMock(side_effect=write_profile),
+    ))
     service = security.AuthService()
     service.create_access_token = Mock(wraps=service.create_access_token)
     service.create_refresh_token = Mock(wraps=service.create_refresh_token)
@@ -319,16 +329,11 @@ def test_google_callback_cannot_issue_session_without_created_user(google_oauth)
 
 def test_google_session_can_read_profile_and_logout(google_oauth):
     oauth = google_oauth
-    # El perfil se cachea en Redis 5 minutos: sin limpiar la clave, una corrida
-    # previa (o un test anterior) sirve /auth/me desde cache y la DB no se toca.
-    import redis as redis_sync
-    from config.settings import settings
-    redis_sync.Redis.from_url(settings.REDIS_URL).delete(f"user:{oauth.user['id']}:profile")
-
     assert oauth.client.get("/auth/google/callback?code=valid").status_code == 307
     response = oauth.client.get("/auth/me")
     assert response.status_code == 200
     assert response.json() == {**oauth.user, "roles": ["user"]}
+    assert oauth.client.get("/auth/me").json() == response.json()
     oauth.db.get_user_by_id.assert_awaited_once_with("user-1")
     oauth.db.get_user_roles.assert_awaited_once_with("user-1")
     response = oauth.client.post("/auth/logout")
