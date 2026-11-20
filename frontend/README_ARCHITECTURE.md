@@ -1,7 +1,7 @@
 # Frontend — arquitectura activa de v8
 
-Base: **2026-10-06**; seguridad: **2026-10-26**. Next **16.4.6**, React **19.3.0**, Node **24.22.1**,
-pnpm **10.30.2**; consulta `package.json`/`pnpm-lock.yaml` para el resto del stack.
+Base **2026-10-06**. El [manifiesto del frontend](package.json) fija las versiones
+de Next.js y React. El [manifiesto raíz](../package.json) fija la versión de pnpm.
 
 Ambos proyectos exigen Node `>=24.22.1 <25` y rechazan instalaciones incompatibles.
 

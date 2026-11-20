@@ -28,13 +28,11 @@ def test_current_guides_identify_branch_date_and_existing_local_links():
             assert (path.parent / link.split("#")[0]).exists(), (name, link)
 
 
-def test_documented_frontend_versions_and_root_commands_match_manifests():
-    frontend = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
+def test_frontend_guide_links_to_manifests_and_documents_existing_commands():
     root = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     guide = (ROOT / "frontend/README_ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert frontend["dependencies"]["next"] in guide
-    assert frontend["dependencies"]["react"] in guide
-    assert root["packageManager"].split("@")[1] in guide
+    assert "](package.json)" in guide
+    assert "](../package.json)" in guide
     for name in [*GUIDES, "tests/README.md"]:
         content = (ROOT / name).read_text(encoding="utf-8")
         for command in re.findall(r"\bpnpm (?!-)([\w:-]+)", content):
