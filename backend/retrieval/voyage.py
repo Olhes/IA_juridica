@@ -9,12 +9,17 @@ from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
+import re
 import sqlite3
 import time
 from email.utils import parsedate_to_datetime
 
 import httpx
 import psycopg
+from surrealdb import RecordID
+from surrealdb.errors import NotFoundError
+
+from database.surreal_connection import close_surreal, connect_surreal
 
 from .sat import fingerprint
 
@@ -520,3 +525,303 @@ class VoyageProvider:
             return sorted(pairs, key=lambda pair: (-pair[1], pair[0]))
 
         return self._call("rerank", payload, reservation, parse)
+
+
+# ── SurrealDB voyage storage ──────────────────────────────────────────────────
+# VoyageProvider emits a small, fixed SQL dialect. _VoyagePostgres rewrites it
+# into PostgreSQL syntax before it reaches the connection, so the shim below
+# only needs to translate that rewritten subset into SurrealQL.
+
+_VOYAGE_COLUMNS = {
+    "voyage_cache": ("key", "result", "tokens"),
+    "voyage_usage": ("day", "requests", "reserved", "actual"),
+    "voyage_rate": ("scope", "model", "started", "reserved"),
+    "voyage_cooldown": ("scope", "model", "until"),
+}
+_VOYAGE_TABLES = tuple(_VOYAGE_COLUMNS)
+
+
+def _plain_id(value):
+    return value.id if isinstance(value, RecordID) else value
+
+
+class _SurrealVoyageCursor:
+    """Minimal DB-API cursor returned by the shim's execute()."""
+
+    def __init__(self, rows=()):
+        self._rows = [tuple(row) for row in rows]
+        self.rowcount = len(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _SurrealVoyageConnection:
+    """psycopg-like connection backed by the sat_voyage SurrealDB database.
+
+    Each statement is auto-committed by SurrealDB, so commit()/rollback() are
+    explicit no-ops. The advisory lock and search_path concerns do not apply.
+    """
+
+    def __init__(self):
+        self.connection = connect_surreal("sat_voyage")
+        try:
+            for table in _VOYAGE_TABLES:
+                self._run(f"DEFINE TABLE IF NOT EXISTS {table} SCHEMALESS")
+        except Exception:
+            close_surreal(self.connection)
+            raise
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+    def close(self):
+        close_surreal(self.connection)
+        self.connection = None
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def _run(self, sql, params=None):
+        try:
+            result = self.connection.query(sql, params or {}).execute()
+        except NotFoundError:
+            return []
+        return result[0] if result else []
+
+    @staticmethod
+    def _bind(sql, args):
+        names = []
+
+        def replace(_match):
+            names.append(f"p{len(names)}")
+            return "$" + names[-1]
+
+        sql = re.sub(r"%s|\?", replace, sql)
+        return sql, {name: args[index] for index, name in enumerate(names)}
+
+    @staticmethod
+    def _resolve(token, bound, sql):
+        if re.fullmatch(r"\$p\d+", token):
+            return bound[token[1:]]
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
+            return float(token) if "." in token else int(token)
+        if token.upper() == "NULL":
+            return None
+        if len(token) >= 2 and token[0] == "'" and token[-1] == "'":
+            return token[1:-1]
+        raise NotImplementedError(f"Unsupported voyage SQL value {token!r} in: {sql}")
+
+    @staticmethod
+    def _where(fragment, sql):
+        conditions = []
+        for part in re.split(r"\s+AND\s+", fragment.strip(), flags=re.I):
+            match = re.fullmatch(r"\s*(\w+)\s*(=|<=|>=|<|>)\s*(\S+)\s*", part)
+            if not match:
+                raise NotImplementedError(f"Unsupported voyage WHERE clause in: {sql}")
+            column, operator, token = match.groups()
+            if not any(column in columns for columns in _VOYAGE_COLUMNS.values()):
+                raise NotImplementedError(f"Unsupported voyage column {column!r} in: {sql}")
+            conditions.append(f"{column} {operator} {token}")
+        return " AND ".join(conditions)
+
+    @staticmethod
+    def _project(rows, columns):
+        output = []
+        for record in rows:
+            output.append(tuple(
+                _plain_id(record.get(column)) if column == "id" else record.get(column)
+                for column in columns
+            ))
+        return output
+
+    @staticmethod
+    def _rid(table, values):
+        if table == "voyage_cooldown":
+            return RecordID(table, [values[0], values[1]])
+        if table in ("voyage_cache", "voyage_usage"):
+            return RecordID(table, values[0])
+        return None
+
+    def execute(self, sql, args=()):
+        original = sql
+        stripped = sql.strip()
+        upper = stripped.upper()
+
+        if upper.startswith(("SET ", "BEGIN", "SELECT PG_ADVISORY", "CREATE SCHEMA",
+                             "CREATE TABLE")):
+            return _SurrealVoyageCursor()
+
+        sql, bound = self._bind(sql, tuple(args))
+
+        if upper.startswith("SELECT "):
+            return self._select(sql, bound, original)
+        if upper.startswith("INSERT "):
+            return self._insert(sql, bound, original)
+        if upper.startswith("UPDATE "):
+            return self._update(sql, bound, original)
+        if upper.startswith("DELETE "):
+            return self._delete(sql, bound, original)
+        raise NotImplementedError(f"Unsupported voyage SQL: {original}")
+
+    def _select(self, sql, bound, original):
+        match = re.match(
+            r"^\s*SELECT\s+(.+?)\s+FROM\s+(\w+)\b(.*)$", sql, re.I | re.S
+        )
+        if not match:
+            raise NotImplementedError(f"Unsupported voyage SELECT: {original}")
+        columns_raw, table, tail = match.groups()
+        if table not in _VOYAGE_COLUMNS:
+            raise NotImplementedError(f"Unsupported voyage table {table!r}: {original}")
+        columns = [column.strip() for column in columns_raw.split(",")]
+        tail = tail.strip()
+        where = order = limit = ""
+        where_match = re.search(r"\bWHERE\s+(.+?)(?=\bORDER\s+BY\b|\bLIMIT\b|$)", tail, re.I | re.S)
+        if where_match:
+            where = self._where(where_match.group(1), original)
+        order_match = re.search(r"\bORDER\s+BY\s+(\w+)", tail, re.I)
+        if order_match:
+            order = f" ORDER BY {order_match.group(1)}"
+        limit_match = re.search(r"\bLIMIT\s+(\d+)", tail, re.I)
+        if limit_match:
+            limit = f" LIMIT {limit_match.group(1)}"
+        query = f"SELECT * FROM {table}"
+        if where:
+            query += f" WHERE {where}"
+        query += order + limit
+        rows = self._run(query, bound)
+        return _SurrealVoyageCursor(self._project(rows, columns))
+
+    def _insert(self, sql, bound, original):
+        match = re.match(
+            r"^\s*INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*?)\)\s*(.*)$", sql, re.I | re.S
+        )
+        if not match:
+            raise NotImplementedError(f"Unsupported voyage INSERT: {original}")
+        table, values_raw, tail = match.groups()
+        columns = _VOYAGE_COLUMNS.get(table)
+        if columns is None:
+            raise NotImplementedError(f"Unsupported voyage table {table!r}: {original}")
+        tokens = [token.strip() for token in values_raw.split(",")]
+        if len(tokens) != len(columns):
+            raise NotImplementedError(f"Unsupported voyage INSERT arity: {original}")
+        values = [self._resolve(token, bound, original) for token in tokens]
+        record = dict(zip(columns, values))
+        rid = self._rid(table, values)
+
+        existing = []
+        if rid is not None:
+            existing = self._run("SELECT * FROM $rid LIMIT 1", {"rid": rid})
+
+        do_update = "DO UPDATE" in tail.upper()
+        if existing and not do_update:
+            return _SurrealVoyageCursor()  # ON CONFLICT DO NOTHING
+
+        if existing and do_update:
+            target = f"UPDATE $rid SET "
+            updates = {}
+            if table == "voyage_cache":
+                updates = {"result": values[1], "tokens": values[2]}
+            elif table == "voyage_usage":
+                updates = {
+                    "requests": values[1], "reserved": values[2], "actual": values[3]
+                }
+            elif table == "voyage_cooldown":
+                current = existing[0].get("until")
+                updates = {"until": max(float(current or 0), float(values[2]))}
+            else:
+                raise NotImplementedError(f"Unsupported voyage upsert: {original}")
+            params = {"rid": rid}
+            assignments = []
+            for index, (key, value) in enumerate(updates.items()):
+                name = f"v{index}"
+                params[name] = value
+                assignments.append(f"{key} = ${name}")
+            self._run(target + ", ".join(assignments), params)
+            return _SurrealVoyageCursor()
+
+        fields = dict(record)
+        params = {"rid": rid} if rid is not None else {}
+        assignments = []
+        for index, (key, value) in enumerate(fields.items()):
+            name = f"v{index}"
+            params[name] = value
+            assignments.append(f"{key} = ${name}")
+        query = f"CREATE $rid SET " if rid is not None else f"CREATE {table} SET "
+        self._run(query + ", ".join(assignments), params)
+        return _SurrealVoyageCursor()
+
+    def _update(self, sql, bound, original):
+        match = re.match(
+            r"^\s*UPDATE\s+(\w+)\s+SET\s+(.*?)\s+WHERE\s+(.+)$", sql, re.I | re.S
+        )
+        if not match:
+            raise NotImplementedError(f"Unsupported voyage UPDATE: {original}")
+        table, assignments_raw, where = match.groups()
+        if table not in _VOYAGE_COLUMNS:
+            raise NotImplementedError(f"Unsupported voyage table {table!r}: {original}")
+        rows = self._run(
+            f"SELECT * FROM {table} WHERE {self._where(where, original)}", bound
+        )
+        assignments = {}
+        for part in assignments_raw.split(","):
+            item = re.fullmatch(r"\s*(\w+)\s*=\s*(.+?)\s*", part, re.S)
+            if not item:
+                raise NotImplementedError(f"Unsupported voyage UPDATE: {original}")
+            column, expression = item.groups()
+            if column not in _VOYAGE_COLUMNS[table]:
+                raise NotImplementedError(f"Unsupported voyage column {column!r}: {original}")
+            arithmetic = re.fullmatch(r"(\w+)\s*\+\s*(\S+)", expression)
+            if arithmetic and arithmetic.group(1) == column:
+                token = arithmetic.group(2)
+                delta = self._resolve(token, bound, original)
+                assignments[column] = ("increment", delta)
+            else:
+                assignments[column] = ("set", self._resolve(expression, bound, original))
+        for row in rows:
+            rid = row.get("id")
+            fields = {}
+            for column, (kind, value) in assignments.items():
+                fields[column] = (
+                    (row.get(column) or 0) + value if kind == "increment" else value
+                )
+            params = {"rid": rid}
+            updates = []
+            for index, (column, value) in enumerate(fields.items()):
+                name = f"v{index}"
+                params[name] = value
+                updates.append(f"{column} = ${name}")
+            self._run(f"UPDATE $rid SET {', '.join(updates)}", params)
+        return _SurrealVoyageCursor()
+
+    def _delete(self, sql, bound, original):
+        match = re.match(
+            r"^\s*DELETE\s+(?:FROM\s+)?(\w+)\s+WHERE\s+(.+)$", sql, re.I | re.S
+        )
+        if not match:
+            raise NotImplementedError(f"Unsupported voyage DELETE: {original}")
+        table, where = match.groups()
+        if table not in _VOYAGE_COLUMNS:
+            raise NotImplementedError(f"Unsupported voyage table {table!r}: {original}")
+        self._run(
+            f"DELETE FROM {table} WHERE {self._where(where, original)}", bound
+        )
+        return _SurrealVoyageCursor()
+
+
+def connect_surreal_voyage():
+    """Zero-arg factory returning a psycopg-like shim over sat_voyage."""
+    return _SurrealVoyageConnection()

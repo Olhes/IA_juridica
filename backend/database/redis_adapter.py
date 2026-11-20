@@ -26,20 +26,35 @@ class RedisAdapter:
         }
     
     async def initialize(self):
-        """Inicializar cliente Redis"""
+        """Inicializar cliente Redis (idempotente).
+
+        Cada llamada creaba un cliente nuevo y abandonaba el pool anterior con
+        sus sockets asyncio abiertos; con el tiempo eso rompía el event loop al
+        cerrar. Si ya hay cliente, se reutiliza.
+        """
+        if self.client is not None:
+            return
         try:
             self.client = redis.from_url(**self.config)
             await self.client.ping()
             print("✅ Cliente Redis inicializado")
         except Exception as e:
+            self.client = None
             print(f"❌ Error inicializando Redis: {e}")
             raise
     
     async def close(self):
-        """Cerrar cliente Redis"""
-        if self.client:
-            await self.client.close()
-            print("✅ Cliente Redis cerrado")
+        """Cerrar cliente Redis y liberar el pool (idempotente)."""
+        client, self.client = self.client, None
+        if client is None:
+            return
+        try:
+            # `aclose()` es el cierre asíncrono real; `close()` es legacy y no
+            # espera la desconexión de los sockets.
+            await client.aclose()
+        except Exception as e:
+            print(f"❌ Error cerrando Redis: {e}")
+        print("✅ Cliente Redis cerrado")
     
     # === Operaciones de Cache ===
     

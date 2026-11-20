@@ -1,96 +1,96 @@
-"""
-Inicialización de Base de Datos para IA Jurídica
-PostgreSQL + Redis + Weaviate Integration
+"""Database initialization for IA Juridica.
+
+The selected adapter (SurrealDB by default, PostgreSQL as rollback) owns the
+application tables. Redis is initialized alongside it. Public function names are
+kept unchanged because main.py imports them directly.
 """
 
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
-from .postgres_adapter_final import postgres_adapter
+from .adapter import database_adapter, uses_surreal
 from .redis_adapter import redis_adapter
-from config.settings import settings
+
+# Backward-compatible module attribute: it now points at the selected adapter.
+postgres_adapter = database_adapter
 
 
 async def initialize_database():
-    """Inicializar todas las conexiones a base de datos"""
+    """Initialize the selected database adapter and Redis."""
     try:
-        print("🚀 Inicializando sistema de base de datos...")
-        
-        # Inicializar PostgreSQL (sin fallar si hay error)
-        await postgres_adapter.initialize()
-        
-        # Inicializar Redis
+        print("Initializing database system...")
+        await database_adapter.initialize()
         await redis_adapter.initialize()
-        print("✅ Redis conectado")
-        
-        # Verificar salud de las conexiones
-        pg_health = await postgres_adapter.health_check()
+        print("Redis connected")
+
+        db_health = await database_adapter.health_check()
         redis_health = await redis_adapter.health_check()
-        
-        print(f"🎉 Base de datos inicializada:")
-        print(f"   PostgreSQL: {pg_health['status']} ({pg_health.get('version', 'unknown')})")
+        label = "SurrealDB" if uses_surreal() else "PostgreSQL"
+        print("Database initialized:")
+        print(f"   {label}: {db_health['status']} ({db_health.get('version', 'unknown')})")
         print(f"   Redis: {redis_health['status']} (v{redis_health.get('version', 'unknown')})")
-        
         return True
-        
-    except Exception as e:
-        print(f"❌ Error inicializando base de datos: {e}")
+    except Exception as error:
+        print(f"Error initializing database: {error}")
         raise
 
 
 async def close_database():
-    """Cerrar todas las conexiones a base de datos"""
+    """Close the selected database adapter and Redis."""
     try:
-        print("🔄 Cerrando conexiones a base de datos...")
-        
-        await postgres_adapter.close()
+        print("Closing database connections...")
+        await database_adapter.close()
         await redis_adapter.close()
-        
-        print("✅ Conexiones cerradas")
-        
-    except Exception as e:
-        print(f"❌ Error cerrando base de datos: {e}")
+        print("Database connections closed")
+    except Exception as error:
+        print(f"Error closing database: {error}")
 
 
 async def health_check() -> Dict[str, Any]:
-    """Verificar salud de todas las bases de datos"""
+    """Report health of the selected database and Redis."""
     try:
-        pg_health = await postgres_adapter.health_check()
+        db_health = await database_adapter.health_check()
         redis_health = await redis_adapter.health_check()
-        
-        overall_status = 'healthy' if (
-            pg_health['status'] == 'healthy' and 
-            redis_health['status'] == 'healthy'
-        ) else 'partial' if redis_health['status'] == 'healthy' else 'unhealthy'
-        
-        return {
-            'overall_status': overall_status,
-            'postgresql': pg_health,
-            'redis': redis_health,
-            'timestamp': pg_health['timestamp']
+
+        overall_status = "healthy" if (
+            db_health["status"] == "healthy" and redis_health["status"] == "healthy"
+        ) else "partial" if redis_health["status"] == "healthy" else "unhealthy"
+
+        result = {
+            "overall_status": overall_status,
+            # Legacy key retained for compatibility with existing consumers.
+            "postgresql": db_health,
+            "surrealdb": db_health if uses_surreal() else {"status": "unavailable"},
+            "redis": redis_health,
+            "timestamp": db_health["timestamp"],
         }
-        
-    except Exception as e:
+        return result
+    except Exception as error:
         return {
-            'overall_status': 'unhealthy',
-            'error': str(e),
-            'timestamp': str(asyncio.get_event_loop().time())
+            "overall_status": "unhealthy",
+            "error": str(error),
+            "timestamp": _now(),
         }
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def get_postgres_adapter():
-    """Retorna el adaptador PostgreSQL si está inicializado y conectado"""
-    if postgres_adapter.is_connected():
-        return postgres_adapter
+    """Return the selected adapter when connected (name kept for compatibility)."""
+    if database_adapter.is_connected():
+        return database_adapter
     return None
 
 
-# Exportar adaptadores
 __all__ = [
-    'initialize_database',
-    'close_database', 
-    'health_check',
-    'postgres_adapter',
-    'redis_adapter',
-    'get_postgres_adapter'
+    "initialize_database",
+    "close_database",
+    "health_check",
+    "postgres_adapter",
+    "database_adapter",
+    "redis_adapter",
+    "get_postgres_adapter",
 ]

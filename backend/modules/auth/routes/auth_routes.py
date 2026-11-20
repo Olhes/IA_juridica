@@ -1,4 +1,5 @@
 import logging
+import json
 import secrets
 
 import bcrypt
@@ -9,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from .schemas import TokenResponseSchema, RefreshTokenRequest, UserResponse
 from ..services.auth_service import AuthService
 from ..services.security import AuthService as SecurityService
+from database.adapter import get_database_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 from config.settings import settings
 import httpx
@@ -116,17 +118,19 @@ async def get_current_user(request: Request):
     # Intentar obtener de Redis cache primero
     cache_key = f"user:{user_id}:profile"
     try:
+        # `initialize()` es idempotente: reutiliza la conexión ya abierta.
         await redis_adapter.initialize()
         cached_user = await redis_adapter.get_cache(cache_key)
         if cached_user:
-            import json
-            user_data = json.loads(cached_user)
+            # `get_cache` ya deserializa el JSON; volver a parsearlo rompía
+            # siempre el cache-hit con "the JSON object must be str...".
+            user_data = json.loads(cached_user) if isinstance(cached_user, str) else cached_user
             return UserResponse(**user_data)
     except Exception as e:
         logging.getLogger("ia_juridica.auth").warning(f"Redis cache miss: {e}")
 
     # Si no está en cache, obtener de la base de datos
-    db = PostgreSQLAdapter()
+    db = get_database_adapter(PostgreSQLAdapter)
     await db.initialize()  # Asegurar que la conexión esté inicializada
     user = await db.get_user_by_id(user_id)
 
@@ -149,7 +153,6 @@ async def get_current_user(request: Request):
 
     # Guardar en Redis cache por 5 minutos
     try:
-        import json
         await redis_adapter.set_cache(
             cache_key,
             json.dumps(user_response.model_dump()),
@@ -270,7 +273,7 @@ async def google_callback(request: Request, code: str, state: str = None):
 
         # Crear o actualizar usuario en la base de datos
         stage = "initialize"
-        db = PostgreSQLAdapter()
+        db = get_database_adapter(PostgreSQLAdapter)
         await db.initialize()  # Asegurar que la conexión esté inicializada
 
         stage = "get_user_by_email"

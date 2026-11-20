@@ -43,7 +43,7 @@ from ingestion.sat_graph.runtime import runtime_sat_store
 from ingestion.sat_graph.postgres import PostgresSATGraphStore
 from database.postgres_connection import connect_postgres
 from retrieval.sat import SATRetriever, SearchPlan
-from retrieval.voyage import VoyageProvider, VoyageError
+from retrieval.voyage import VoyageProvider, VoyageError, connect_surreal_voyage
 from agents.pydantic_agents import LegalAgent
 from context.context_engineering import ContextEngineer
 from database.redis_adapter import redis_adapter
@@ -1231,7 +1231,11 @@ async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool 
         if use_voyage:
             provider = VoyageProvider(
                 settings.VOYAGE_API_KEY.get_secret_value(),
-                connect=connect_postgres,
+                connect=(
+                    connect_postgres
+                    if settings.DATABASE_BACKEND.lower().startswith("postgres")
+                    else connect_surreal_voyage
+                ),
                 dimension=settings.VOYAGE_DIMENSION,
                 daily_requests=settings.VOYAGE_DAILY_REQUESTS,
                 daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,

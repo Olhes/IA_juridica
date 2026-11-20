@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
     # Configuración de Base de Datos
+    # "surrealdb" (default) or "postgresql"; PostgreSQL remains the rollback path.
+    DATABASE_BACKEND: str = os.getenv("DATABASE_BACKEND", "surrealdb")
+    # SurrealDB publishes host port 8010: 8000 belongs to the FastAPI backend.
+    SURREAL_URL: str = os.getenv("SURREAL_URL", "ws://127.0.0.1:8010/rpc")
+    SURREAL_USER: str = os.getenv("SURREAL_USER", "root")
+    SURREAL_PASSWORD: str = os.getenv("SURREAL_PASSWORD", "root")
+    SURREAL_NAMESPACE: str = os.getenv("SURREAL_NAMESPACE", "ia_juridica")
     DATABASE_HOST: str = os.getenv("DATABASE_HOST", "localhost")
     DATABASE_PORT: int = int(os.getenv("DATABASE_PORT", "5433"))
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "juridica_db")
@@ -241,6 +248,9 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return not self.is_development()
 
+    def uses_surreal(self) -> bool:
+        return str(self.DATABASE_BACKEND or "").lower().startswith("surreal")
+
     def docs_enabled(self) -> bool:
         if self.API_DOCS_ENABLED is not None:
             return self.API_DOCS_ENABLED
@@ -315,7 +325,10 @@ class Settings(BaseSettings):
                 issues.append("CORS methods/headers no pueden usar wildcard en producción")
             if self.RATE_LIMIT_ENABLED and self.RATE_LIMIT_STORAGE_URI == "memory://":
                 issues.append("RATE_LIMIT_STORAGE_URI debe ser compartido entre workers en producción")
-            if not self.DATABASE_PASSWORD and not os.getenv("DATABASE_URL"):
+            if self.uses_surreal():
+                if not self.SURREAL_URL or not self.SURREAL_PASSWORD:
+                    issues.append("SURREAL_URL y SURREAL_PASSWORD son obligatorios en producción")
+            elif not self.DATABASE_PASSWORD and not os.getenv("DATABASE_URL"):
                 issues.append("DATABASE_PASSWORD o DATABASE_URL es obligatorio en producción")
 
         if self.ANONYMOUS_SESSION_COOKIE_SAMESITE not in {"lax", "strict", "none"}:

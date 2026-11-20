@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from typing import Annotated, List
 from ..services.security import AuthService, oauth2_scheme
+from database.adapter import get_database_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 
 
@@ -35,7 +36,7 @@ async def get_current_active_user(current_user: dict = Depends(get_current_user)
     Dependency para obtener el usuario actual activo.
     Verifica si el usuario está activo en la base de datos.
     """
-    db = PostgreSQLAdapter()
+    db = get_database_adapter(PostgreSQLAdapter)
     user = await db.get_user_by_id(current_user.get("user_id"))
     
     if not user or not user.get("is_active"):
@@ -57,7 +58,7 @@ async def require_permission(permission: str):
             return {"message": "Acceso concedido"}
     """
     async def check_permission(current_user: dict = Depends(get_current_active_user)) -> dict:
-        db = PostgreSQLAdapter()
+        db = get_database_adapter(PostgreSQLAdapter)
         user_id = current_user.get("user_id")
         
         has_perm = await db.has_permission(user_id, permission)
@@ -83,7 +84,7 @@ async def require_any_permission(*permissions: str):
             return {"message": "Acceso concedido"}
     """
     async def check_permissions(current_user: dict = Depends(get_current_active_user)) -> dict:
-        db = PostgreSQLAdapter()
+        db = get_database_adapter(PostgreSQLAdapter)
         user_id = current_user.get("user_id")
         
         user_permissions = await db.get_user_permissions(user_id)

@@ -319,6 +319,12 @@ def test_google_callback_cannot_issue_session_without_created_user(google_oauth)
 
 def test_google_session_can_read_profile_and_logout(google_oauth):
     oauth = google_oauth
+    # El perfil se cachea en Redis 5 minutos: sin limpiar la clave, una corrida
+    # previa (o un test anterior) sirve /auth/me desde cache y la DB no se toca.
+    import redis as redis_sync
+    from config.settings import settings
+    redis_sync.Redis.from_url(settings.REDIS_URL).delete(f"user:{oauth.user['id']}:profile")
+
     assert oauth.client.get("/auth/google/callback?code=valid").status_code == 307
     response = oauth.client.get("/auth/me")
     assert response.status_code == 200
@@ -361,7 +367,9 @@ async def test_google_refresh_token_renews_the_access_session(monkeypatch):
     access = await service.refresh_access_token(refresh)
     payload = security.AuthService().decode_token(access)
     assert (payload["type"], payload["user_id"], payload["roles"]) == ("access", "user-1", ["admin"])
-    assert service.db.closed
+    # El adaptador es compartido: cerrarlo a mitad de un refresh tiraba las
+    # conexiones que otros requests estaban usando.
+    assert not service.db.closed
     with pytest.raises(HTTPException) as denied:  # un token de acceso no sirve como token de refresco
         await service.refresh_access_token(access)
     assert denied.value.status_code == 401

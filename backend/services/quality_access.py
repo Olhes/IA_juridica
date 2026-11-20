@@ -23,7 +23,8 @@ async def roles_from_session(request: Request) -> Optional[list]:
     token = request.cookies.get("access_token")
     if not token:
         return None
-    from database.postgres_adapter_final import PostgreSQLAdapter
+    import database.postgres_adapter_final as postgres_module
+    from database.adapter import get_database_adapter
     from modules.auth.services.security import AuthService as SecurityService  # mismo alias que auth_routes
 
     try:
@@ -32,7 +33,7 @@ async def roles_from_session(request: Request) -> Optional[list]:
         return None
     if payload.get("type") != "access":
         return None
-    database = PostgreSQLAdapter()
+    database = get_database_adapter(postgres_module.PostgreSQLAdapter)
     await database.initialize()
     try:
         user = await database.get_user_by_id(payload.get("user_id"))

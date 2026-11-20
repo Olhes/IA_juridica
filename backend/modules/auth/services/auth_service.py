@@ -1,11 +1,12 @@
 from fastapi import HTTPException, status
 from .security import AuthService as SecurityService
+from database.adapter import get_database_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 
 
 class AuthService:
     def __init__(self):
-        self.db = PostgreSQLAdapter()
+        self.db = get_database_adapter(PostgreSQLAdapter)
         self.security = SecurityService()
     
     async def authenticate_user(self, username: str, password: str):
@@ -64,18 +65,15 @@ class AuthService:
             # Los tokens del login con contraseña llevan `sub`; los de Google, `email` y `user_id`.
             email = payload.get("sub") or payload.get("email")
             await self.db.initialize()
-            try:
-                user = await self.db.get_user_by_email(email) if email else None
-                if not user or not user.get('is_active'):
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Usuario no válido o inactivo"
-                    )
+            user = await self.db.get_user_by_email(email) if email else None
+            if not user or not user.get('is_active'):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Usuario no válido o inactivo"
+                )
 
-                # Obtener roles actualizados
-                roles = await self.db.get_user_roles(user['id'])
-            finally:
-                await self.db.close()
+            # Obtener roles actualizados
+            roles = await self.db.get_user_roles(user['id'])
             role_names = [r['name'] for r in roles]
 
             # Crear nuevo payload con roles actualizados

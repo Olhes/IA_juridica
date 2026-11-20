@@ -35,10 +35,13 @@ dependencies = [
   "email-validator==2.3.0",
   "pyjwt==2.15.1",
   "passlib[bcrypt]==1.7.4",
-  "torch==2.15.0", "torchvision==0.29.1",
-  "transformers>=5.10.0,<6", "accelerate==1.15.0",
+  "torch==2.15.0",
+  "torchvision==0.29.1",
+  "transformers>=5.10.0,<6",
+  "accelerate==1.15.0",
   "soundfile==0.12.1",
   "tiktoken==0.14.0",
+  "surrealdb==3.0.0",
 ]
 
 [project.optional-dependencies]

@@ -20,6 +20,7 @@ from models.chat_models import (
     MessageType,
 )
 from database.redis_adapter import redis_adapter
+from database.adapter import get_database_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 
 
@@ -28,7 +29,7 @@ class ChatService:
 
     def __init__(self):
         self.redis = redis_adapter
-        self.db = PostgreSQLAdapter()
+        self.db = get_database_adapter(PostgreSQLAdapter)
         self.cache_ttl = {
             "conversation": 3600,  # 1 hora
             "session": 86400,  # 24 horas
