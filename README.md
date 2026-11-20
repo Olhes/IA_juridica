@@ -65,6 +65,30 @@ Si PostgreSQL local no conecta, revisa `docker compose ps postgres` y
 `postgres:5432` desde Compose; `DATABASE_URL` prevalece sobre `DATABASE_*`.
 No borres volúmenes para diagnosticar la conexión.
 
+## Backend de datos: SurrealDB v4.0.1 por defecto
+
+El backend usa **SurrealDB v4.0.1** por defecto (`DATABASE_BACKEND=surrealdb`):
+`ws://127.0.0.1:8010/rpc` en local y `ws://surreal:8000/rpc` dentro de Compose,
+namespace `ia_juridica` y siete databases que reflejan los esquemas PostgreSQL
+(`sat_graph`, `sat_candidates`, `sat_voyage`, `auth_schema`,
+`conversations_schema`, `rag_schema`, `legal_schema`). `docker compose up -d surreal`
+levanta el servicio con almacenamiento SurrealKV; el pool se ajusta con
+`SURREAL_POOL_SIZE` (8 por defecto).
+
+PostgreSQL **sigue levantado y no se elimina**: es la fuente de rollback y la
+entrada de la migración. Para revertir, define `DATABASE_BACKEND=postgres` y
+mantén las variables `DATABASE_*` y `SQLALCHEMY_DATABASE_URL`. Para migrar:
+
+```bash
+python backend/scripts/migrate_postgres_to_surrealdb.py --apply --batch-size 1000
+python backend/scripts/migrate_postgres_to_surrealdb.py --verify-only
+```
+
+`--apply` reconstruye las tablas desde PostgreSQL y valida conteo y checksum;
+`--verify-only` solo compara, sin escribir. `deploy/azure/deploy.sh` ejecuta el
+`--apply` de forma idempotente antes de activar el backend. Más detalle en
+[Knowledge Graph](KNOWLEDGE_GRAPH_SETUP.md).
+
 ## Arquitectura que está activa
 
 ```text

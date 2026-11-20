@@ -40,6 +40,32 @@ Durante carga/fallo no anuncies listo solo porque responde HTTP.
 Cuando el retrieval falla la consulta devuelve 503; si no recupera documentos,
 el pipeline produce abstención explícita y no inventa fuentes.
 
+## Backend de datos: SurrealDB v4.0.1 (por defecto)
+
+Esta rama usa **SurrealDB v4.0.1** como backend por defecto
+(`DATABASE_BACKEND=surrealdb`). El endpoint local es
+`ws://127.0.0.1:8010/rpc` y dentro de Compose `ws://surreal:8000/rpc`;
+el namespace es `ia_juridica` y hay siete databases que reflejan los esquemas
+PostgreSQL: `sat_graph`, `sat_candidates`, `sat_voyage`, `auth_schema`,
+`conversations_schema`, `rag_schema` y `legal_schema`. El pool se ajusta con
+`SURREAL_POOL_SIZE` (8 por defecto). Las credenciales root/root son solo de
+desarrollo; en producción se generan con `bootstrap-secrets.sh`.
+
+Para volver a PostgreSQL basta con `DATABASE_BACKEND=postgres`, conservando las
+variables `DATABASE_*` y `SQLALCHEMY_DATABASE_URL`. PostgreSQL no se ha detenido
+ni eliminado: permanece como fuente de rollback y como entrada de la migración.
+
+La migración se ejecuta con PostgreSQL poblado y SurrealDB levantado:
+
+```bash
+python backend/scripts/migrate_postgres_to_surrealdb.py --apply --batch-size 1000
+python backend/scripts/migrate_postgres_to_surrealdb.py --verify-only
+```
+
+`--apply` reconstruye cada tabla desde PostgreSQL y valida conteo y checksum;
+`--verify-only` solo compara sin escribir. `deploy/azure/deploy.sh` ejecuta el
+`--apply` de forma idempotente antes de activar el backend.
+
 ## Neo4j opcional
 
 Settings expone `NEO4J_ENABLED`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` y

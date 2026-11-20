@@ -42,6 +42,20 @@ if [[ ${revisions:-0} == 0 ]]; then
   fi
 fi
 
+# SurrealDB debe estar arriba antes de migrar y antes de publicar las fuentes
+# normativas (publish_cpc_tuo usa el backend por defecto, SurrealDB). PostgreSQL
+# sigue levantado como fuente de la migración y como rollback.
+"${COMPOSE[@]}" up -d --wait surreal
+
+# Migración idempotente PostgreSQL -> SurrealDB: con --apply reconstruye cada
+# tabla desde PostgreSQL y valida conteo + checksum. PostgreSQL no se modifica.
+# Se ejecuta antes de activar el backend y aborta el despliegue si falla.
+echo "Migrando PostgreSQL -> SurrealDB..."
+if ! "${COMPOSE[@]}" run --rm --no-deps -T backend /app/.venv/bin/python -m scripts.migrate_postgres_to_surrealdb --apply --batch-size 1000; then
+  echo "Fallo en la migración PostgreSQL -> SurrealDB; se aborta el despliegue." >&2
+  exit 1
+fi
+
 # Los despliegues sobre un corpus existente no restauran el dump encima de
 # la BD. Aplica solo las fuentes normativas de esta entrega, de forma idempotente.
 "${COMPOSE[@]}" run --rm --no-deps -T backend /app/.venv/bin/python -m scripts.publish_cpc_tuo --apply

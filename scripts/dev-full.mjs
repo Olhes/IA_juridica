@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 
-export const CORE_SERVICES = ["postgres", "redis"];
+// El backend usa SurrealDB por defecto (DATABASE_BACKEND=surrealdb), así que
+// dev:full debe levantarlo igual que PostgreSQL y Redis.
+export const CORE_SERVICES = ["surreal", "postgres", "redis"];
 export const BACKEND_HEALTH_URL = "http://localhost:8000/ready";
 const READINESS_TIMEOUT_MS = 120_000;
 const READINESS_POLL_MS = 1_000;
@@ -114,8 +116,19 @@ export async function waitForBackendHealth({
     try {
       const response = await fetchImpl(url);
       if (response.ok) {
-        if (!engine || (await response.json()).rag_engine === engine) return;
-        lastFailure = `expected retrieval engine ${engine}`;
+        if (!engine) return;
+        // Un cuerpo vacío o no-JSON suele significar que otro servicio ocupa el
+        // puerto: Docker publicando SurrealDB en 8000 deja /ready sin cuerpo.
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+        if (payload?.rag_engine === engine) return;
+        lastFailure = payload
+          ? `expected retrieval engine ${engine}, got ${payload.rag_engine ?? "none"}`
+          : `HTTP ${response.status} without a JSON body — another service may own ${url}`;
       } else {
         lastFailure = `HTTP ${response.status}`;
       }

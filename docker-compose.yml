@@ -28,6 +28,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # Backend por defecto: SurrealDB v4. El backend corre en el host (ver
+  # backend/.env.example), por eso el puerto se publica en loopback y no hay
+  # servicio `backend` aquí. PostgreSQL se conserva como rollback.
+  # Host 8010: el 8000 lo ocupa el backend FastAPI, y con ambos en 8000
+  # Docker se queda con el puerto y /ready responde vacío (SurrealDB).
+  surreal:
+    image: surrealdb/surrealdb:v4.0.1
+    container_name: ia_juridica_surreal
+    environment:
+      SURREAL_USER: ${SURREAL_USER:-root}
+      SURREAL_PASSWORD: ${SURREAL_PASSWORD:-root}
+    command: start --user ${SURREAL_USER:-root} --pass ${SURREAL_PASSWORD:-root} --bind 0.0.0.0:8000 --log info rocksdb:/data/surreal.db
+    ports:
+      - "127.0.0.1:8010:8000"
+    volumes:
+      # Nombre explícito: el corpus migrado vive en `surreal_data`, creado a mano
+      # con `docker run` (rocksdb). Sin `name:` Compose usaría
+      # `ia_juridica_surreal_data` y el corpus quedaría invisible.
+      - surreal_data:/data
+    networks:
+      - ia_juridica_network
+    restart: unless-stopped
+    healthcheck:
+      # La imagen v4 es distroless (sin /bin/sh ni curl): el healthcheck debe
+      # ejecutar el binario directamente.
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000", "--log", "none"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:8.10.3-alpine
     container_name: ia_juridica_redis
@@ -46,6 +76,9 @@ services:
 
 volumes:
   postgres_data:
+  surreal_data:
+    # Volumen existente fuera del proyecto Compose: guarda el corpus SAT migrado.
+    name: surreal_data
   redis_data:
 
 networks:

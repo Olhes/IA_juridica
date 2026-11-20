@@ -23,12 +23,21 @@ if [[ ! -f $DIR/compose.env ]]; then
 API_DOMAIN=$API_DOMAIN
 POSTGRES_PASSWORD=$(rand)
 REDIS_PASSWORD=$(rand)
+SURREAL_PASSWORD=$(rand)
 EOF
   chgrp docker "$DIR/compose.env"
 fi
 
 # shellcheck disable=SC1091
 source "$DIR/compose.env"
+
+# compose.env anterior a SurrealDB: generar el secreto sin rotar los existentes.
+if [[ -z ${SURREAL_PASSWORD:-} ]]; then
+  SURREAL_PASSWORD=$(rand)
+  umask 027
+  printf 'SURREAL_PASSWORD=%s\n' "$SURREAL_PASSWORD" >>"$DIR/compose.env"
+fi
+SURREAL_USER=${SURREAL_USER:-root}
 
 if [[ ! -f $DIR/backend.env ]]; then
   umask 027
@@ -59,6 +68,15 @@ CORS_ORIGINS=["$FRONTEND_ORIGIN"]
 CORS_ALLOW_METHODS=["GET","POST","PUT","DELETE","OPTIONS"]
 CORS_ALLOW_HEADERS=["Content-Type","X-API-Key","X-Request-ID"]
 
+# SurrealDB v4.0.1 es el backend por defecto (namespace ia_juridica).
+DATABASE_BACKEND=surrealdb
+SURREAL_URL=ws://surreal:8000/rpc
+SURREAL_USER=$SURREAL_USER
+SURREAL_PASSWORD=$SURREAL_PASSWORD
+SURREAL_NAMESPACE=ia_juridica
+SURREAL_POOL_SIZE=8
+
+# PostgreSQL: rollback/fallback (DATABASE_BACKEND=postgres). No eliminar.
 DATABASE_HOST=postgres
 DATABASE_PORT=5432
 DATABASE_NAME=juridica_db
@@ -94,5 +112,14 @@ ensure_key() {
   grep -qE "^$1=" "$DIR/backend.env" || printf '%s\n' "$1=$2" >>"$DIR/backend.env"
 }
 ensure_key RAG_ENGINE sat
+
+# Un backend.env previo a SurrealDB no tiene estas claves; se completan con los
+# mismos valores de compose.env sin tocar el resto del archivo (idempotente).
+ensure_key DATABASE_BACKEND surrealdb
+ensure_key SURREAL_URL ws://surreal:8000/rpc
+ensure_key SURREAL_USER "$SURREAL_USER"
+ensure_key SURREAL_PASSWORD "$SURREAL_PASSWORD"
+ensure_key SURREAL_NAMESPACE ia_juridica
+ensure_key SURREAL_POOL_SIZE 8
 
 echo "OK: $DIR/compose.env y $DIR/backend.env"

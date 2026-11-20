@@ -51,9 +51,9 @@ test("readiness checks the selected backend rather than the default", async () =
   assert.deepEqual(engines, []);
 });
 
-test("development startup targets only PostgreSQL and Redis", () => {
-  assert.deepEqual(CORE_SERVICES, ["postgres", "redis"]);
-  assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "postgres", "redis"]);
+test("development startup brings up the database the backend defaults to", () => {
+  assert.deepEqual(CORE_SERVICES, ["surreal", "postgres", "redis"]);
+  assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "surreal", "postgres", "redis"]);
 });
 
 test("SAT corpus is restored only when the local schema is empty", async () => {
@@ -190,6 +190,24 @@ test("backend health retries transient failures until it succeeds", async () => 
   });
 
   assert.deepEqual(attempts, [BACKEND_HEALTH_URL, BACKEND_HEALTH_URL, BACKEND_HEALTH_URL]);
+});
+
+test("readiness names a non-JSON body instead of swallowing the parse error", async () => {
+  await assert.rejects(
+    waitForBackendHealth({
+      engine: "sat",
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected end of JSON input");
+        },
+      }),
+      sleepFn: () => new Promise((resolve) => setTimeout(resolve, 10)),
+      timeoutMs: 5,
+    }),
+    /without a JSON body — another service may own/,
+  );
 });
 
 test("frontend is not started until backend health succeeds", async () => {
