@@ -97,7 +97,7 @@ Next App Router → ChatPage → useChat / useChatSessions / apiService
 
 | Capa                 | Ubicación / contrato                                                                                    |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.4.3, React 19.3.0                                 |
+| Interfaz             | `frontend/app/`, `frontend/src/presentation/`; Next 16.4.6, React 19.3.0                                 |
 | Aplicación frontend | `frontend/src/application/legal/`; peticiones directas a `NEXT_PUBLIC_API_URL`, con cookies              |
 | API                  | `backend/main.py`, `backend/modules/chat/routes/`, `backend/modules/auth/routes/`                        |
 | Pipeline común      | `backend/services/legal_queries.py`; `/legal-query`, stream y chat comparten respuesta validada          |
