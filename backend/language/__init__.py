@@ -3,8 +3,8 @@ Módulo de Language Handling - Sistema bilingüe español/quechua
 Coordina detección de idioma y traducción para contexto legal rural
 """
 
-from .language_config import LanguageConfig, language_config, LanguageCode
-from .language_detector import LanguageDetector, LANGDETECT_AVAILABLE
+from modules.language.services.language_config import LanguageConfig, language_config, LanguageCode
+from modules.language.services.language_detector import LanguageDetector, LANGDETECT_AVAILABLE
 from typing import Optional, Dict, Any
 
 __all__ = [
@@ -20,7 +20,7 @@ __all__ = [
 
 def __getattr__(name):
     if name == "TranslationService":
-        from .translation_service import TranslationService
+        from modules.language.services.translation_service import TranslationService
 
         return TranslationService
     raise AttributeError(f"module 'language' has no attribute {name!r}")
@@ -32,7 +32,7 @@ class LanguageHandler:
     def __init__(self):
         self.config = language_config
         self.detector = LanguageDetector()
-        from .translation_service import TranslationService
+        from modules.language.services.translation_service import TranslationService
 
         self.translator = TranslationService()
 
@@ -105,7 +105,7 @@ class LanguageHandler:
             response: Respuesta generada
             source_language: Idioma de la respuesta
             target_language: Idioma deseado para el usuario
-            context: Contexto adicional para traducción
+            context: Parámetro histórico; no modifica el texto del proveedor
 
         Retorna:
             Diccionario con respuesta procesada
@@ -126,8 +126,8 @@ class LanguageHandler:
                 }
 
             # Traducir respuesta
-            translation_result = await self.translator.translate_with_context(
-                response, source_language, target_language, context
+            translation_result = await self.translator.translate(
+                response, source_language, target_language
             )
 
             return {
@@ -137,7 +137,7 @@ class LanguageHandler:
                 "translated": translation_result.get("success", False),
                 "confidence": translation_result.get("confidence", 0.0),
                 "translation_method": translation_result.get("method", "unknown"),
-                "context_applied": translation_result.get("context_applied", False),
+                "context_applied": False,
             }
 
         except Exception as e:

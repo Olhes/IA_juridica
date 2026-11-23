@@ -4,15 +4,15 @@ Adaptaciones experimentales de metadata inheritance, RRF/PPR y recuperación
 multigranular. No reproducen íntegramente los sistemas de los papers.
 """
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import date
 from hashlib import sha256
 import json
 import math
 import re
-import unicodedata
 from typing import Literal
 
+from networkx import Graph, pagerank
 from ingestion.sat_graph.contracts import SNAPSHOT_STATES
 
 from pydantic import (
@@ -23,6 +23,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from retrieval.lexical import BM25Index as _BM25Index, terms
+from utils.vectors import cosine_scores
 
 class RankStages(BaseModel):
     """Ablación explícita; no altera filtros, presupuestos ni estrategias públicas."""
@@ -80,67 +82,9 @@ def fingerprint(value) -> str:
     ).hexdigest()
 
 
-def terms(text: str) -> list[str]:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
-    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
-    return re.findall(r"[a-z0-9]+", normalized)
-
-
 def bm25(query: str, texts: dict[str, str]) -> dict[str, float]:
-    """BM25 Okapi con desempate posterior por ID; sin etiquetas gold."""
-    counts = {identity: Counter(terms(text)) for identity, text in texts.items()}
-    if not counts:
-        return {}
-    lengths = {identity: sum(counter.values()) for identity, counter in counts.items()}
-    avg = sum(lengths.values()) / len(lengths) or 1
-    df = Counter(term for counter in counts.values() for term in counter)
-    scores = {}
-    for identity, counter in counts.items():
-        score = 0.0
-        for term in set(terms(query)):
-            freq = counter[term]
-            if freq:
-                idf = math.log(1 + (len(counts) - df[term] + 0.5) / (df[term] + 0.5))
-                score += (
-                    idf
-                    * freq
-                    * 2.2
-                    / (freq + 1.2 * (0.25 + 0.75 * lengths[identity] / avg))
-                )
-        if score > 0:
-            scores[identity] = score
-    return scores
-
-
-class _BM25Index:
-    """Reusable corpus statistics; scoring remains identical to bm25()."""
-
-    def __init__(self, texts):
-        self.counts = {identity: Counter(terms(text)) for identity, text in texts.items()}
-        self.lengths = {identity: sum(counter.values()) for identity, counter in self.counts.items()}
-        self.average = sum(self.lengths.values()) / len(self.lengths) if self.lengths else 0
-        self.average = self.average or 1
-        self.df = Counter(term for counter in self.counts.values() for term in counter)
-        self.postings = defaultdict(set)
-        for identity, counter in self.counts.items():
-            for term in counter:
-                self.postings[term].add(identity)
-
-    def score(self, query):
-        query_terms = set(terms(query))
-        matched = set().union(*(self.postings.get(term, set()) for term in query_terms))
-        scores = {}
-        for identity in matched:
-            counter = self.counts[identity]
-            score = 0.0
-            for term in query_terms:
-                freq = counter[term]
-                if freq:
-                    idf = math.log(1 + (len(self.counts) - self.df[term] + 0.5) / (self.df[term] + 0.5))
-                    score += idf * freq * 2.2 / (freq + 1.2 * (0.25 + 0.75 * self.lengths[identity] / self.average))
-            if score > 0:
-                scores[identity] = score
-        return scores
+    """Puntúa un conjunto de textos sin reutilizar el índice de un snapshot."""
+    return _BM25Index(texts).score(query)
 
 
 def ranked(scores: dict[str, float]) -> list[str]:
@@ -160,15 +104,6 @@ def rrf(rankings: list[list[str]], k: int = 60, weights=None) -> dict[str, float
         for position, identity in enumerate(dict.fromkeys(ranking), 1):
             scores[identity] += weight / (k + position)
     return dict(scores)
-
-
-def cosine(left, right):
-    if len(left) != len(right) or not left:
-        raise ValueError("Dimensiones incompatibles")
-    if not all(math.isfinite(x) for x in [*left, *right]):
-        raise ValueError("Vector no finito")
-    norm = math.sqrt(sum(x * x for x in left) * sum(x * x for x in right))
-    return sum(a * b for a, b in zip(left, right)) / norm if norm else 0.0
 
 
 class SATRetriever:
@@ -354,37 +289,25 @@ class SATRetriever:
     def _ppr(self, chunks, seeds, *, use_memberships=True):
         """PPR sobre membresías de versiones elegibles; no grafo LLM inferido."""
         ids = {chunk["version_id"] for chunk in chunks}
-        adjacency = {identity: set() for identity in ids}
-        for edge in self.edges:
-            if (
-                edge["type"] == "contains_version"
-                and use_memberships
-                and edge["source"] in ids
-                and edge["target"] in ids
-            ):
-                adjacency[edge["source"]].add(edge["target"])
-                adjacency[edge["target"]].add(edge["source"])
-        seed_ids = {chunk["version_id"] for chunk in chunks if chunk["id"] in seeds}
+        seed_chunks = set(seeds)
+        seed_ids = {chunk["version_id"] for chunk in chunks if chunk["id"] in seed_chunks}
         if not seed_ids:
             return {}
-        personal = {
-            identity: (1 / len(seed_ids) if identity in seed_ids else 0)
-            for identity in ids
-        }
-        scores = dict(personal)
-        for _ in range(50):
-            dangling = sum(scores[v] for v in ids if not adjacency[v])
-            updated = {v: (0.15 + 0.85 * dangling) * personal[v] for v in ids}
-            for source in sorted(ids):
-                if adjacency[source]:
-                    for target in sorted(adjacency[source]):
-                        updated[target] += (
-                            0.85 * scores[source] / len(adjacency[source])
-                        )
-            if sum(abs(updated[v] - scores[v]) for v in ids) < 1e-10:
-                scores = updated
-                break
-            scores = updated
+        graph = Graph()
+        graph.add_nodes_from(sorted(ids))
+        if use_memberships:
+            graph.add_edges_from(
+                (edge["source"], edge["target"]) for edge in self.edges
+                if edge["type"] == "contains_version"
+                and edge["source"] in ids and edge["target"] in ids
+            )
+        personal = dict.fromkeys(seed_ids, 1.0)
+        # NetworkX uses len(graph) * tol for total L1 error. Allow convergence
+        # instead of accepting the last iterate unconditionally after 50 steps.
+        scores = pagerank(
+            graph, alpha=0.85, personalization=personal, nstart=personal,
+            dangling=personal, weight=None, tol=1e-10 / len(graph), max_iter=200,
+        )
         return {
             chunk["id"]: scores[chunk["version_id"]]
             for chunk in chunks
@@ -436,11 +359,13 @@ class SATRetriever:
             query_vectors, query_usage = provider.embed(
                 [[plan.query]], input_type="query"
             )
-            dense = {
-                chunk["id"]: cosine(vector, query_vectors[0][0])
+            aligned = [
+                (chunk["id"], vector)
                 for group, embedded in zip(groups, vectors, strict=True)
                 for chunk, vector in zip(group, embedded, strict=True)
-            }
+            ]
+            ids, rows = zip(*aligned, strict=True)
+            dense = dict(zip(ids, cosine_scores(rows, query_vectors[0][0]), strict=True))
             rankings.append(ranked(dense))
             weights.append(1.0)
             dense_status = "executed"
@@ -460,6 +385,7 @@ class SATRetriever:
             seed_versions = {by_id[i]["version_id"] for i in seeds}
             scored_versions = {by_id[i]["version_id"] for i in ppr_scores}
             ppr_status = {
+                "solver": "networkx_pagerank",
                 "membership_policy": "verified" if use_memberships else "disabled",
                 "weight": stages.ppr_weight,
                 "eligible_membership_edges": sum(

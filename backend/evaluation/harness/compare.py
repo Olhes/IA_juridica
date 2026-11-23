@@ -191,7 +191,15 @@ def compare_suite(suite: str, base: dict, head: dict, *, seed=0) -> dict:
         out["metrics"], out["blocks"], out["latency_p95_ms"] = result["metrics"], result["blocks"], result["latency_p95_ms"]
         return out
     base_rows, head_rows = per_case(base, suite), per_case(head, suite)
+    base_protocol, head_protocol = base.get("metric_protocol"), head.get("metric_protocol")
+    incompatible_translation = suite == "translation" and base_protocol != head_protocol
+    if incompatible_translation:
+        out["meta"]["changed"]["metric_protocol"] = {"base": base_protocol, "head": head_protocol}
+        out["meta"]["comparable"] = False
+        out["meta"]["problems"].append("`metric_protocol` distinto: recalcula chrF++, BLEU y TER con el mismo protocolo")
     for metric, scope, higher in HEADLINE.get(suite, []):
+        if incompatible_translation and metric in {"chrf++", "bleu", "ter"}:
+            continue
         out["metrics"].append(compare_metric(base_rows, head_rows, metric, scope, higher, seed=seed))
         out["cases"].append(case_changes(base_rows, head_rows, metric, higher))
     if suite == "legal_qa":
@@ -273,6 +281,9 @@ OVERLAY = (
     "backend/evaluation/__init__.py",
     "backend/evaluation/harness",
     "backend/utils/text_match.py",
+    "backend/utils/language_signals.py",
+    "backend/utils/pipeline_identity.py",
+    "backend/utils/vectors.py",
     "backend/services/citation_verifier.py",
     "backend/services/translation_qe.py",
     "tests/backend/fixtures/gold",

@@ -2,28 +2,18 @@
 
 import hashlib
 import json
-from pathlib import Path
+from functools import cache
 
 from config.settings import settings
+from utils.pipeline_identity import pipeline_digest
 
 PIPELINE_VERSION = "legal-answer-v2"
 
 
-def pipeline_digest():
-    """SHA-256 del código que define prompts y pipeline; cambia al editar cualquiera."""
-    root = Path(__file__).resolve().parents[1]
-    directories = (
-        "services",
-        "context",
-        "agents",
-        "modules/validation",
-        "modules/language",
-        "modules/rag",
-    )
-    prompt_files = sorted(
-        p for directory in directories for p in (root / directory).rglob("*.py")
-    )
-    return hashlib.sha256(b"".join(p.read_bytes() for p in prompt_files)).hexdigest()
+@cache
+def _loaded_pipeline_digest():
+    """La aplicación usa el código de este proceso; recalcular al reiniciar."""
+    return pipeline_digest()
 
 
 def answer_cache_key(
@@ -36,7 +26,7 @@ def answer_cache_key(
     corpus_revision=None,
     mode="query",
 ):
-    pipeline = pipeline_digest()
+    pipeline = _loaded_pipeline_digest()
     identity = {
         "pipeline": PIPELINE_VERSION,
         "prompt_digest": pipeline,

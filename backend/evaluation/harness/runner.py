@@ -324,7 +324,7 @@ async def _embed_cosine(first, second):
         import cohere
 
         from config.settings import settings
-        from evaluation.harness.metrics.translation import cosine
+        from utils.vectors import cosine
 
         client = cohere.AsyncClient(api_key=settings.COHERE_API_KEY)
         response = await client.embed(texts=[first, second], model=settings.COHERE_EMBED_MODEL,

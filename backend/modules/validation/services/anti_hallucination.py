@@ -130,7 +130,7 @@ class AntiHallucinationLayer:
             f"patterns={len(self.patterns)})"
         )
 
-    def analyze(self, response: str, rag_score: float = 1.0) -> HallucinationReport:
+    def analyze(self, response: str, rag_score: float | None = None) -> HallucinationReport:
         """
         Analiza una respuesta del LLM en busca de señales de alucinación.
 
@@ -166,13 +166,13 @@ class AntiHallucinationLayer:
 
         # 2. Penalización por rag_score bajo (poca evidencia recuperada)
         rag_penalty = 0.0
-        if rag_score < RAG_SCORE_THRESHOLD:
+        if rag_score is not None and rag_score < RAG_SCORE_THRESHOLD:
             # Escala lineal: 0.0 cuando score=threshold, ~0.40 cuando score=0.0
             rag_penalty = round((RAG_SCORE_THRESHOLD - rag_score) * (0.40 / RAG_SCORE_THRESHOLD), 3)
 
         # 3. Penalización estructural: respuesta larga + RAG débil
         structural_penalty = 0.0
-        if len(response) > LONG_RESPONSE_CHARS and rag_score < 0.60:
+        if len(response) > LONG_RESPONSE_CHARS and rag_score is not None and rag_score < 0.60:
             structural_penalty = 0.10
             flags.append(
                 "Respuesta extensa con cobertura RAG insuficiente "

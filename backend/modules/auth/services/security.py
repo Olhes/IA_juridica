@@ -1,16 +1,14 @@
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CLAVE_SECRETA_DESAROLLO_IA_JURIDICA")
 REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY", "CLAVE_REFRESH_DESAROLLO_IA_JURIDICA")
 ALGORITHM = "HS256"
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme para token en header Authorization: Bearer <token>
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -19,11 +17,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 class AuthService:
     @staticmethod
     def hash_password(password: str) -> str:
-        return pwd_context.hash(password)
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
+        if not isinstance(hashed_password, str):
+            return False
+        try:
+            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("ascii"))
+        except ValueError:
+            # bcrypt 5 rejects input beyond 72 bytes rather than truncating it.
+            # A malformed stored digest is also an authentication failure.
+            return False
 
     @staticmethod
     def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:

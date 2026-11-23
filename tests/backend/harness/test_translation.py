@@ -100,40 +100,52 @@ def test_page_noise_is_removed_from_sources():
     assert strip_page_noise("Texto\n- 17 -\n30364 Kamachiy Qillqa\n<!-- image -->\nsigue") == "Texto\nsigue"
 
 
+def score(hyp, refs, metric):
+    return t.sentence_scores(hyp, refs)[metric].value
+
+
 def test_chrf_matches_hand_computed_values_and_ignores_whitespace_in_characters():
-    assert t.chrf("allin p'unchaw", ["allin p'unchaw"]) == pytest.approx(100.0)
-    assert t.chrf("abc", ["xyz"]) == 0.0
+    assert score("allin p'unchaw", ["allin p'unchaw"], "chrf++") == pytest.approx(1.0)
+    assert score("abc", ["xyz"], "chrf++") == 0.0
     # Caracteres 1-2 coinciden y las palabras no: P = R = 2/3 => F = 66.67.
-    assert t.chrf("a b", ["ab"]) == pytest.approx(66.6667, abs=1e-3)
-    assert t.chrf("uno dos tres cuatro", ["uno dos tres cinco"]) < 100
-    assert t.chrf("uno dos tres", ["uno dos tres cinco", "uno dos tres"]) == pytest.approx(100.0)  # mejor referencia
+    assert score("a b", ["ab"], "chrf++") == pytest.approx(2 / 3)
+    assert score("uno dos tres cuatro", ["uno dos tres cinco"], "chrf++") < 1.0
+    assert score("uno dos tres", ["uno dos tres cinco", "uno dos tres"], "chrf++") == pytest.approx(1.0)
 
 
 def test_chrf_rewards_recall_more_than_precision():
     reference = ["kay qillqa allinmi kachkan"]
-    short = t.chrf("kay qillqa", reference)
-    padded = t.chrf("kay qillqa allinmi kachkan hinallataq huk rimay", reference)
+    short = score("kay qillqa", reference, "chrf++")
+    padded = score("kay qillqa allinmi kachkan hinallataq huk rimay", reference, "chrf++")
     assert padded > short  # beta=2 pesa más el recall
 
 
 def test_bleu_and_ter_follow_their_definitions():
     sentence = "Kay qillqa allinmi kachkan chaymi"
-    assert t.bleu_from_stats(t.bleu_stats(sentence, sentence)) == pytest.approx(100.0)
-    assert t.bleu_from_stats(t.bleu_stats("a b", "a b c d")) == 0.0  # hipótesis más corta que 4 palabras
-    partial = t.bleu_from_stats(t.bleu_stats("Kay qillqa allinmi kachkan hinaspa", sentence))
-    assert 0 < partial < 100
-    assert t.ter("uno dos tres cuatro", ["uno dos tres cuatro"]) == 0.0
-    assert t.ter("uno dos tres cuatro", ["uno dos tres cinco"]) == pytest.approx(25.0)
-    assert t.ter("uno dos", ["uno dos tres cuatro"]) == pytest.approx(50.0)
-    assert t.ter("x y z w", ["uno dos tres cuatro", "x y z w"]) == 0.0
+    assert score(sentence, [sentence], "bleu") == pytest.approx(1.0)
+    assert score("a b", ["a b"], "bleu") == pytest.approx(1.0)  # orden efectivo en oraciones
+    assert 0 < score("Kay qillqa allinmi kachkan hinaspa", [sentence], "bleu") < 1.0
+    assert score("uno dos tres cuatro", ["uno dos tres cuatro"], "ter") == 0.0
+    assert score("uno dos tres cuatro", ["uno dos tres cinco"], "ter") == pytest.approx(0.25)
+    assert score("uno dos", ["uno dos tres cuatro"], "ter") == pytest.approx(0.5)
+    assert score("x y z w", ["uno dos tres cuatro", "x y z w"], "ter") == 0.0
+    # Un desplazamiento de bloque, no cuatro sustituciones de palabras.
+    assert score("tres cuatro uno dos", ["uno dos tres cuatro"], "ter") == pytest.approx(0.25)
 
 
-def test_corpus_bleu_sums_statistics_instead_of_averaging_sentences():
-    one = t.bleu_stats("Kay qillqa allinmi kachkan", "Kay qillqa allinmi kachkan")
-    two = t.bleu_stats("Manan qullqita quwanchu", "Manan qullqita quwanmanchu")
-    merged = t.merge_bleu_stats([one, two])
-    assert merged["hyp_len"] == one["hyp_len"] + two["hyp_len"]
-    assert 0 < t.bleu_from_stats(merged) < 100
+def test_corpus_bleu_aggregates_and_retains_all_available_references():
+    exact = "Kay qillqa allinmi kachkan"
+    second = "Manan qullqita quwanchu"
+    scores = t.corpus_scores([exact, second], [["Huk qillqatan rikuni", exact], [second]])
+    assert scores["bleu"] == pytest.approx(100.0)
+    assert scores["chrf++"] == pytest.approx(100.0)
+    assert scores["ter"] == 0.0
+    assert "nrefs:var" in scores["signatures"]["bleu"]
+    assert "eff:no" in scores["signatures"]["bleu"]
+    assert "nw:2" in scores["signatures"]["chrf++"]
+    partial = t.corpus_scores([exact, "abc"], [[exact], [second]])
+    assert 50 < partial["bleu"] < 100  # distinto de la media de 100 y 0 por oración
+    assert t.corpus_scores([], []) == {}
 
 
 def test_contract_signals_references_placeholders_language_copy_and_coverage():
@@ -218,6 +230,7 @@ async def test_translation_suite_writes_offline_baseline_and_replays_a_recorded_
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["meta"]["answer_source"] == "identity_baseline" and saved["meta"]["judge_available"] is False
     assert saved["system"] == "identity" and saved["gold"]["adjudicated"] == 0 and saved["meta"]["gold_hash"]
+    assert saved["metric_protocol"] == t.METRIC_PROTOCOL and saved["corpus"]["signatures"]
 
     async def fake_live(pair):
         return Output(pair.references_qu[0], back_translation=pair.source_es, round_trip=0.9).to_json()

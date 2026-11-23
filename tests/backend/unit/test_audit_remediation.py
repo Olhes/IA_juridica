@@ -33,6 +33,7 @@ def client(monkeypatch):
 @pytest.fixture
 def translator(monkeypatch):
     service = TranslationService()
+    monkeypatch.setattr(settings, "TRANSLATION_ENABLED", True)
     monkeypatch.setattr(service, "translation_cache", {})
     monkeypatch.setattr(service, "google_translate_available", True)
     monkeypatch.setattr(service, "_is_translation_supported", lambda *_: True)
@@ -60,6 +61,7 @@ async def test_translation_provider_rejects_unchanged_output_without_caching(
     assert bool(translator.translation_cache) is success
     if success:
         assert result["translated_text"] == output
+        assert "confidence" not in result
     else:
         assert result["original_text"] == "Texto legal"
         assert result["complete"] is False
@@ -135,6 +137,33 @@ async def test_missing_provider_is_not_successful_dictionary_translation(
     )
     assert result["success"] is False
     assert result["original_text"]
+
+
+@pytest.mark.asyncio
+async def test_disabled_translation_never_calls_provider_or_serves_cached_output(translator, monkeypatch):
+    text = "Artículo 12. Texto legal."
+    assert (await translator.translate(text, "es", "qu"))["success"]
+    assert translator.translation_cache
+    translator._translate_with_google.reset_mock()
+    monkeypatch.setattr(settings, "TRANSLATION_ENABLED", False)
+
+    result = await translator.translate(text, "es", "qu")
+    assert not result["success"] and not result["complete"]
+    assert result["original_text"] == text and result["method"] == "none"
+    translator._translate_with_google.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_language_facade_does_not_rewrite_provider_output(translator):
+    from language import LanguageHandler, TranslationService as LegacyTranslationService
+
+    assert LegacyTranslationService is TranslationService
+    handler = LanguageHandler()
+    result = await handler.process_response(
+        "quiere una pensión de alimentos", target_language="qu", context={"legal_topic": "pensión"}
+    )
+    assert result["translated"] and not result["context_applied"]
+    assert result["response"] == "quiere una pensión de alimentos"
 
 
 @pytest.mark.parametrize(

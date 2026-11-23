@@ -3,9 +3,9 @@ ResponseValidator — Orquestador del pipeline de validación de IA Jurídica.
 
 Este es el punto de entrada único para todo el proceso de validación.
 Integra en secuencia:
-  1. AntiHallucinationLayer  → detecta patrones de alucinación
-  2. RAGCrossChecker         → verifica soporte en corpus RAG
-  3. SelfCorrectionEngine    → corrige si es necesario (usa Cohere)
+  1. AntiHallucinationLayer  → señala patrones de riesgo
+  2. SelfCorrectionEngine    → corrige si es necesario (usa Cohere)
+  3. RAGCrossChecker         → mide solapamiento del texto final, no inferencia jurídica
   4. Validación cultural     → delega a ContextEngineer si disponible
   5. Construcción del ValidationReport final
 
@@ -129,10 +129,11 @@ class ResponseValidator:
         sources      = rag_result.get("sources", [])
 
         # Asegurar que el CrossChecker use el corpus actualizado
-        if rag_result.get("method") == "sat":
+        retrieved = rag_result.get("documents") or []
+        if rag_result.get("method") == "sat" or not retrieved:
             # La validación debe usar los mismos fragmentos SAT de esta consulta.
             documents = {str(i): {"content": d.get("content", ""), "chunks": [d.get("content", "")]}
-                         for i, d in enumerate(rag_result.get("documents", []))}
+                         for i, d in enumerate(retrieved)}
             checker = RAGCrossChecker(documents, grounded_threshold=self.cross_checker.threshold)
         else:
             self.cross_checker.update_documents(self._rag_engine.documents)
@@ -147,18 +148,9 @@ class ResponseValidator:
             rag_score=rag_score,
         )
 
-        # ── PASO 2: Cross-check RAG ────────────────────────────────────────────
-        cross_result: Optional[CrossCheckResult] = None
-        if self.config.enable_cross_check:
-            cross_result = checker.check(answer_text, query)
-            if not cross_result.is_grounded:
-                warnings.append(
-                    f"Respuesta con soporte RAG bajo (overlap={cross_result.overlap_score:.2f})"
-                )
-
-        # ── PASO 3: Self-correction ────────────────────────────────────────────
+        # ── PASO 2: Self-correction ────────────────────────────────────────────
         corrections_applied = 0
-        if self.config.enable_self_correction and hallucination_report.requires_correction:
+        if retrieved and self.config.enable_self_correction and hallucination_report.requires_correction:
             corrected_text, corrections_applied = await self.self_correction.correct(
                 original_text        =answer_text,
                 hallucination_report =hallucination_report,
@@ -170,10 +162,20 @@ class ResponseValidator:
                 status = ValidationStatus.CORRECTED
                 # Actualizar el campo de respuesta en español con el texto corregido
                 response_data = self._inject_corrected_text(response_data, corrected_text)
+                answer_text = self._extract_answer_text(response_data)
                 # Re-analizar el texto corregido
                 hallucination_report = self.anti_hallucination.analyze(
-                    response=corrected_text,
+                    response=answer_text,
                     rag_score=rag_score,
+                )
+
+        # ── PASO 3: Verificación léxica sobre el texto que se entrega ────────────
+        cross_result: Optional[CrossCheckResult] = None
+        if self.config.enable_cross_check:
+            cross_result = checker.check(answer_text, query)
+            if not cross_result.is_grounded:
+                warnings.append(
+                    f"Solapamiento léxico bajo o no evaluable (overlap={cross_result.overlap_score:.2f})"
                 )
 
         # ── PASO 4: Validación cultural ────────────────────────────────────────
@@ -196,7 +198,7 @@ class ResponseValidator:
             hallucination_report=hallucination_report,
             cross_result        =cross_result,
             rag_score           =rag_score,
-        )
+        ) if retrieved else 0.0
 
         if confidence_score < self.config.min_confidence_score:
             status = ValidationStatus.FAILED
@@ -214,7 +216,7 @@ class ResponseValidator:
             confidence         =ConfidenceLevel.from_score(confidence_score),
             confidence_score   =round(confidence_score, 4),
             hallucination_risk =hallucination_report.risk_score,
-            is_grounded        =cross_result.is_grounded if cross_result else True,
+            is_grounded        =cross_result.is_grounded if cross_result else False,
             corrections_applied=corrections_applied,
             flags              =[
                 HallucinationFlag(
@@ -279,12 +281,14 @@ class ResponseValidator:
         # Alternativa: serializar todo como cadena de texto
         return str(response_data)
 
-    def _compute_avg_rag_score(self, rag_result: Dict[str, Any]) -> float:
-        """Calcula el score RAG promedio de los documentos recuperados."""
+    def _compute_avg_rag_score(self, rag_result: Dict[str, Any]) -> Optional[float]:
+        """SAT devuelve puntos de ranking RRF (o un marcador exacto), no confianza."""
+        if rag_result.get("method") == "sat" or not rag_result.get("documents"):
+            return None
         scores = rag_result.get("rerank_scores", [])
         if not scores:
-            # Si no hay rerank scores, usar confidence del rag_result
-            return float(rag_result.get("confidence", 0.70))
+            fallback = rag_result.get("confidence")
+            return float(fallback) if fallback is not None else None
         return round(sum(scores) / len(scores), 4)
 
     def _build_rag_context_str(self, rag_result: Dict[str, Any]) -> str:
@@ -320,17 +324,17 @@ class ResponseValidator:
         self,
         hallucination_report: HallucinationReport,
         cross_result        : Optional[CrossCheckResult],
-        rag_score           : float,
+        rag_score           : Optional[float],
     ) -> float:
         """
-        Combina múltiples señales en un score de confianza 0–1.
+        Combina señales heurísticas en un índice 0–1, no una probabilidad calibrada.
 
         Pesos:
           - rag_score base                           40%
           - penalización por hallucination_risk      30%
           - soporte del cross-check (overlap_score)  30%
         """
-        base      = rag_score * 0.40
+        base      = rag_score * 0.40 if rag_score is not None else 0.0
         hall_comp = (1.0 - hallucination_report.risk_score) * 0.30
         cross_comp = (
             cross_result.overlap_score * 0.30

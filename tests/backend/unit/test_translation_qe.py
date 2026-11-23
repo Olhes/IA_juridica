@@ -2,6 +2,7 @@
 
 import pytest
 
+from modules.language.services.language_detector import LanguageDetector
 from services import legal_queries
 from services.legal_queries import answer_query
 from services.translation_qe import (
@@ -25,6 +26,15 @@ def test_language_heuristic_separates_quechua_spanish_and_short_text():
     assert detect_language("Kay qillqa") == "unknown" and detect_language("") == "unknown"
     signals = language_signals(SPANISH)
     assert signals["spanish_ratio"] > 0.2 and signals["quechua_ratio"] < 0.35
+
+
+@pytest.mark.parametrize(("query", "expected"), [
+    ("Dolo mana probasqa kaqtin, ¿imataq omisión de asistencia familiar delitopi kanqa?", "qu"),
+    ("¿Cuánto me deben pagar de indemnización por despido arbitrario?", "es"),
+    ("Pensión", "es"),
+])
+def test_input_detector_reuses_output_signals_with_short_text_fallback(query, expected):
+    assert LanguageDetector().detect_language(query) == expected
 
 
 def test_copy_rate_length_and_references():

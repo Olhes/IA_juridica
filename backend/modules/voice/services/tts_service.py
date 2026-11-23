@@ -2,11 +2,14 @@
 import asyncio
 import re
 import logging
-from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 from io import BytesIO
 
+from markdown_it import MarkdownIt
+
 logger = logging.getLogger("ia_juridica.tts")
+_MARKDOWN = MarkdownIt("commonmark")
+_QUECHUA_DIGITS = ("ch'usaq", "huk", "iskay", "kimsa", "tawa", "pichqa", "suqta", "qanchis", "pusaq", "isqun")
 
 class TTSService:
     """Servicio de Text-to-Speech para Quechua (MMS-TTS) y español (Web Speech API)"""
@@ -62,12 +65,21 @@ class TTSService:
         - Elimina URLs
         - Normaliza espacios
         """
-        # Eliminar markdown
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # Bold
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)      # Italic
-        text = re.sub(r'`([^`]+)`', r'\1', text)          # Code
-        text = re.sub(r'```[\s\S]*?```', '', text)       # Code blocks
-        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)  # Links
+        # CommonMark supplies the visible text; we don't render HTML or verbalize code fences.
+        spoken = []
+        for token in _MARKDOWN.parse(text):
+            if token.type == "list_item_open" and token.info:
+                # Preserve the written marker even when a list jumps from 2 to 7.
+                spoken.append(token.info + token.markup)
+            elif token.type == "inline":
+                line = []
+                for child in token.children or ():
+                    if child.type in {"text", "code_inline", "image"}:
+                        line.append(child.content)
+                    elif child.type in {"softbreak", "hardbreak"}:
+                        line.append(" ")
+                spoken.append("".join(line))
+        text = " ".join(spoken)
         
         # Eliminar URLs
         text = re.sub(r'https?://[^\s]+', '', text)
@@ -85,32 +97,12 @@ class TTSService:
         return text
     
     def _convert_numbers_to_words_quechua(self, text: str) -> str:
-        """
-        Convierte números a palabras en quechua.
-        Implementación básica para números comunes.
-        """
-        # Diccionario básico de números en quechua
-        number_words = {
-            "0": "ch'usaq",
-            "1": "huk",
-            "2": "iskay",
-            "3": "kimsa",
-            "4": "tawa",
-            "5": "pichqa",
-            "6": "suqta",
-            "7": "qanchis",
-            "8": "pusaq",
-            "9": "isqun",
-            "10": "chunka",
-            "30364": "kimsa pachak chunka isqunniyuq pichqayuq chunka tawa",
-            # Agregar más según necesidad
-        }
-        
-        # Reemplazar números individuales
-        for num, word in number_words.items():
-            text = text.replace(num, word)
-        
-        return text
+        """Lee secuencias dígito por dígito en vez de inventar cardinales para citas."""
+        return re.sub(
+            r"[0-9]+",
+            lambda match: "chunka" if match[0] == "10" else " ".join(_QUECHUA_DIGITS[int(d)] for d in match[0]),
+            text,
+        )
     
     async def synthesize_quechua(self, text: str) -> Optional[bytes]:
         """

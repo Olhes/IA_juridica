@@ -68,7 +68,8 @@ def publish_suite(suite: str, report: Optional[dict]) -> dict:
                 "spaced_ocr_documents": len((report.get("corpus_quality") or {}).get("spaced_documents", []))}
     if suite == "translation":
         return {**base, "system": report.get("system"), "n_scored": report.get("n_scored"), "gold": report.get("gold"),
-                "metrics": _metrics(report.get("metrics", {}), TRANSLATION_METRICS), "corpus": report.get("corpus")}
+                "metrics": _metrics(report.get("metrics", {}), TRANSLATION_METRICS), "corpus": report.get("corpus"),
+                "metric_protocol": report.get("metric_protocol")}
     if suite == "stream":
         return {**base, "n_streams": report.get("n_streams"), "valid_stream_rate": report.get("valid_stream_rate"),
                 "ttfb_ms": report.get("ttfb_ms"), "terminal_ms": report.get("terminal_ms"), "stage_ms": report.get("stage_ms")}

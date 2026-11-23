@@ -69,8 +69,9 @@ def test_query_language_detection_is_measured_not_assumed(gold):
     assert all(s.applicable for s in scores.values())
     assert scores["pension-contenido-alimentos"].value == 1.0
     assert scores["tenencia-provisional-quien-solicita-qu"].value == 1.0
-    # Errores conocidos del detector por reglas, que la métrica debe reflejar (no ocultar).
-    assert scores["visitas-concepto-qu"].value == 0.0 and scores["fuera-despido-arbitrario"].value == 0.0
+    # La detección compartida corrige el español mal enrutado, sin ocultar quechua aún no reconocido.
+    assert scores["fuera-despido-arbitrario"].value == 1.0
+    assert scores["visitas-concepto-qu"].value == 0.0
 
 
 def test_parallel_pairs_that_drift_apart_are_rejected(gold):

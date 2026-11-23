@@ -15,6 +15,7 @@ except ImportError:
     logger.warning("langdetect no disponible. Usando detección basada en reglas.")
     LANGDETECT_AVAILABLE = False
 
+from utils.language_signals import detect_language as detect_language_signals
 from .language_config import LanguageConfig, LanguageCode
 
 class LanguageDetector:
@@ -97,6 +98,11 @@ class LanguageDetector:
             Código de idioma detectado
         """
         try:
+            # Reuse the signals used to check translated output. Keep the
+            # legacy path for short or ambiguous strings, where it abstains.
+            from_signals = detect_language_signals(text)
+            if from_signals != "unknown":
+                return from_signals
             # Limpiar texto
             clean_text = self._clean_text(text)
             

@@ -13,11 +13,11 @@ from retrieval.sat import (
     SearchPlan,
     RankStages,
     bm25,
-    cosine,
     ranked,
     rrf,
 )
 from tests.backend.unit.test_sat_graph import RESOURCE, amendment, review, staged, unit
+from utils.vectors import cosine, cosine_scores
 
 
 @pytest.fixture
@@ -165,6 +165,10 @@ def test_ppr_expands_only_eligible_memberships(tmp_path):
     scores = engine._ppr(chunks, [chunks[0]["id"]])
     assert len(scores) == 2 and all(value > 0 for value in scores.values())
     assert sum(scores.values()) == pytest.approx(1)
+    # Two undirected nodes, one seed: the analytical solution needs >50 iterations
+    # to reach SAT's 1e-10 tolerance from the seed-only distribution.
+    assert scores[chunks[0]["id"]] == pytest.approx(1 / 1.85, abs=1e-10, rel=0)
+    assert scores[chunks[1]["id"]] == pytest.approx(0.85 / 1.85, abs=1e-10, rel=0)
 
 
 def test_rank_math_is_deterministic_and_rejects_bad_vectors():
@@ -174,6 +178,17 @@ def test_rank_math_is_deterministic_and_rejects_bad_vectors():
     for vector in ([], [1], [float("nan"), 0]):
         with pytest.raises(ValueError):
             cosine([1, 0], vector)
+
+
+def test_cosine_scores_preserves_row_order_and_handles_zero_vectors():
+    rows = [[3, 4], [0, 0], [-3, -4], [4, -3], [3, 4]]
+    assert cosine_scores(rows, [3, 4]) == pytest.approx([1.0, 0.0, -1.0, 0.0, 1.0])
+    assert cosine_scores(rows, [0, 0]) == [0.0] * len(rows)
+    assert cosine_scores([], [3, 4]) == []
+    with pytest.raises(ValueError, match="Vector no finito"):
+        cosine_scores([[1, 2], [float("inf"), 3]], [1, 2])
+    with pytest.raises(ValueError):
+        cosine_scores([[1, 2], [3]], [1, 2])
 
 
 def test_weighted_rrf_preserves_default_and_excludes_zero_weight_candidates():
@@ -251,9 +266,12 @@ def test_rank_stages_are_independent_and_accounted(corpus, dense, rerank, strate
 def test_rank_stage_contract_rejects_coercion_and_unknown_flags(values):
     with pytest.raises(ValidationError):
         RankStages(**values)
-def test_cached_bm25_index_matches_uncached_for_many_queries():
+def test_bm25s_matches_legacy_formula_for_many_queries():
     import random
-    from retrieval.sat import _BM25Index, bm25
+    from collections import Counter
+    from math import log
+
+    from retrieval.sat import _BM25Index, terms
 
     rng = random.Random(12345)
     words = ['niñez', 'alimentos', 'ámbito', 'violencia', '170-A', 'familia', 'salud', 'sección']
@@ -262,5 +280,30 @@ def test_cached_bm25_index_matches_uncached_for_many_queries():
     queries = ['NIÑEZ', 'NO EXISTE', ''] + [
         ' '.join(rng.choices(words + ['no-existe'], k=rng.randrange(0, 8))) for _ in range(100)
     ]
+    counts = {identity: Counter(terms(text)) for identity, text in texts.items()}
+    lengths = {identity: counter.total() for identity, counter in counts.items()}
+    avg = sum(lengths.values()) / len(lengths)
+    df = Counter(term for counter in counts.values() for term in counter)
     for query in queries:
-        assert index.score(query) == bm25(query, texts)
+        # Referencia de regresión independiente del índice de producción.
+        expected = {}
+        for identity, counter in counts.items():
+            score = sum(
+                log(1 + (len(counts) - df[term] + 0.5) / (df[term] + 0.5))
+                * counter[term] * 2.2 / (counter[term] + 1.2 * (0.25 + 0.75 * lengths[identity] / avg))
+                for term in set(terms(query)) if counter[term]
+            )
+            if score:
+                expected[identity] = score
+        assert index.score(query) == pytest.approx(expected, abs=1e-12, rel=1e-12)
+
+
+def test_bm25_keeps_exact_tie_break_and_ignores_unknown_terms():
+    texts = {"z": "NIÑEZ", "a": "niñez", "empty": "..."}
+    scores = bm25("niñez", texts)
+    assert ranked(scores) == ["a", "z"]
+    assert scores["a"] == scores["z"]
+    assert bm25("niñez NIÑEZ desconocido", texts) == scores
+    assert bm25("...", texts) == {}
+    assert bm25("niñez", {"empty": ""}) == {}
+    assert bm25("niñez", {}) == {}

@@ -26,7 +26,7 @@ from evaluation.harness.translation_gold import (
     strip_page_noise,
     verify_pair,
 )
-from services.translation_qe import SPANISH_STOPWORDS, detect_language, tokens
+from utils.language_signals import SPANISH_STOPWORDS, detect_language, tokens
 from utils.text_match import fold
 
 CUSCO = "Manual quechua cusco collao administracion de justicia.md"

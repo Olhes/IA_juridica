@@ -112,8 +112,8 @@ class RAGCrossChecker:
         if not corpus_tokens:
             logger.warning("Corpus RAG vacío – no se puede hacer cross-check")
             return CrossCheckResult(
-                is_grounded=True,   # Optimista cuando no hay corpus
-                overlap_score=1.0,
+                is_grounded=False,
+                overlap_score=0.0,
                 total_claims=0,
                 grounded_claims=0,
             )
@@ -122,10 +122,10 @@ class RAGCrossChecker:
         claims = self._extract_claims(llm_answer)
 
         if not claims:
-            # Sin afirmaciones extraíbles → asumir OK (respuesta muy corta)
+            # No evaluable: no atribuir respaldo sin una afirmación analizada.
             return CrossCheckResult(
-                is_grounded=True,
-                overlap_score=1.0,
+                is_grounded=False,
+                overlap_score=0.0,
                 total_claims=0,
                 grounded_claims=0,
                 checked_against=len(corpus_tokens),

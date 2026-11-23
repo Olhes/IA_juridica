@@ -1,4 +1,5 @@
 import pytest
+from math import log
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -27,6 +28,23 @@ async def test_local_rerank_returns_chunk_shape(rag):
     assert len(result["documents"]) == len(result["rerank_scores"]) == 1
     assert result["documents"][0]["id"] == "new_chunk_0"
     assert result["sources"] == ["licencia-2024.md"]
+
+
+def test_light_rag_bm25_index_follows_text_changes_without_stale_metadata(rag):
+    rag.documents = {"rule": {"chunks": ["alimentos", "de la", "---"], "metadata": {"filename": "a.md"}}}
+    hit, = rag._local_candidates("alimentos", 3)
+    _, index, _ = rag._local_lexical_cache
+    assert index.score("alimentos") == pytest.approx({hit["id"]: log(1 + 2.5 / 1.5)})
+
+    rag.documents["rule"]["metadata"] = {"filename": "b.md"}
+    hit, = rag._local_candidates("alimentos", 3)
+    assert hit["metadata"]["filename"] == "b.md"
+    assert rag._local_lexical_cache[1] is index
+
+    rag.documents["rule"]["chunks"][0] = "matrimonio"
+    assert rag._local_candidates("alimentos", 3) == []
+    hit, = rag._local_candidates("matrimonio", 3)
+    assert hit["content"] == "matrimonio"
 
 
 def test_chunking_is_sentence_length_based_not_hierarchical(rag):
