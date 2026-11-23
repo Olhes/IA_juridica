@@ -4,13 +4,12 @@ from typing import Dict, List, Any, Optional
 import json
 import hashlib
 import re
-import math
 import unicodedata
-from collections import Counter
 from pathlib import Path
 from loguru import logger
 
 from config.settings import settings
+from retrieval.lexical import BM25Index
 
 try:
     import cohere
@@ -88,6 +87,7 @@ class LegalRAGEngine:
             )
 
         self.documents = {}
+        self._local_lexical_cache = None
         self.embeddings = {}
         self.rag = None
         self._storages_initialized = False
@@ -452,28 +452,25 @@ class LegalRAGEngine:
 
     def _local_candidates(self, query, limit):
         """BM25 over ALL chunks before the candidate budget, with stable tie-breaking."""
-        candidates = []
+        candidates = {}
         for doc_id, data in self.documents.items():
             for i, chunk in enumerate(data.get("chunks", [])):
                 if not isinstance(chunk, str) or not chunk.strip():
                     continue
-                candidates.append({"id": f"{doc_id}_chunk_{i}", "document_id": doc_id,
-                    "content": chunk, "metadata": data.get("metadata", {})})
-        terms = set(self._retrieval_tokens(query))
-        token_counts = [Counter(self._retrieval_tokens(d["content"])) for d in candidates]
-        n = len(candidates)
-        avg_len = sum(sum(c.values()) for c in token_counts) / max(n, 1)
-        df = {term: sum(term in c for c in token_counts) for term in terms}
-        ranked = []
-        for doc, counts in zip(candidates, token_counts):
-            length = sum(counts.values())
-            score = sum(math.log(1+(n-df[t]+0.5)/(df[t]+0.5)) *
-                (counts[t]*2.5)/(counts[t]+1.5*(0.25+0.75*length/max(avg_len,1)))
-                for t in terms if counts[t])
-            if score > 0:
-                ranked.append((score, hashlib.sha256(doc["content"].encode()).hexdigest(), doc["id"], doc))
-        ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
-        return [item[3] for item in ranked[:limit]]
+                identity = f"{doc_id}_chunk_{i}"
+                candidates[identity] = {"id": identity, "document_id": doc_id,
+                    "content": chunk, "metadata": data.get("metadata", {})}
+        # Compare exact IDs and text, not just document counts. Metadata is read
+        # live above so metadata-only changes need not rebuild the index.
+        snapshot = tuple((identity, doc["content"]) for identity, doc in candidates.items())
+        if self._local_lexical_cache is None or self._local_lexical_cache[0] != snapshot:
+            index = BM25Index(dict(snapshot), tokenize=self._retrieval_tokens, k1=1.5, average_floor=1.0)
+            hashes = {identity: hashlib.sha256(text.encode()).hexdigest() for identity, text in snapshot}
+            self._local_lexical_cache = (snapshot, index, hashes)
+        _, index, hashes = self._local_lexical_cache
+        scores = index.score(query)
+        ranked = sorted(scores, key=lambda identity: (-scores[identity], hashes[identity], identity))
+        return [candidates[identity] for identity in ranked[:limit]]
 
     def _retrieval_result(self, documents, method, count):
         sources = sorted({d["metadata"].get("filename", d["metadata"].get("title", "Desconocido")) for d in documents})

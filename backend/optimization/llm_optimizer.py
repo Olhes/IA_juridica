@@ -2,7 +2,7 @@
 LLM Optimizer para IA Jurídica.
 
 Proporciona:
-  - Caché semántico de respuestas (TTL configurable, usando hash SHA-256)
+  - Caché de coincidencia exacta (TTL configurable, hash SHA-256)
   - Compresión de prompt (preserva inicio + fin del contexto RAG)
   - Estimación y tracking de tokens por sesión
   - Métricas de uso para monitoreo
@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from loguru import logger
 
@@ -80,12 +81,12 @@ class LLMOptimizer:
     """
     Capa de optimización LLM basada en caché SHA-256 + métricas de tokens.
 
-    El caché es in-process (dict en memoria). Para producción multi-instancia
+    El caché es in-process (FIFO en memoria). Para producción multi-instancia
     se puede reemplazar el backend por Redis; la interfaz es idéntica.
 
     Argumentos:
         cache_ttl_seconds:  TTL de entradas cacheadas (default: 3600 = 1 hora)
-        max_cache_size:     Máximo de entradas en caché (LRU simple)
+        max_cache_size:     Máximo de entradas en caché (FIFO por última escritura)
         chars_per_token:    Factor de estimación de tokens (default: 4)
     """
 
@@ -99,7 +100,7 @@ class LLMOptimizer:
         self.max_cache_size = max_cache_size
         self.chars_per_token = chars_per_token
 
-        self._cache: Dict[str, _CacheEntry] = {}
+        self._cache: OrderedDict[str, _CacheEntry] = OrderedDict()
         self._usage = TokenUsage()
 
         logger.info(
@@ -123,7 +124,7 @@ class LLMOptimizer:
             return None
 
         response_text, timestamp = entry
-        if (time.time() - timestamp) > self.ttl:
+        if (time.monotonic() - timestamp) > self.ttl:
             del self._cache[key]
             self._usage.cache_misses += 1
             logger.debug("Cache MISS (expired)")
@@ -135,11 +136,11 @@ class LLMOptimizer:
 
     def cache_response(self, prompt: str, response: Any) -> None:
         """Almacena una respuesta en caché."""
-        if len(self._cache) >= self.max_cache_size:
-            self._evict_oldest()
-
         key = self._hash(prompt)
-        self._cache[key] = (response, time.time())
+        self._cache[key] = (response, time.monotonic())
+        self._cache.move_to_end(key)
+        if len(self._cache) > self.max_cache_size:
+            self._cache.popitem(last=False)
         logger.debug(
             f"Respuesta cacheada (key={key[:8]}..., cache_size={len(self._cache)})"
         )
@@ -241,11 +242,3 @@ class LLMOptimizer:
     def _hash(text: str) -> str:
         """SHA-256 del prompt como llave de caché."""
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-    def _evict_oldest(self) -> None:
-        """Elimina la entrada más antigua del caché (política FIFO simple)."""
-        if not self._cache:
-            return
-        oldest_key = min(self._cache, key=lambda k: self._cache[k][1])
-        del self._cache[oldest_key]
-        logger.debug(f"Caché: entrada antigua evicted (key={oldest_key[:8]}...)")

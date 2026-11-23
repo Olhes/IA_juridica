@@ -3,6 +3,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import bcrypt
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -15,8 +16,18 @@ from models.chat_models import (
     ConversationResponse,
     ConversationUpdate,
 )
+from modules.auth.services.security import AuthService
 from modules.chat.services.chat_service import ChatService
 from security import Principal, issue_session, set_session_cookie, verify_session
+
+
+def test_bcrypt_login_verification_accepts_an_existing_hash_and_fails_closed():
+    password = "clave sintética"
+    stored = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=4, prefix=b"2a")).decode("ascii")
+    assert AuthService.verify_password(password, stored)
+    assert not AuthService.verify_password("otra clave", stored)
+    assert not AuthService.verify_password("é" * 37, stored)
+    assert not AuthService.verify_password(password, "no-es-bcrypt")
 
 
 def test_signed_sessions_are_distinct_expire_and_reject_tampering():

@@ -28,6 +28,18 @@ def test_digest_matches_the_cache_key_digest():
     assert pipeline_digest() == cache_digest() and len(pipeline_digest()) == 64
 
 
+def test_pipeline_digest_tracks_code_paths_and_retrieval_edits(tmp_path):
+    source = tmp_path / "retrieval" / "scoring.py"
+    source.parent.mkdir()
+    source.write_text("K = 1\n", encoding="utf-8")
+    original = pipeline_digest(tmp_path)
+    source.write_text("K = 2\n", encoding="utf-8")
+    edited = pipeline_digest(tmp_path)
+    assert edited != original
+    source.rename(source.with_name("renamed.py"))
+    assert pipeline_digest(tmp_path) != edited
+
+
 def test_paired_bootstrap_detects_a_consistent_improvement_and_a_consistent_regression():
     base, head = rows([0.5] * 20), rows([0.7] * 20)
     better = compare.compare_metric(base, head, "legal_factuality", "macro", True)
@@ -63,6 +75,19 @@ def test_micro_pools_numerators_and_denominators_while_macro_averages_cases():
     assert micro["base"] == pytest.approx(2 / 5) and micro["head"] == pytest.approx(4 / 5)
     assert macro["base"] == pytest.approx(0.625) and macro["head"] == pytest.approx(0.875)
     assert compare.paired_delta([], "macro")["delta"] is None
+
+
+def test_translation_metrics_from_distinct_protocols_are_not_compared():
+    pair = {"id": "q", "scores": {k: {"value": 0.5} for k in ("chrf++", "ter", "glossary")}}
+    old = {"pairs": [pair]}
+    new = {**old, "metric_protocol": "sacrebleu-example/v1"}
+    incompatible = compare.compare_suite("translation", old, new)
+    assert not incompatible["meta"]["comparable"]
+    assert "metric_protocol" in incompatible["meta"]["problems"][0]
+    assert [m["metric"] for m in incompatible["metrics"]] == ["glossary"]
+    comparable = compare.compare_suite("translation", new, new)
+    assert comparable["meta"]["comparable"]
+    assert [m["metric"] for m in comparable["metrics"]] == ["chrf++", "ter", "glossary"]
 
 
 def test_case_changes_lists_the_cases_that_moved_most():

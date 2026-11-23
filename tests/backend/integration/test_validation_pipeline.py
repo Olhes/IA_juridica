@@ -244,7 +244,25 @@ class TestResponseValidatorIntegration:
             query        ="alimentos",
         )
         assert isinstance(result, ValidatedResponse)
-        assert result.validation_report.confidence_score <= 1.0
+        assert result.validation_report.confidence_score == 0.0
+        assert not result.validation_report.is_grounded
+        assert result.validation_report.corrections_applied == 0
+
+    @pytest.mark.asyncio
+    async def test_sat_ranking_score_does_not_change_validation(
+        self, response_validator, sample_rag_result, good_response_data,
+    ):
+        """Ni el score RRF pequeño ni el marcador de coincidencia exacta miden respaldo."""
+        reports = []
+        for rank_score in (2 / 61, 1.0):
+            out = await response_validator.validate(
+                response_data=good_response_data,
+                rag_result={**sample_rag_result, "method": "sat", "rerank_scores": [rank_score]},
+                query="alimentos",
+            )
+            reports.append(out.validation_report)
+        assert reports[0].hallucination_risk == reports[1].hallucination_risk
+        assert reports[0].confidence_score == reports[1].confidence_score
 
     @pytest.mark.asyncio
     async def test_processing_time_recorded(

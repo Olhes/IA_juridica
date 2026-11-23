@@ -7,10 +7,11 @@ ambos ensayos coinciden tras deshacer el cruce; si no, es ``inconsistente`` (ses
 """
 
 import hashlib
-import math
 import random
 from dataclasses import asdict, dataclass
 from typing import Optional
+
+from scipy.stats import binomtest
 
 WINNERS = ("base", "head", "tie")
 
@@ -87,9 +88,7 @@ def sign_test_p(wins: int, losses: int) -> Optional[float]:
     n = wins + losses
     if n == 0:
         return None
-    extreme = min(wins, losses)
-    tail = sum(math.comb(n, k) for k in range(extreme + 1)) / 2**n
-    return min(1.0, 2 * tail)
+    return float(binomtest(wins, n, p=0.5, alternative="two-sided").pvalue)
 
 
 async def judge_trials(judge, trials) -> dict:

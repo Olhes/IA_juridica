@@ -60,6 +60,15 @@ class TestLLMOptimizerCache:
         # Agregar la 4ta → debe evicionar prompt 1
         optimizer.cache_response("prompt 4", "r4")
         assert len(optimizer._cache) <= 3
+        assert optimizer.get_cached("prompt 1") is None
+
+    def test_rewrite_at_capacity_keeps_other_responses(self):
+        optimizer = LLMOptimizer(max_cache_size=2)
+        optimizer.cache_response("A", "old A")
+        optimizer.cache_response("B", "old B")
+        optimizer.cache_response("B", "new B")
+        assert optimizer.get_cached("A") == "old A"
+        assert optimizer.get_cached("B") == "new B"
 
     def test_invalidate_specific_key(self, llm_optimizer):
         """Invalidar una clave específica no debe afectar las demás."""

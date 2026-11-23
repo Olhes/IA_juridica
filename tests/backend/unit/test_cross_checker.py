@@ -47,12 +47,13 @@ class TestRAGCrossChecker:
         assert result.overlap_score == 0.0
         assert result.total_claims == 0
 
-    def test_empty_corpus_returns_optimistic(self):
-        """Sin documentos en el corpus → is_grounded=True (no podemos evaluar)."""
+    def test_empty_corpus_does_not_claim_grounding(self):
+        """Sin documentos en el corpus no hay respaldo verificable."""
         checker = RAGCrossChecker(documents={})
         result = checker.check("Respuesta legal sobre alimentos.", query="alimentos")
-        assert result.is_grounded
-        assert result.overlap_score == 1.0
+        assert not result.is_grounded
+        assert result.overlap_score == 0.0
+        assert result.total_claims == 0
 
     def test_returns_cross_check_result_type(self, cross_checker):
         """Siempre debe retornar CrossCheckResult independiente del input."""

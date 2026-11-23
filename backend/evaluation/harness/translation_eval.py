@@ -90,12 +90,10 @@ def evaluate_translation(pairs, outputs, *, system="unknown", only_clean=True) -
         rows.append({"pair": pair, "scores": score_pair(pair, output, own), "output": output})
 
     def corpus_block(selected):
-        if not selected:
-            return {}
-        chrf_stats = [t.best_chrf_stats(r["output"].text, r["pair"].references_qu) for r in selected]
-        merged = [tuple(sum(s[i][k] for s in chrf_stats) for k in range(3)) for i in range(len(chrf_stats[0]))]
-        bleu = t.merge_bleu_stats([t.best_bleu_stats(r["output"].text, r["pair"].references_qu) for r in selected])
-        return {"chrf++": t.chrf_from_stats(merged), "bleu": t.bleu_from_stats(bleu), "n": len(selected)}
+        return t.corpus_scores(
+            [r["output"].text for r in selected],
+            [r["pair"].references_qu for r in selected],
+        )
 
     def group(key):
         groups = defaultdict(list)
@@ -111,6 +109,7 @@ def evaluate_translation(pairs, outputs, *, system="unknown", only_clean=True) -
         "suite": "translation",
         "system": system,
         "direction": "es>qu",
+        "metric_protocol": t.METRIC_PROTOCOL,
         "n_pairs": len(evaluated),
         "n_scored": len(rows),
         "n_errors": len(errors),

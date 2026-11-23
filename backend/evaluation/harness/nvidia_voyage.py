@@ -5,7 +5,6 @@ nunca los hechos esperados ni las respuestas gold, a los proveedores externos.
 """
 
 import asyncio
-import math
 import os
 import re
 
@@ -13,6 +12,7 @@ import httpx
 
 from evaluation.harness.answers import Answer
 from retrieval.voyage import VoyageError, VoyageProvider, VoyageRateLimit
+from utils.vectors import cosine_scores
 
 MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 URL = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -34,11 +34,6 @@ async def ragas_string_similarity(cases, answers):
             result = await scorer.ascore(reference=reference, response=response)
             values.append(float(result.value))
     return {"available": True, "value": sum(values) / len(values) if values else None, "n": len(values)}
-
-
-def _cosine(a, b):
-    denominator = math.sqrt(sum(x * x for x in a) * sum(x * x for x in b))
-    return sum(x * y for x, y in zip(a, b, strict=True)) / denominator if denominator else 0.0
 
 
 def build_answer_fn(corpus, cache_path, *, delay_seconds=0):
@@ -75,7 +70,8 @@ def build_answer_fn(corpus, cache_path, *, delay_seconds=0):
         try:
             query_vectors, _ = await asyncio.to_thread(provider.embed, [[case.query]], input_type="query")
             doc_vectors, _ = await asyncio.to_thread(provider.embed, [[d] for d in docs], input_type="document")
-            ranked = sorted(range(len(docs)), key=lambda i: (-_cosine(query_vectors[0][0], doc_vectors[i][0]), i))[:5]
+            scores = cosine_scores([item for item, in doc_vectors], query_vectors[0][0])
+            ranked = sorted(range(len(docs)), key=lambda i: (-scores[i], i))[:5]
             reranked, _ = await asyncio.to_thread(provider.rerank, case.query, [docs[i] for i in ranked], top_k=len(ranked))
         except VoyageError as error:
             if isinstance(error, VoyageRateLimit) or str(error).startswith("Cuota local Voyage agotada"):
