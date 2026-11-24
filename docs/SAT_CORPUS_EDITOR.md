@@ -15,7 +15,11 @@ revisable. El corpus viaja con el repositorio:
 
 ## Compartir el corpus en PostgreSQL
 
-Por defecto, el chat SAT y el revisor leen y escriben en el esquema
+> Flujo histórico de migración: el entorno actual usa SurrealDB. El servicio
+> PostgreSQL de Docker solo se inicia explícitamente con el perfil
+> `legacy-postgres`; su volumen se conserva para recuperar datos anteriores.
+
+En la configuración histórica con PostgreSQL, el chat SAT y el revisor leen y escriben en el esquema
 `sat_graph` de **la misma base PostgreSQL del chat**. Para compartirlo, las
 instancias del equipo deben apuntar al mismo `DATABASE_URL` (gestionado fuera de
 Git); dos instancias Docker locales distintas no comparten datos. Tanto el chat
@@ -24,7 +28,7 @@ como el revisor deben tener acceso de lectura/escritura al esquema.
 Para instalar el corpus beta en una base Docker local nueva, ejecuta:
 
 ```powershell
-docker compose up -d --wait postgres
+docker compose --profile legacy-postgres up -d --wait postgres
 docker compose cp backend/docs/sat_graph.pg_dump postgres:/tmp/sat_graph.pg_dump
 docker compose exec -T postgres pg_restore -U juridica_user -d juridica_db --single-transaction --exit-on-error --no-owner --no-privileges /tmp/sat_graph.pg_dump
 ```

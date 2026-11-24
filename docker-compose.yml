@@ -1,5 +1,7 @@
 services:
   postgres:
+    # Solo para migraciones o recuperación de datos anteriores a SurrealDB.
+    profiles: ["legacy-postgres"]
     image: postgres:18.7-alpine
     container_name: ia_juridica_postgres
     environment:
