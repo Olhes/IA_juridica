@@ -316,9 +316,123 @@ def test_access_log_does_not_keep_oauth_code_or_ip():
         None,
     )
     assert SafeAccessLog().filter(record)
-    assert (
-        "SECRET" not in record.getMessage() and "192.0.2.10" not in record.getMessage()
+    message = record.getMessage()
+    assert "SECRET" not in message and "192.0.2.10" not in message
+    assert "GET /auth/google/callback HTTP/1.1" in message
+
+
+def test_access_log_sanitizes_injection_uuids_tokens_and_length():
+    def _filter_path(raw_path: str) -> str:
+        record = logging.LogRecord(
+            "uvicorn.access",
+            logging.INFO,
+            "",
+            0,
+            '%s - "%s %s HTTP/%s" %d',
+            ("127.0.0.1", "GET", raw_path, "1.1", 404),
+            None,
+        )
+        assert SafeAccessLog().filter(record)
+        return record.getMessage()
+
+    # Preserves plain routes like /favicon.ico for observability
+    assert "GET /favicon.ico HTTP/1.1" in _filter_path("/favicon.ico")
+
+    # Neutralizes CRLF / control-character log injection (CWE-117)
+    injected = _filter_path("/ok\r\nINFO: forged\x00line?token=abc#frag")
+    assert "\r" not in injected and "\n" not in injected and "\x00" not in injected
+    assert "token" not in injected and "abc" not in injected and "frag" not in injected
+
+    # Redacts UUID resource identifiers and local-session tokens in paths
+    conv_msg = _filter_path(
+        "/chat/conversations/c9879836-f083-4d3b-b760-ea898bae18c4?limit=50"
     )
+    assert "c9879836-f083-4d3b-b760-ea898bae18c4" not in conv_msg
+    assert "limit=50" not in conv_msg
+    assert "GET /chat/conversations/{id} HTTP/1.1" in conv_msg
+
+    session_msg = _filter_path("/local-session/super-secret-token-value")
+    assert "super-secret-token-value" not in session_msg
+    assert "GET /local-session/{redacted} HTTP/1.1" in session_msg
+
+    # Local-session bypass variants (double slash, uppercase, root_path prefix, trailing segments)
+    for bypass in (
+        "//local-session/SECRET_TOK",
+        "/local-session//SECRET_TOK",
+        "/LOCAL-SESSION/SECRET_TOK",
+        "/api/local-session/SECRET_TOK",
+        "/local-session/SECRET_A/SECRET_B",
+    ):
+        assert "SECRET" not in _filter_path(bypass)
+
+    # Fragment-before-query ordering and proxy-form absolute URI with credentials
+    frag_first = _filter_path("/auth/google/callback#frag?code=SECRET")
+    assert "frag" not in frag_first and "SECRET" not in frag_first
+    assert "GET /auth/google/callback HTTP/1.1" in frag_first
+
+    proxy_uri = _filter_path("http://user:SECRET@example.com/path")
+    assert "SECRET" not in proxy_uri and "GET [route] HTTP/1.1" in proxy_uri
+
+    # Unicode line/control separators on path
+    uni_msg = _filter_path("/a\u2028b\u2029c\x85d\x9b31mred")
+    for ch in ("\u2028", "\u2029", "\x85", "\x9b"):
+        assert ch not in uni_msg
+
+    # Bounds pathological long scanner paths
+    long_msg = _filter_path("/" + "a" * 300)
+    assert len(long_msg) < 200
+    assert "127.0.0.1" not in long_msg
+
+
+def test_access_log_sanitizes_method_version_and_rejects_bad_status():
+    forged = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1234", "GET\r\nINFO: forged", "/ok", "1.1\u2028forged", 200),
+        None,
+    )
+    assert SafeAccessLog().filter(forged)
+    msg = forged.getMessage()
+    assert "\r" not in msg and "\n" not in msg and "\u2028" not in msg
+    assert "forged" not in msg
+    assert '[client] - "[method] /ok HTTP/[version]" 200' == msg
+
+    long_method = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1234", "A" * 300, "/ok", "1.1", 200),
+        None,
+    )
+    assert SafeAccessLog().filter(long_method)
+    assert len(long_method.getMessage()) < 100
+
+    bad_status = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1", 123, None, None, "200\r\nFAKE"),
+        None,
+    )
+    assert not SafeAccessLog().filter(bad_status)
+
+    bool_status = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1", "GET", "/ok", "1.1", True),
+        None,
+    )
+    assert not SafeAccessLog().filter(bool_status)
 
 
 def test_stream_error_and_logs_do_not_echo_query_or_request_id(
