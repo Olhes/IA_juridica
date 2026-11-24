@@ -97,3 +97,5 @@ models/
 
 # Datos locales del backend (feedback de usuarios): nunca se versionan.
 /data/
+.gentle-ai-default-agent.json
+opencode.json
