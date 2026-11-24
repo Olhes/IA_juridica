@@ -3,6 +3,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TerminalModal } from '../../../frontend/src/presentation/components/TerminalModal';
 
+const voice = vi.hoisted(() => ({ speakQuechua: vi.fn(), speakSpanish: vi.fn(), stop: vi.fn() }));
+vi.mock('../../../frontend/src/application/legal/use-cases/useSpeech', () => ({
+  useTextToSpeech: () => ({ speak: voice.speakSpanish, speaking: false, stop: voice.stop }),
+  useQuechuaTextToSpeech: () => ({ speak: voice.speakQuechua, speaking: false, loading: false, stop: voice.stop }),
+}));
+
 test('terminal cerrado no renderiza y abierto enfoca la entrada', () => {
   const props = { onSend: vi.fn(), onClose: vi.fn(), messages: [] };
   const { rerender } = render(<TerminalModal {...props} isOpen={false} />);
@@ -28,4 +34,12 @@ test('terminal Escape y cerrar notifican cierre y devuelven foco', async () => {
   await user.click(screen.getByRole('button', { name: 'Cerrar' })); expect(close).toHaveBeenCalledTimes(2);
   rerender(<><button>Abrir</button><TerminalModal isOpen={false} onSend={vi.fn()} onClose={close} messages={[]} /></>);
   expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus();
+});
+
+test('autoplay quechua envía Markdown íntegro para normalizarlo en el backend', () => {
+  voice.speakQuechua.mockClear();
+  const content = '[Artículo 164-A](https://example.org/norma_(1))';
+  render(<TerminalModal isOpen language="quechua" onSend={vi.fn()} onClose={vi.fn()}
+    messages={[{ id: 'q1', content, isUser: false }]} />);
+  expect(voice.speakQuechua).toHaveBeenCalledExactlyOnceWith(content);
 });

@@ -149,13 +149,9 @@ class RedisAdapter:
     async def get_cached_embedding(self, text_hash: str) -> Optional[List[float]]:
         """Obtener embedding cacheado"""
         key = f"embedding:{text_hash}"
-        embedding_str = await self.get_cache(key)
-        if embedding_str:
-            try:
-                return json.loads(embedding_str)
-            except json.JSONDecodeError:
-                return None
-        return None
+        embedding = await self.get_cache(key)
+        # get_cache ya decodifica JSON; no intentar deserializar la lista dos veces.
+        return embedding if isinstance(embedding, list) else None
     
     # === Cache de RAG ===
     
@@ -303,7 +299,18 @@ class RedisAdapter:
     async def get_all_keys_pattern(self, pattern: str, limit: int = 100) -> List[str]:
         """Obtener claves por patrón"""
         try:
-            return await self.client.keys(pattern)[:limit]
+            if limit <= 0:
+                return []
+            keys = []
+            seen = set()
+            async for key in self.client.scan_iter(match=pattern):
+                if key in seen:
+                    continue
+                seen.add(key)
+                keys.append(key)
+                if len(keys) >= limit:
+                    break
+            return keys
         except Exception as e:
             print(f"❌ Error en get_all_keys_pattern: {e}")
             return []

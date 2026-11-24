@@ -154,7 +154,8 @@ export function TerminalModal({
         lastPlayedMessageId.current = lastMessage.id;
         // Use Quechua TTS if language is quechua, otherwise Spanish TTS
         if (language === 'quechua') {
-          speakQuechua(toSpeechText(lastMessage.content));
+          // El backend normaliza Markdown con un parser; no alterarlo antes de enviarlo.
+          speakQuechua(lastMessage.content);
         } else {
           speakSpanish(toSpeechText(lastMessage.content));
         }

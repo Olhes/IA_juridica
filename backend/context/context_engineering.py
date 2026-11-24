@@ -282,17 +282,19 @@ class ContextEngineer:
         return chunk
 
     def _detect_legal_type(self, content: str) -> str:
-        """Detecta tipo de procedimiento legal"""
+        """Clasificación indicativa; omite categorías cuando faltan señales específicas."""
 
         type_patterns = {
             "violencia_familiar": [
                 "violencia",
                 "maltrato",
                 "agresión",
-                "protección",
-                "medida",
+                "violencia familiar",
+                "medidas de protección",
             ],
-            "pensión_alimentos": ["pensión", "alimentos", "hijos", "obligado", "pago"],
+            "regimen_visitas": ["régimen de visitas", "regimen de visitas", "derecho de visitas", "visitar a mi", "visitas"],
+            "tenencia": ["tenencia", "custodia"],
+            "pensión_alimentos": ["pensión de alimentos", "pension de alimentos", "pensión alimenticia", "pension alimenticia", "alimentos"],
             "identidad": ["dni", "nacimiento", "inscripción", "reniec", "nombre"],
             "demanda": ["demanda", "proceso", "juicio", "juzgado", "demandante"],
         }

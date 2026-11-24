@@ -329,23 +329,16 @@ export function RelatedJurisprudence({ language, apiResponse }: { language: Supp
 /** "¿Por qué confiar en esta respuesta?": solo hechos medidos por el pipeline, sin adjetivos propios. */
 export function TrustPanel({ language, apiResponse }: { language: SupportedLanguage; apiResponse: LegalQueryApiResponse }) {
   const t = chatTranslations[language].trust;
-  const validation = apiResponse.validation;
   const evidence = apiResponse.metadata?.evidence ?? [];
   const citations = apiResponse.metadata?.citations ?? [];
   const documents = new Set(evidence.map((item) => item.document ?? item.source)).size;
   const verified = citations.filter((c) => c.status === 'verified').length;
-  const reliable = validation?.is_reliable;
   return (
     <details className="mt-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-700">
-      <summary className="cursor-pointer px-3 py-2 font-semibold text-slate-900">{t.summary}</summary>
+      <summary className="cursor-pointer px-3 py-2 font-semibold text-slate-900">{chatTranslations[language].citations.label}</summary>
       <ul className="space-y-1 px-3 pb-3 pt-1">
         <li>{evidence.length ? t.evidence(evidence.length, documents) : t.noEvidence}</li>
-        {validation && <li>{validation.is_grounded ? t.grounded : t.notGrounded}</li>}
-        {validation && typeof validation.hallucination_risk === 'number' && (
-          <li>{t.risk((validation.hallucination_risk * 100).toFixed(0))}</li>
-        )}
         <li>{citations.length ? t.citations(verified, citations.length) : t.noCitations}</li>
-        {typeof reliable === 'boolean' && <li className={reliable ? 'text-emerald-700' : 'text-amber-700'}>{reliable ? t.reliable : t.notReliable}</li>}
         <li className="pt-1 text-slate-500">{t.disclaimer}</li>
       </ul>
     </details>

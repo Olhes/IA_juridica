@@ -7,29 +7,21 @@ respuesta le atribuye ni su vigencia.
 """
 
 from evaluation.harness.metrics.common import Score
-from services.citation_verifier import citation_matches, despace, evidence_keys, extract_citations
-from utils.text_match import compact
+from services.citation_verifier import citation_matches, evidence_keys, extract_citations
+
+CITATION_CORPUS_PROTOCOL = "citation-in-corpus/explicit-reference-v2"
 
 
 class CorpusIndex:
-    """Claves de cita y texto compacto del corpus, para verificar sin recorrerlo cada vez."""
+    """Claves explícitas por segmento, sin inferir normas de secuencias numéricas."""
 
     def __init__(self, corpus):
         self.keys = set()
-        parts = []
         for segment in corpus.segments.values():
             self.keys |= evidence_keys(segment.text)
-            parts.append(segment.text)
-        self.compact = compact(" ".join(parts))
-        self.despaced = compact(despace(" ".join(parts)))
 
     def contains(self, citation) -> bool:
-        if any(citation_matches(citation.key, key) for key in self.keys):
-            return True
-        if citation.kind in {"ley", "casacion", "decreto_supremo"}:
-            digits = compact(citation.key.split(":", 1)[1])
-            return digits in self.compact or digits in self.despaced
-        return False
+        return any(citation_matches(citation.key, key) for key in self.keys)
 
 
 def cited(text):

@@ -100,6 +100,14 @@ def test_citation_index_finds_citations_in_spaced_ocr_documents(corpus):
     assert citations.citation_in_corpus(text, index).value == 1.0
 
 
+def test_citation_index_does_not_infer_laws_from_unrelated_numbers():
+    from types import SimpleNamespace
+    segment = SimpleNamespace(text="Teléfono 991314649 y expediente 1293-2021.")
+    index = citations.CorpusIndex(SimpleNamespace(segments={"a": segment}))
+    score = citations.citation_in_corpus("Ley 31464 y Casación 1293-2021", index)
+    assert (score.num, score.den) == (0, 2)
+
+
 def test_citation_grounded_reads_runtime_statuses():
     none = Answer(text="x")
     assert not citations.citation_grounded(none).applicable

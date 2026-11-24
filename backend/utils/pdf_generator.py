@@ -11,6 +11,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
+from markdown_it import MarkdownIt
+from markdown_it.rules_block.table import escapedSplit
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -41,6 +43,7 @@ _FENCE_RE = re.compile(r"^\s*```([\w+-]*)\s*$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _LIST_RE = re.compile(r"^(\s*)([-+*]|\d+[.)])\s+(.*)$")
 _HR_RE = re.compile(r"^\s{0,3}([-*_])(?:\s*\1){2,}\s*$")
+_INLINE_MARKDOWN = MarkdownIt("commonmark").enable("strikethrough")
 
 
 def _normalize_markdown(text: str) -> str:
@@ -53,53 +56,51 @@ def _format_inline_markdown(text: str) -> str:
     if not raw:
         return ""
 
-    escaped = html.escape(raw, quote=False)
-
-    code_spans: List[str] = []
-
-    def replace_code(match: re.Match[str]) -> str:
-        code_spans.append(match.group(1))
-        return f"@@CODETOKEN{len(code_spans) - 1}@@"
-
-    escaped = re.sub(r"`([^`]+)`", replace_code, escaped)
-
-    def replace_image(match: re.Match[str]) -> str:
-        alt = match.group(1).strip()
-        src = match.group(2).strip()
-        label = alt if alt else src
-        return f"[Imagen: {html.escape(label, quote=False)}]"
-
-    escaped = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", replace_image, escaped)
-
-    def replace_link(match: re.Match[str]) -> str:
-        label = match.group(1)
-        url = html.escape(match.group(2).strip(), quote=True)
-        return f'<link href="{url}"><u>{label}</u></link>'
-
-    escaped = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", replace_link, escaped)
-
-    escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
-    escaped = re.sub(r"__(.+?)__", r"<b>\1</b>", escaped)
-    escaped = re.sub(r"(?<!\*)\*(?!\*)([^*]+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", escaped)
-    escaped = re.sub(r"(?<!_)_(?!_)([^_]+?)(?<!_)_(?!_)", r"<i>\1</i>", escaped)
-    escaped = re.sub(r"~~(.+?)~~", r"<font color='#718096'>\1</font>", escaped)
-
-    for index, snippet in enumerate(code_spans):
-        token = f"@@CODETOKEN{index}@@"
-        # Capturado después de html.escape: no escapar de nuevo los operadores.
-        code_html = snippet
-        escaped = escaped.replace(token, f"<font face='Courier'>{code_html}</font>")
-
-    return escaped
+    parts = []
+    links = []
+    tags = {
+        "strong_open": "<b>", "strong_close": "</b>",
+        "em_open": "<i>", "em_close": "</i>",
+        "s_open": "<font color='#718096'>", "s_close": "</font>",
+    }
+    for token in _INLINE_MARKDOWN.parseInline(raw)[0].children or []:
+        if token.type in tags:
+            parts.append(tags[token.type])
+        elif token.type in {"text", "html_inline"}:
+            parts.append(html.escape(token.content, quote=False))
+        elif token.type == "code_inline":
+            parts.append(f"<font face='Courier'>{html.escape(token.content, quote=False)}</font>")
+        elif token.type == "image":
+            label = token.content.strip() or token.attrGet("src") or ""
+            parts.append(f"[Imagen: {html.escape(label, quote=False)}]")
+        elif token.type == "link_open":
+            url = token.attrGet("href") or ""
+            allowed = url.lower().startswith(("https://", "http://"))
+            links.append((allowed, url))
+            if allowed:
+                parts.append(f'<link href="{html.escape(url, quote=True)}"><u>')
+            else:
+                parts.append("[")
+        elif token.type == "link_close":
+            allowed, url = links.pop()
+            if allowed:
+                parts.append("</u></link>")
+            else:
+                parts.append(f"]({html.escape(url, quote=False)})")
+        elif token.type in {"softbreak", "hardbreak"}:
+            parts.append(" ")
+    return "".join(parts)
 
 
 def _split_markdown_row(line: str) -> List[str]:
-    clean = line.strip()
-    if clean.startswith("|"):
-        clean = clean[1:]
-    if clean.endswith("|"):
-        clean = clean[:-1]
-    return [cell.strip() for cell in clean.split("|")]
+    # Usa el mismo separador de tablas de markdown-it-py (versión fijada),
+    # conservando columnas sobrantes que su renderizador de tablas descartaría.
+    cells = escapedSplit(line.strip())
+    if cells and cells[0] == "":
+        cells.pop(0)
+    if cells and cells[-1] == "":
+        cells.pop()
+    return [cell.strip() for cell in cells]
 
 
 def _is_table_separator_row(cells: List[str]) -> bool:

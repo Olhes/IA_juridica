@@ -54,10 +54,10 @@ function UserIcon() {
 
 function ValidationBadge({ validation }: { validation: ValidationReport }) {
   const map = {
-    passed: { icon: <ShieldCheck className="w-4 h-4" />, label: 'Validado', cls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900' },
+    passed: { icon: <ShieldCheck className="w-4 h-4" />, label: 'Revisión automática', cls: 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700' },
     warned: { icon: <Shield className="w-4 h-4" />, label: 'Con advertencias', cls: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900' },
-    corrected: { icon: <Shield className="w-4 h-4" />, label: 'Auto-corregido', cls: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900' },
-    failed: { icon: <ShieldAlert className="w-4 h-4" />, label: 'No validado', cls: 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900' },
+    corrected: { icon: <Shield className="w-4 h-4" />, label: 'Revisión automática', cls: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900' },
+    failed: { icon: <ShieldAlert className="w-4 h-4" />, label: 'Revisión con alertas', cls: 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900' },
   };
   const { icon, label, cls } = map[validation.status];
   return (
@@ -306,7 +306,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
   // ── Burbuja del asistente ────────────────────────────────────────
   const apiResp = message.apiResponse;
   const validation = apiResp?.validation;
-  const showValidationWarning = validation?.status === 'failed' || validation?.confidence === 'low';
+  const showValidationWarning = validation?.status === 'failed';
   const respText =
     language === 'quechua'
       ? apiResp?.response?.respuesta_quechua || displayText
@@ -326,13 +326,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
         {showValidationWarning && validation?.status === 'failed' && (
           <div className="mb-3 flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2 text-xs text-red-700 dark:text-red-400">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>Esta respuesta no superó el umbral de validación. Consulta a un abogado o abogada.</span>
-          </div>
-        )}
-        {showValidationWarning && validation?.confidence === 'low' && (
-          <div className="mb-3 flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>Confianza baja. Usa esta orientación como punto de partida.</span>
+            <span>Los controles automáticos detectaron alertas. Consulta a un abogado o abogada.</span>
           </div>
         )}
 
@@ -387,7 +381,7 @@ export function ChatMessage({ message, onDownloadPdf, isDownloadingPdf, language
             )}
             {validation?.corrections_applied ? (
               <span className="text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900 px-2 py-0.5 rounded-full">
-                <CheckCircle className="w-3 h-3 inline-block mr-0.5" />Revisado
+                <CheckCircle className="w-3 h-3 inline-block mr-0.5" />Modificado automáticamente
               </span>
             ) : null}
           </div>

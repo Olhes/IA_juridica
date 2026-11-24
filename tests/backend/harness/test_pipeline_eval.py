@@ -205,6 +205,19 @@ def test_registered_thresholds_pass_fail_and_go_stale_with_the_gold(tmp_path):
     assert provisional["provisional"] is True
 
 
+def test_citation_threshold_requires_same_measurement_protocol(tmp_path):
+    path = baseline_file(tmp_path, adjudicated=4)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report["citation_corpus_protocol"] = "citation-in-corpus/explicit-reference-v2"
+    report["metrics"]["citation_in_corpus"] = {"macro": {"value": 0.9}}
+    path.write_text(json.dumps(report), encoding="utf-8")
+    registered = thresholds.register(path, {"citation_in_corpus": {"min": 0.8}}, tmp_path / "t.json")
+    assert thresholds.check(report, registered)["status"] == "pass"
+    assert thresholds.check({**report, "citation_corpus_protocol": None}, registered)["status"] == "stale"
+    old = {**registered, "baseline": {k: v for k, v in registered["baseline"].items() if k != "citation_corpus_protocol"}}
+    assert thresholds.check(report, old)["status"] == "stale"
+
+
 async def test_quechua_cases_check_facts_on_the_validated_spanish_and_measure_the_translation(cases, corpus):
     case = cases["pension-contenido-alimentos-qu"]
     spanish = oracle_answer(case).text

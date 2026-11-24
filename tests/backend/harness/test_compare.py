@@ -90,6 +90,16 @@ def test_translation_metrics_from_distinct_protocols_are_not_compared():
     assert [m["metric"] for m in comparable["metrics"]] == ["chrf++", "ter", "glossary"]
 
 
+def test_citation_corpus_protocol_changes_are_not_compared():
+    case = {"id": "q", "scores": {"citation_in_corpus": {"value": 1.0}}}
+    old = {"cases": [case]}
+    new = {**old, "citation_corpus_protocol": "citation-in-corpus/explicit-reference-v2"}
+    result = compare.compare_suite("legal_qa", old, new)
+    assert not result["meta"]["comparable"]
+    assert all(m["metric"] != "citation_in_corpus" for m in result["metrics"])
+    assert any(m["metric"] == "citation_in_corpus" for m in compare.compare_suite("legal_qa", new, new)["metrics"])
+
+
 def test_case_changes_lists_the_cases_that_moved_most():
     moves = compare.case_changes(rows([0.9, 0.5, 0.1]), rows([0.2, 0.5, 0.8]), "legal_factuality", True)
     assert [m["case_id"] for m in moves["regressed"]] == ["c00"] and [m["case_id"] for m in moves["improved"]] == ["c02"]

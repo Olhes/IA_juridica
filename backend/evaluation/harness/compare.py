@@ -193,12 +193,21 @@ def compare_suite(suite: str, base: dict, head: dict, *, seed=0) -> dict:
     base_rows, head_rows = per_case(base, suite), per_case(head, suite)
     base_protocol, head_protocol = base.get("metric_protocol"), head.get("metric_protocol")
     incompatible_translation = suite == "translation" and base_protocol != head_protocol
+    base_citation = base.get("citation_corpus_protocol")
+    head_citation = head.get("citation_corpus_protocol")
+    incompatible_citation = suite == "legal_qa" and base_citation != head_citation
+    if incompatible_citation:
+        out["meta"]["changed"]["citation_corpus_protocol"] = {"base": base_citation, "head": head_citation}
+        out["meta"]["comparable"] = False
+        out["meta"]["problems"].append("`citation_corpus_protocol` distinto: recalcula la métrica de citas con el mismo protocolo")
     if incompatible_translation:
         out["meta"]["changed"]["metric_protocol"] = {"base": base_protocol, "head": head_protocol}
         out["meta"]["comparable"] = False
         out["meta"]["problems"].append("`metric_protocol` distinto: recalcula chrF++, BLEU y TER con el mismo protocolo")
     for metric, scope, higher in HEADLINE.get(suite, []):
         if incompatible_translation and metric in {"chrf++", "bleu", "ter"}:
+            continue
+        if incompatible_citation and metric == "citation_in_corpus":
             continue
         out["metrics"].append(compare_metric(base_rows, head_rows, metric, scope, higher, seed=seed))
         out["cases"].append(case_changes(base_rows, head_rows, metric, higher))

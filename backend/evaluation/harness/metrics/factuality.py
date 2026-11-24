@@ -1,7 +1,8 @@
 """Legal factuality: recall de hechos exigidos y afirmaciones prohibidas.
 
-La cobertura de un hecho es **léxica** (anclas del gold) y por tanto una
-cota conservadora; el juez, si está disponible, aporta una segunda lectura
+La cobertura de un hecho es **léxica** (anclas del gold): puede pasar por alto
+paráfrasis o aceptar una negación, por lo que no es una cota de la corrección
+semántica. El juez, si está disponible, aporta una segunda lectura
 (``fact_recall_judge``). Una afirmación prohibida detectada por patrón es un
 *candidato*: los patrones son heurísticos y un abogado decide.
 """

@@ -62,6 +62,7 @@ def register(baseline_path, thresholds: dict, out_path=THRESHOLDS_PATH, *, allow
             "gold_hash": meta.get("gold_hash"),
             "prompt_digest": meta.get("prompt_digest"),
             "adjudicated_cases": adjudicated,
+            "citation_corpus_protocol": report.get("citation_corpus_protocol"),
         },
         "registered_at": (now or datetime.now(timezone.utc)).isoformat(),
         "thresholds": thresholds,
@@ -77,6 +78,9 @@ def check(report: dict, document: dict) -> dict:
     gold_hash = report.get("meta", {}).get("gold_hash")
     if gold_hash != document["baseline"]["gold_hash"]:
         return {"status": "stale", "checks": [], "reason": "el gold cambió desde el baseline; vuelve a medir y registrar"}
+    if ("citation_in_corpus" in document["thresholds"] and
+            report.get("citation_corpus_protocol") != document["baseline"].get("citation_corpus_protocol")):
+        return {"status": "stale", "checks": [], "reason": "el protocolo de citas cambió desde el baseline; vuelve a medir y registrar"}
     checks = []
     for metric, rule in document["thresholds"].items():
         scope = rule.get("scope", "macro")

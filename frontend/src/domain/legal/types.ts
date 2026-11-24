@@ -74,7 +74,7 @@ export interface GeneralLegalResponse {
 }
 
 export interface CrossCheckSummary {
-  is_grounded: boolean;
+  is_grounded: boolean | null;
   overlap_score: number;
   ungrounded_claims: string[];
   supporting_chunks: string[];
@@ -138,10 +138,11 @@ export interface TranslationInfo {
 
 export interface ValidationReport {
   status: ValidationStatus;
-  confidence: ConfidenceLevel;
-  confidence_score: number;
-  hallucination_risk: number;
-  is_grounded: boolean;
+  confidence: ConfidenceLevel | null;
+  confidence_score: number | null;
+  hallucination_risk: number | null;
+  is_grounded: boolean | null;
+  semantic_verification?: 'not_performed';
   corrections_applied: number;
   flags: unknown[];
   cross_check: CrossCheckSummary | null;
@@ -150,7 +151,7 @@ export interface ValidationReport {
   processing_time_ms: number;
   validated_at: string;
   /** El pipeline lo considera fiable: hubo evidencia y el validador la aprobó. No certifica verdad jurídica. */
-  is_reliable?: boolean;
+  is_reliable?: boolean | null;
 }
 
 export interface LegalQueryApiResponse {

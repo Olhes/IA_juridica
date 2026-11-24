@@ -203,7 +203,8 @@ class ResponseValidator:
         if confidence_score < self.config.min_confidence_score:
             status = ValidationStatus.FAILED
             warnings.append(
-                f"Confianza insuficiente: {confidence_score:.2f} < {self.config.min_confidence_score}"
+                "El índice heurístico interno no alcanzó el umbral de revisión; "
+                "no mide la probabilidad de que la respuesta sea correcta."
             )
         elif status == ValidationStatus.PASSED and hallucination_report.flags:
             status = ValidationStatus.WARNED

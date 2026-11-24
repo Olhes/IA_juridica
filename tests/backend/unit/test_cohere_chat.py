@@ -140,6 +140,15 @@ def test_sat_pension_prompt_keeps_article_and_norm_without_injecting_unsupported
     assert prompt.count(body) == 1
 
 
+def test_topic_classifier_avoids_payment_only_and_recognizes_visits():
+    from context.context_engineering import ContextEngineer
+
+    classifier = ContextEngineer()
+    assert classifier._detect_legal_type("desalojo por falta de pago del alquiler") == "general"
+    assert classifier._detect_legal_type("¿cómo solicito el régimen de visitas de mis hijos?") == "regimen_visitas"
+    assert classifier._detect_legal_type("solicito una pensión de alimentos") == "pensión_alimentos"
+
+
 async def test_pension_fallback_leaves_unverified_amount_and_timeline_unspecified():
     from agents.pydantic_agents import LegalAgent
 

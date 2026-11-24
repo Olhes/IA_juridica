@@ -253,6 +253,8 @@ def test_cached_stream_emits_chunk_then_final_without_external_calls(api, monkey
         "cached": True,
         "response": {"respuesta_espanol": "Artículo local"},
         "sources": ["licencia.md"],
-        "validation": {"is_reliable": True},
+        "validation": {"is_reliable": None, "is_grounded": None, "confidence": None,
+                       "confidence_score": None, "hallucination_risk": None,
+                       "semantic_verification": "not_performed"},
     }
     main.app.state.rag_engine.query_with_rerank.assert_not_awaited()

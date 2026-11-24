@@ -301,9 +301,42 @@ async def test_no_evidence_abstains_even_if_self_correction_invents(pipeline):
     result = await answer_query(pipeline, "Consulta", "spanish", cache_key="private")
     assert result["metadata"]["evidence_status"] == "insufficient_evidence"
     assert "No hay evidencia" in result["response"]["respuesta_espanol"]
-    assert result["validation"]["is_reliable"] is False
+    assert result["validation"]["is_reliable"] is None
+    assert result["validation"]["semantic_verification"] == "not_performed"
     pipeline.legal_agent.respond_general.assert_not_awaited()
     pipeline.llm_optimizer.cache_response.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_heuristic_validation_is_not_presented_as_semantic_verification(pipeline):
+    pipeline.response_validator.validate.return_value.validation_report.model_dump = lambda: {
+        "status": "passed", "is_grounded": True, "confidence": "high", "confidence_score": 0.9,
+        "hallucination_risk": 0.1, "cross_check": {"is_grounded": True, "overlap_score": 1.0},
+    }
+    result = await answer_query(pipeline, "Consulta", "spanish")
+    validation = result["validation"]
+    assert validation["semantic_verification"] == "not_performed"
+    assert all(validation[k] is None for k in ("is_grounded", "is_reliable", "confidence", "confidence_score", "hallucination_risk"))
+    assert validation["cross_check"] == {"is_grounded": None, "overlap_score": 1.0}
+
+
+@pytest.mark.asyncio
+async def test_cached_legacy_validation_is_also_reported_as_unverified(pipeline):
+    pipeline.llm_optimizer.get_cached.return_value = {
+        "response": {"respuesta_espanol": "Texto"}, "metadata": {},
+        "validation": {"is_grounded": True, "is_reliable": True, "confidence_score": 0.9,
+                       "warnings": ["Confianza insuficiente: 0.10 < 0.3", "Otra advertencia"]},
+    }
+    result = await answer_query(pipeline, "Consulta", "spanish", cache_key="cached")
+    assert result["cached"]
+    assert result["validation"]["is_grounded"] is None
+    assert result["validation"]["is_reliable"] is None
+    assert result["validation"]["semantic_verification"] == "not_performed"
+    assert result["validation"]["warnings"] == [
+        "El índice heurístico interno no alcanzó el umbral de revisión; "
+        "no mide la probabilidad de que la respuesta sea correcta.",
+        "Otra advertencia",
+    ]
 
 
 @pytest.mark.asyncio

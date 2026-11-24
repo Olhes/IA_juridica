@@ -67,3 +67,31 @@ def test_redis_initialize_is_idempotent(monkeypatch):
 
     assert len(created) == 1
     assert adapter.client is None
+
+
+def test_redis_embedding_roundtrip_and_bounded_scan():
+    class FakeClient:
+        values = {}
+
+        async def setex(self, key, ttl, value):
+            self.values[key] = value
+            return True
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def scan_iter(self, match):
+            assert match == "embedding:*"
+            for key in ("embedding:a", "embedding:a", "embedding:b", "embedding:c"):
+                yield key
+
+    async def run():
+        adapter = RedisAdapter()
+        adapter.client = FakeClient()
+        assert await adapter.cache_embedding("a", [0.1, 0.2])
+        assert await adapter.get_cached_embedding("a") == [0.1, 0.2]
+        assert await adapter.get_cached_embedding("missing") is None
+        assert await adapter.get_all_keys_pattern("embedding:*", 2) == ["embedding:a", "embedding:b"]
+        assert await adapter.get_all_keys_pattern("embedding:*", 0) == []
+
+    asyncio.run(run())

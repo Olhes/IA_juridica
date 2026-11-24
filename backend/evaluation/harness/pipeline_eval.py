@@ -148,6 +148,7 @@ async def evaluate_gold(cases, answer_fn, *, corpus, judge=None, samples=1) -> d
     by_topic = _group(results, lambda r: r["case"].topic)
     return {
         "suite": "legal_qa",
+        "citation_corpus_protocol": citations.CITATION_CORPUS_PROTOCOL,
         "n_cases": len(results),
         "n_errors": len(errors),
         "errors": errors,

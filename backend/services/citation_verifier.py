@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.text_match import compact, fold, spaced_ocr_ratio
+from utils.text_match import fold, spaced_ocr_ratio
 
 # Códigos reconocidos tras un número de artículo: clave -> patrón sobre texto normalizado.
 _CODES = (
@@ -107,6 +107,14 @@ def citation_matches(cited: str, reference: str) -> bool:
     return bool(a and b and a[1] == b[1] and (not a[0] or not b[0]))
 
 
+def evidence_matches(cited: str, reference: str) -> bool:
+    """Una referencia sin norma no demuestra la atribución explícita a una norma."""
+    article = _article_parts(cited)
+    if article and article[0]:
+        return cited == reference
+    return citation_matches(cited, reference)
+
+
 def evidence_keys(text: str) -> set:
     keys = {c.key for c in extract_citations(text)}
     if spaced_ocr_ratio(text) > 0.5:
@@ -140,27 +148,15 @@ def verify_citations(answer_text: str, evidence: list) -> list:
             (
                 source,
                 text,
-                evidence_keys(text) | evidence_keys(item.get("citation") or ""),
-                compact(source or ""),
+                evidence_keys(text) | evidence_keys(item.get("citation") or "") | evidence_keys(source or ""),
             )
         )
     for citation in extract_citations(answer_text):
-        number = compact(citation.key.split(":", 1)[1])
         hit = next(
             (
                 (source, text)
-                for source, text, keys, compact_source in prepared
-                if any(citation_matches(citation.key, key) for key in keys)
-                or (
-                    citation.kind in {"ley", "casacion", "decreto_supremo"}
-                    and (
-                        number in compact(text)
-                        # El título del documento recuperado nombra la norma citada:
-                        # la cita es trazable a esa fuente aunque el fragmento sea
-                        # solo el cuerpo del artículo y no repita el número.
-                        or number in compact_source
-                    )
-                )
+                for source, text, keys in prepared
+                if any(evidence_matches(citation.key, key) for key in keys)
             ),
             None,
         )

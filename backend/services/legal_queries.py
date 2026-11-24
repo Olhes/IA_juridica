@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from modules.language.services.language_detector import LanguageDetector
 from modules.language.services.translation_service import TranslationService
 from retrieval.sat_chat import SATChatRetriever
-from services.citation_verifier import citation_matches, evidence_keys, jurisprudence_keys, verify_citations
+from services.citation_verifier import evidence_matches, evidence_keys, jurisprudence_keys, verify_citations
 from services.pipeline_telemetry import PipelineTimer
 from services.translation_qe import estimate_quality
 
@@ -24,6 +24,26 @@ class PipelineError(HTTPException):
 
 
 EXCERPT_CHARS = 240
+
+
+def _public_validation(report):
+    """El solapamiento es diagnóstico, no una verificación semántica ni probabilidad."""
+    result = dict(report or {})
+    for key in ("is_grounded", "is_reliable", "confidence", "confidence_score", "hallucination_risk"):
+        result[key] = None
+    result["semantic_verification"] = "not_performed"
+    # Las entradas previas en caché aún pueden contener la antigua etiqueta.
+    if isinstance(result.get("warnings"), list):
+        result["warnings"] = [
+            "El índice heurístico interno no alcanzó el umbral de revisión; "
+            "no mide la probabilidad de que la respuesta sea correcta."
+            if isinstance(warning, str) and warning.startswith("Confianza insuficiente:")
+            else warning
+            for warning in result["warnings"]
+        ]
+    if isinstance(result.get("cross_check"), dict):
+        result["cross_check"] = {**result["cross_check"], "is_grounded": None}
+    return result
 
 
 def _evidence(documents):
@@ -91,7 +111,7 @@ def _response_citations(answer, documents):
     # to other provisions that happen to be mentioned inside the recovered text.
     remaining = [
         check for check in checks
-        if not any(citation_matches(check["key"], key) for key in covered)
+        if not any(evidence_matches(check["key"], key) for key in covered)
     ]
     return [*sections.values(), *remaining]
 
@@ -148,6 +168,7 @@ async def answer_query(
             "cached": True,
         }
         result["metadata"] = {**(result.get("metadata") or {}), "timings": timer.snapshot()}
+        result["validation"] = _public_validation(result.get("validation"))
         return result
 
     processed_query = query
@@ -252,8 +273,8 @@ async def answer_query(
         final = data
     if not response_text(final).strip():
         raise PipelineError(502, "Legal response unavailable", "GENERATION_UNAVAILABLE")
-    validation = validated.validation_report.model_dump()
-    validation["is_reliable"] = bool(documents and validated.is_reliable)
+    cacheable = bool(documents and validated.is_reliable)
+    validation = _public_validation(validated.validation_report.model_dump())
     if rag_result.get("method") == "sat" and rag_result.get("sat_warning"):
         validation.setdefault("warnings", []).append(rag_result["sat_warning"])
     translation = None
@@ -302,7 +323,7 @@ async def answer_query(
         },
     }
     if (
-        validation["is_reliable"]
+        cacheable
         and cache_key
         and (translation is None or translation.get("success"))
     ):

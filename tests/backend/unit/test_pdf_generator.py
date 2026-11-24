@@ -121,6 +121,23 @@ print('sintético')
     assert pdf._format_inline_markdown("") == ""
 
 
+def test_pdf_inline_markdown_preserves_nesting_escaping_and_urls():
+    markup = pdf._format_inline_markdown(r"**fuerte con *énfasis*** y \*literal\*")
+    assert markup == "<b>fuerte con <i>énfasis</i></b> y *literal*"
+    assert Paragraph(markup, pdf._build_styles()["body"]).getPlainText() == "fuerte con énfasis y *literal*"
+    link = pdf._format_inline_markdown("[fuente](https://example.org/a_(b))")
+    assert 'href="https://example.org/a_(b)"' in link
+    assert "<link" not in pdf._format_inline_markdown("[x](javascript:alert(1))")
+    assert pdf._format_inline_markdown("[documento](../guia.pdf)") == "[documento](../guia.pdf)"
+    assert "<script>" not in pdf._format_inline_markdown("<script>alert(1)</script>")
+    text = extract(pdf.generate_legal_pdf_bytes("Consulta", {"respuesta_espanol": r"**fuerte con *énfasis*** y \*literal\*"}))
+    assert "fuerte con énfasis y *literal*" in text
+    data = pdf.generate_legal_pdf_bytes("Consulta", {"respuesta_espanol": "[fuente](https://example.org/a_(b))"})
+    reader = PdfReader(io.BytesIO(data))
+    urls = [a.get_object().get("/A", {}).get("/URI") for page in reader.pages for a in page.get("/Annots", [])]
+    assert "https://example.org/a_(b)" in urls
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -152,3 +169,13 @@ def test_pdf_file_output_is_unique_and_confined_to_requested_directory(tmp_path)
 @pytest.mark.parametrize("rows", [[], ["| A |"], ["| A |", "| inválido |"]])
 def test_invalid_markdown_table_is_not_rendered_as_table(rows):
     assert pdf._parse_markdown_table(rows, pdf._build_styles()) is None
+
+
+def test_pdf_table_preserves_escaped_pipe_and_extra_cells():
+    assert pdf._split_markdown_row(r"| a\|b | c |") == ["a|b", "c"]
+    assert pdf._split_markdown_row(r"a | b\|") == ["a", "b|"]
+    markdown = "| A | B |\n| --- | --- |\n" + r"| a\|b | c | extra |"
+    table = next(x for x in pdf._markdown_to_flowables(markdown, pdf._build_styles()) if isinstance(x, Table))
+    assert [[cell.getPlainText() for cell in row] for row in table._cellvalues] == [["A", "B", ""], ["a|b", "c", "extra"]]
+    output = extract(pdf.generate_legal_pdf_bytes("Consulta", {"respuesta_espanol": markdown}))
+    assert "a|b" in output and "extra" in output

@@ -62,7 +62,7 @@ export const chatTranslations = {
     trust: {
       summary: '¿Por qué confiar en esta respuesta?',
       evidence: (fragments: number, documents: number) =>
-        `Se apoya en ${fragments} ${fragments === 1 ? 'fragmento recuperado' : 'fragmentos recuperados'} de ${documents} ${documents === 1 ? 'documento' : 'documentos'} del corpus.`,
+        `Se recuperaron ${fragments} ${fragments === 1 ? 'fragmento' : 'fragmentos'} de ${documents} ${documents === 1 ? 'documento' : 'documentos'} del corpus.`,
       noEvidence: 'No se recuperaron fuentes del corpus.',
       grounded: 'El validador encontró respaldo en las fuentes.',
       notGrounded: 'El validador no encontró respaldo suficiente en las fuentes.',

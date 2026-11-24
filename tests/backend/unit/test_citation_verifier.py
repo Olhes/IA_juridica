@@ -80,3 +80,23 @@ def test_law_citation_is_traceable_to_the_retrieved_document_title():
 
 def test_verification_without_evidence_leaves_everything_unverified():
     assert [r["status"] for r in verify_citations("Ley 30364 y artículo 8", [])] == ["unverified", "unverified"]
+
+
+def test_verification_requires_the_cited_law_not_a_number_or_unqualified_article():
+    assert verify_citations("Ley 31464", [{"source": "Nota", "text": "Teléfono 991314649"}])[0]["status"] == "unverified"
+    evidence = [{"source": "Código de los Niños y Adolescentes", "text": "Artículo 164-A. Postulación."}]
+    by_key = {r["key"]: r for r in verify_citations("artículo 164-A de la Ley 31464", evidence)}
+    assert by_key["ley31464:art:164-a"]["status"] == "unverified"
+    evidence[0]["citation"] = "Artículo 164-A de la Ley 31464"
+    assert verify_citations("artículo 164-A de la Ley 31464", evidence)[0]["status"] == "verified"
+
+
+def test_sat_section_does_not_hide_a_misattributed_article():
+    from services.legal_queries import _response_citations
+
+    documents = [{"content": "Artículo 164-A. Postulación.", "metadata": {
+        "retrieval_origin": "sat", "title": "Código de los Niños y Adolescentes",
+        "sat_section": {"version_id": "v1", "title": "Artículo 164-A"},
+    }}]
+    checks = _response_citations("artículo 164-A de la Ley 31464", documents)
+    assert next(c for c in checks if c["key"] == "ley31464:art:164-a")["status"] == "unverified"

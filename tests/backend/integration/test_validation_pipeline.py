@@ -247,6 +247,8 @@ class TestResponseValidatorIntegration:
         assert result.validation_report.confidence_score == 0.0
         assert not result.validation_report.is_grounded
         assert result.validation_report.corrections_applied == 0
+        assert any("no mide la probabilidad" in warning for warning in result.validation_report.warnings)
+        assert not any("Confianza insuficiente" in warning for warning in result.validation_report.warnings)
 
     @pytest.mark.asyncio
     async def test_sat_ranking_score_does_not_change_validation(

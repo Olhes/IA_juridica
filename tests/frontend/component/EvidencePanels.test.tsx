@@ -107,25 +107,25 @@ test('una cita SAT expande la sección íntegra con ruta y enlace original', asy
   expect(screen.queryByText(/No se encontró/)).toBeNull();
 });
 
-test('panel de confianza resume solo lo medido: fuentes, validador, riesgo, citas y aviso', async () => {
+test('panel muestra recuperación y citas sin presentar heurísticas como certeza', async () => {
   const user = userEvent.setup();
   render(<TrustPanel language="spanish" apiResponse={withMetadata({ citations, evidence })} />);
-  await user.click(screen.getByText('¿Por qué confiar en esta respuesta?'));
-  expect(screen.getByText('Se apoya en 1 fragmento recuperado de 1 documento del corpus.')).toBeVisible();
-  expect(screen.getByText('El validador encontró respaldo en las fuentes.')).toBeVisible();
-  expect(screen.getByText('Riesgo estimado de alucinación: 12 %.')).toBeVisible();
+  await user.click(screen.getByText('Citas legales'));
+  expect(screen.getByText('Se recuperaron 1 fragmento de 1 documento del corpus.')).toBeVisible();
+  expect(screen.queryByText('El validador encontró respaldo en las fuentes.')).toBeNull();
+  expect(screen.queryByText('Riesgo estimado de alucinación: 12 %.')).toBeNull();
   expect(screen.getByText('1 de 2 citas legales verificadas en las fuentes.')).toBeVisible();
-  expect(screen.getByText('El sistema la considera fiable.')).toBeVisible();
+  expect(screen.queryByText('El sistema la considera fiable.')).toBeNull();
   expect(screen.getByText(/no certifica verdad jurídica/)).toBeVisible();
 });
 
 test('panel de confianza advierte cuando no es fiable y no inventa datos ausentes', async () => {
   const user = userEvent.setup();
   render(<TrustPanel language="spanish" apiResponse={withMetadata({}, { is_reliable: false, is_grounded: false })} />);
-  await user.click(screen.getByText('¿Por qué confiar en esta respuesta?'));
+  await user.click(screen.getByText('Citas legales'));
   expect(screen.getByText('No se recuperaron fuentes del corpus.')).toBeVisible();
-  expect(screen.getByText('El validador no encontró respaldo suficiente en las fuentes.')).toBeVisible();
-  expect(screen.getByText(/no la considera fiable/)).toBeVisible();
+  expect(screen.queryByText('El validador no encontró respaldo suficiente en las fuentes.')).toBeNull();
+  expect(screen.queryByText(/no la considera fiable/)).toBeNull();
   expect(screen.getByText('La respuesta no cita normas concretas.')).toBeVisible();
 });
 
@@ -137,7 +137,7 @@ test('la terminal muestra tarjeta, chips y panel solo en respuestas finales del 
   ];
   render(<TerminalModal isOpen onSend={() => {}} onClose={() => {}} messages={messages} />);
   expect(screen.getAllByText('Art. 475 CC')).toHaveLength(1);
-  expect(screen.getAllByText('¿Por qué confiar en esta respuesta?')).toHaveLength(1);
+  expect(screen.getAllByText('Citas legales', { selector: 'summary' })).toHaveLength(1);
   expect(screen.getAllByRole('region', { name: /no hay evidencia suficiente/i })).toHaveLength(1);
 });
 
