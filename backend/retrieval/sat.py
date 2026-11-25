@@ -415,12 +415,13 @@ class SATRetriever:
         with self._rank_cache_lock:
             if self._rank_cache is None or self._rank_cache[0] != cache_key:
                 chunks = self.chunks(plan)
+                language = getattr(plan, "language", "es")
                 raw_index = _BM25Index({c['id']: c['content'] for c in chunks}, tokenize=legal_terms)
                 metadata_index = _BM25Index(
                     {
                         c['id']: (
                             f'{c["resource_label"]} '
-                            f'{self._ancestor_headings(c["version_id"], plan.language)} '
+                            f'{self._ancestor_headings(c["version_id"], language)} '
                             f'{c["label"]} {c["component"]} {c["content"]}'
                         )
                         for c in chunks

@@ -32,7 +32,7 @@ _GROUP = re.compile(r"^DISPOSICIONES (COMPLEMENTARIAS|FINALES|TRANSITORIAS|MODIF
 _PART = re.compile(r"(?m)^(\d+|[a-zñ])[.)]\s+")
 _NOTE = re.compile(r'(?m)^(?:\(\s*\*\s*\))|[”»]\s+\(\s*\*\s*\)')
 _WRAP_ENDINGS = (
-    " y", " e", " o", " de", " del", " la", " las", " los", " en",
+    " y", " e", " o", " de", " del", " el", " la", " las", " los", " en",
     " al", " por", " para", " a", " con", " sobre", " ante", ",", "-",
 )
 
