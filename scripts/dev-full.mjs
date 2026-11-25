@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 
 export const CORE_SERVICES = ["surreal", "redis"];
+export const SURREAL_VOLUME = "surreal_data";
 export const BACKEND_HEALTH_URL = "http://localhost:8000/ready";
 const READINESS_TIMEOUT_MS = 120_000;
 const READINESS_POLL_MS = 1_000;
@@ -163,8 +164,16 @@ async function waitForInfrastructure() {
   throw new Error(`Timed out waiting for Docker infrastructure: ${details}.`);
 }
 
+export async function ensureSurrealVolume({ runProcess = run } = {}) {
+  const result = await runProcess("docker", ["volume", "create", SURREAL_VOLUME]);
+  if (result.code !== 0) {
+    throw new Error(`Could not ensure Docker volume ${SURREAL_VOLUME}: ${result.stderr.trim()}`);
+  }
+}
+
 async function startInfrastructure(profile) {
   console.log("Starting SurrealDB and Redis...");
+  await ensureSurrealVolume();
   const result = await run("docker", composeUpArgs(), { stdio: "inherit" });
   if (result.code !== 0) {
     throw new Error("Docker Compose could not start SurrealDB and Redis.");
