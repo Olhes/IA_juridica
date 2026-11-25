@@ -89,7 +89,7 @@ def main(argv=None, *, local_test_store=None):
         graph = store.export()
         result = {
             "engine": "sat",
-            "database": "postgresql" if not local_test_store else str(args.db.resolve()),
+            "database": "surrealdb" if not local_test_store else str(args.db.resolve()),
             "resource_count": graph["resource_count"],
             "reviewed_version_count": graph["reviewed_version_count"],
             "state": "catalogued_not_verified",

@@ -15,7 +15,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest, work_id
-from ingestion.sat_graph.postgres import PostgresSATGraphStore
+from ingestion.sat_graph.surreal import SurrealSATGraphStore
 from ingestion.source_evidence import SourceEvidence
 from retrieval.sat import SATRetriever, SearchPlan
 
@@ -402,7 +402,7 @@ def candidate_already_published(item, node):
 class CandidateShelf:
     def __init__(self, root):
         self.root = Path(root).resolve()
-        self.store = PostgresSATGraphStore(candidates=True)
+        self.store = SurrealSATGraphStore(candidates=True)
 
     def list(self):
         if not self.store.candidate_store_available():

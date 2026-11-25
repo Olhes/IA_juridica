@@ -178,7 +178,7 @@ def test_admin_overview_gathers_comparison_gold_queue_and_stream_without_secrets
 
 async def test_session_roles_are_read_from_a_real_access_token(monkeypatch):
     """Sin simular ``roles_from_session``: firma un JWT de verdad y solo sustituye la base de datos."""
-    import database.postgres_adapter_final as adapter_module
+    import database.surreal_adapter as adapter_module
     from modules.auth.services.security import AuthService as SecurityService
 
     closed = []
@@ -196,7 +196,7 @@ async def test_session_roles_are_read_from_a_real_access_token(monkeypatch):
         async def close(self):
             closed.append(True)
 
-    monkeypatch.setattr(adapter_module, "PostgreSQLAdapter", FakeDatabase)
+    monkeypatch.setattr(adapter_module, "SurrealAdapter", FakeDatabase)
     token = SecurityService.create_access_token({"user_id": "u-admin", "email": "admin@example.test"})
     assert await quality_access.roles_from_session(SimpleNamespace(cookies={"access_token": token})) == ["admin"]
     assert await quality_access.require_quality_admin(SimpleNamespace(cookies={"access_token": token}), None) == "role"

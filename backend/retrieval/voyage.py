@@ -15,9 +15,8 @@ import time
 from email.utils import parsedate_to_datetime
 
 import httpx
-import psycopg
 from surrealdb import RecordID
-from surrealdb.errors import NotFoundError
+from surrealdb.errors import NotFoundError, SurrealError
 
 from database.surreal_connection import close_surreal, connect_surreal
 
@@ -122,7 +121,7 @@ class VoyageProvider:
                     db.execute(
                         "SELECT day,requests,reserved,actual FROM voyage_usage LIMIT 0"
                     )
-            except (sqlite3.Error, psycopg.Error):
+            except (sqlite3.Error, SurrealError):
                 raise VoyageError("Caché Voyage ausente o incompatible") from None
             return
         with self._db() as db:

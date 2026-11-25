@@ -11,45 +11,28 @@ revisable. El corpus viaja con el repositorio:
 
 - `backend/docs/sat_reviews/` contiene los PDF publicados (8 `source.pdf` y la
   referencia documental del CNA en `published-references/`).
-- `backend/docs/sat_graph.pg_dump` es el respaldo PostgreSQL del corpus beta.
+- `backend/docs/sat_graph.surql.gz` es el respaldo SurrealDB del corpus beta.
 
-## Compartir el corpus en PostgreSQL
+## Compartir el corpus en SurrealDB
 
-> Flujo histórico de migración: el entorno actual usa SurrealDB. El servicio
-> PostgreSQL de Docker solo se inicia explícitamente con el perfil
-> `legacy-postgres`; su volumen se conserva para recuperar datos anteriores.
+El chat SAT y el revisor leen y escriben en la base `sat_graph` dentro de
+SurrealDB (`SURREAL_URL`, `SURREAL_NAMESPACE`). Para compartirlo, las instancias
+del equipo deben apuntar al mismo servidor SurrealDB; dos instancias Docker
+locales distintas no comparten datos.
 
-En la configuración histórica con PostgreSQL, el chat SAT y el revisor leen y escriben en el esquema
-`sat_graph` de **la misma base PostgreSQL del chat**. Para compartirlo, las
-instancias del equipo deben apuntar al mismo `DATABASE_URL` (gestionado fuera de
-Git); dos instancias Docker locales distintas no comparten datos. Tanto el chat
-como el revisor deben tener acceso de lectura/escritura al esquema.
-
-Para instalar el corpus beta en una base Docker local nueva, ejecuta:
+Para inicializar el corpus beta en una instancia local vacía:
 
 ```powershell
-docker compose --profile legacy-postgres up -d --wait postgres
-docker compose cp backend/docs/sat_graph.pg_dump postgres:/tmp/sat_graph.pg_dump
-docker compose exec -T postgres pg_restore -U juridica_user -d juridica_db --single-transaction --exit-on-error --no-owner --no-privileges /tmp/sat_graph.pg_dump
+docker compose up -d --wait surreal redis
+uv run python backend/scripts/bootstrap_sat_corpus.py
 ```
 
-Instala el respaldo una sola vez, sin usar `--clean`. Si el esquema ya existe,
-no lo restaures encima. Para una base compartida, el administrador restaura
-el mismo archivo con `pg_restore` apuntando a esa base. Después arranca con
-`pnpm dev:full --sat`.
-Los PDF originales siguen en `backend/docs/sat_reviews`; no se guardan como
-binarios en PostgreSQL. Cada revisor necesita el checkout con esos PDF.
-
-Si conservas una edición anterior en SQLite, puedes migrarla a una base vacía
-con `uv run python backend/scripts/import_sat_postgres.py --from-sqlite RUTA`.
-Ese comando es solo para migración; el chat y el revisor ya no usan SQLite.
-Los candidatos previos pueden migrarse aparte con `--candidates`: sus PDF y
-reportes de conversión todavía se consultan desde el directorio de trabajo.
-La caché experimental de Voyage también usa PostgreSQL; si tienes una copia
-anterior, `--voyage-cache` migra sus resultados y reservas sin llamar al proveedor.
+Los PDF originales siguen en `backend/docs/sat_reviews`; cada revisor necesita
+el checkout con esos PDF. La caché experimental de Voyage también se almacena en
+SurrealDB (`sat_voyage`).
 
 El editor es una **herramienta administrativa independiente**, no una pantalla de
-la página oficial. No arranca el chat, modelos, PostgreSQL ni Redis por sí solo.
+la página oficial. No arranca el chat, modelos, SurrealDB ni Redis por sí solo.
 
 ## Abrir
 

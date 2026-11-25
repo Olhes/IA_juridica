@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 import main
 from config.settings import settings
-from scripts import reassign_conversation_owner as migration
 from models.chat_models import (
     CachedConversation,
     ConversationResponse,
@@ -209,13 +208,13 @@ def test_bootstrap_is_rate_limited_by_ip():
 
 @pytest.mark.asyncio
 async def test_conversation_creation_returns_redacted_503(monkeypatch):
-    from database.postgres_adapter_final import (
-        DatabaseUnavailableError,
-        PostgreSQLAdapter,
-    )
+    from database.errors import DatabaseUnavailableError
+    from database.surreal_adapter import SurrealAdapter
 
+    adapter = SurrealAdapter()
+    monkeypatch.setattr(adapter, "initialize", AsyncMock())
     with pytest.raises(DatabaseUnavailableError):
-        await PostgreSQLAdapter().create_conversation(str(uuid.uuid4()))
+        await adapter.create_conversation(str(uuid.uuid4()))
     with _offline_client(("203.0.113.12", 50000)) as client:
         client.post("/session/bootstrap")
         monkeypatch.setattr(
@@ -229,14 +228,14 @@ async def test_conversation_creation_returns_redacted_503(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_backend_health_is_degraded_without_postgres(monkeypatch):
+async def test_backend_health_is_degraded_without_surrealdb(monkeypatch):
     monkeypatch.setattr(
         main.chat_service,
         "db",
         SimpleNamespace(health_check=AsyncMock(return_value={"status": "unhealthy"})),
     )
     result = await main.health_check()
-    assert (result["components"]["postgresql"], result["status"]) == (
+    assert (result["components"]["surrealdb"], result["status"]) == (
         "unhealthy",
         "degraded",
     )
@@ -286,29 +285,3 @@ def test_lightrag_provider_logs_are_disabled():
     import modules.rag.services.lightrag_engine  # noqa: F401
 
     assert logging.getLogger("lightrag").disabled
-
-
-def test_reassignment_invalidates_cache_and_fails_closed(monkeypatch):
-    source, destination, conversation_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    args = SimpleNamespace(
-        source_owner=source,
-        new_owner=destination,
-        apply=True,
-        confirm=migration.CONFIRMATION,
-    )
-    connection, cache = MagicMock(), MagicMock()
-    cursor = connection.cursor.return_value.__enter__.return_value
-    cursor.fetchall.return_value, cursor.rowcount = [(conversation_id,)], 1
-    connection_context = MagicMock()
-    connection_context.__enter__.return_value = connection
-    monkeypatch.setattr(migration, "parse_args", lambda: args)
-    monkeypatch.setattr(migration.psycopg, "connect", lambda *_: connection_context)
-    monkeypatch.setattr(migration.Redis, "from_url", lambda *_args, **_kwargs: cache)
-    assert migration.main() == 0
-    cache.delete.assert_called_once_with(f"conversation:{source}:{conversation_id}")
-    connection.commit.assert_called_once()
-    connection.commit.reset_mock()
-    cache.ping.side_effect = ConnectionError("Redis unavailable")
-    with pytest.raises(ConnectionError):
-        migration.main()
-    connection.commit.assert_not_called()

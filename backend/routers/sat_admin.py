@@ -5,7 +5,6 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config.settings import settings
-from database.postgres_connection import connect_postgres
 from retrieval.sat import SATRetriever, SearchPlan
 from retrieval.voyage import VoyageError, VoyageProvider, connect_surreal_voyage
 from security import limiter, verify_admin_api_key
@@ -96,11 +95,7 @@ async def search_sat_graph(
         if use_voyage:
             provider = VoyageProvider(
                 settings.VOYAGE_API_KEY.get_secret_value(),
-                connect=(
-                    connect_postgres
-                    if settings.DATABASE_BACKEND.lower().startswith("postgres")
-                    else connect_surreal_voyage
-                ),
+                connect=connect_surreal_voyage,
                 dimension=settings.VOYAGE_DIMENSION,
                 daily_requests=settings.VOYAGE_DAILY_REQUESTS,
                 daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,

@@ -17,7 +17,6 @@ import uvicorn
 
 load_dotenv(Path(__file__).parent / ".env")
 from ingestion.sat_graph.runtime import runtime_sat_store
-from ingestion.sat_graph.postgres import PostgresSATGraphStore
 from services.quality_access import require_quality_admin
 from services.sat_corpus_routes import router as review_router
 from services.sat_api import router as api_router
@@ -65,13 +64,12 @@ def main():
     args = parser.parse_args()
     try:
         store = runtime_sat_store()
-        if isinstance(store, PostgresSATGraphStore):
-            store.require_ready()
+        store.require_ready()
     except Exception:
-        parser.error("No se pudo abrir el corpus SAT. Verifica PostgreSQL y que el corpus esté importado.")
+        parser.error("No se pudo abrir el corpus SAT. Verifica SurrealDB y que el corpus esté cargado.")
     token = secrets.token_urlsafe(32)
     url = f"http://127.0.0.1:{args.port}/local-session/{token}"
-    print(f"Editor independiente SAT. Base: PostgreSQL\nAcceso local (privado): {url}", flush=True)
+    print(f"Editor independiente SAT. Base: SurrealDB\nAcceso local (privado): {url}", flush=True)
     if args.open:
         timer = threading.Timer(1.5, lambda: webbrowser.open(url))
         timer.daemon = True

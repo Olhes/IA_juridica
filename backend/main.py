@@ -30,9 +30,9 @@ from database.errors import DatabaseUnavailableError
 from database.redis_adapter import redis_adapter
 from database.surreal_connection import close_all_surreal
 from ingestion.pipeline import LegalIngestionPipeline
-from ingestion.sat_graph.postgres import PostgresSATGraphStore
 from ingestion.sat_graph.runtime import runtime_sat_store
 from ingestion.sat_graph.store import stage_document
+from ingestion.sat_graph.surreal import SurrealSATGraphStore
 from modules.auth.routes.auth_routes import router as auth_router
 from modules.chat.routes.chat_routes import router as chat_router
 from modules.chat.services.chat_service import chat_service
@@ -160,7 +160,7 @@ async def lifespan(app_instance: FastAPI):
             )
         if sat_mode:
             store = await asyncio.to_thread(sat_graph_store)
-            if isinstance(store, PostgresSATGraphStore):
+            if isinstance(store, SurrealSATGraphStore):
                 if not await asyncio.to_thread(store.is_ready):
                     try:
                         await asyncio.to_thread(store.ensure_schema)
@@ -422,9 +422,9 @@ async def health_check():
 
     try:
         db_health = await chat_service.db.health_check()
-        components["postgresql"] = db_health.get("status", "unknown")
+        components["surrealdb"] = db_health.get("status", "unknown")
     except Exception:
-        components["postgresql"] = "error"
+        components["surrealdb"] = "error"
 
     primary_engine = "sat" if settings.RAG_ENGINE.lower() == "sat" else "lightrag"
     critical_ok = (
@@ -432,7 +432,7 @@ async def health_check():
             components.get(name) in ("ready", "fallback")
             for name in ("cohere", primary_engine, "pydantic_ai")
         )
-        and components.get("postgresql") == "healthy"
+        and components.get("surrealdb") == "healthy"
         and components.get("corpus") == "ready"
     )
 

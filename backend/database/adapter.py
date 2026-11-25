@@ -1,43 +1,31 @@
-"""Adapter selection for the configured database backend.
+"""Shared database adapter factory for SurrealDB.
 
-SurrealDB is the default backend; PostgreSQL stays selectable as a rollback
-target. ``get_database_adapter`` returns one shared instance per backend: the
-SurrealDB adapter owns live websocket connections, so building a new one per
-request leaked a pair of sockets on every call and eventually poisoned the
-asyncio loop on shutdown.
+``get_database_adapter`` returns one shared :class:`SurrealAdapter` instance so
+live WebSocket connections are reused across requests instead of leaking a pair
+of sockets on every call.
 """
 
-from config.settings import settings
 from database.errors import DatabaseUnavailableError
-from database.postgres_adapter_final import PostgreSQLAdapter
 from database.surreal_adapter import SurrealAdapter
 
-_ORIGINAL_POSTGRES_ADAPTER = PostgreSQLAdapter
-_default_adapters: dict = {}
+_ORIGINAL_ADAPTER = SurrealAdapter
+_default_adapter: SurrealAdapter | None = None
 
 
-def uses_surreal() -> bool:
-    backend = str(getattr(settings, "DATABASE_BACKEND", "surrealdb") or "")
-    return backend.lower().startswith("surreal")
+def get_database_adapter(adapter_factory=None):
+    """Return the shared SurrealDB adapter instance.
 
-
-def get_database_adapter(postgres_factory=None):
-    """Return the shared adapter for the configured backend.
-
-    ``postgres_factory`` is an optional hook used by callers that keep a
-    module-level ``PostgreSQLAdapter`` symbol (tests replace it with fakes).
-    A patched factory always yields a fresh instance; the unpatched class
-    resolves to the shared adapter so connections are reused, not leaked.
+    ``adapter_factory`` is an optional hook used by callers that expose a
+    module-level ``SurrealAdapter`` symbol so tests can inject fakes without
+    replacing the shared singleton.
     """
-    if postgres_factory is not None and postgres_factory is not _ORIGINAL_POSTGRES_ADAPTER:
-        return postgres_factory()
+    if adapter_factory is not None and adapter_factory is not _ORIGINAL_ADAPTER:
+        return adapter_factory()
 
-    backend = "surrealdb" if uses_surreal() else "postgresql"
-    adapter = _default_adapters.get(backend)
-    if adapter is None:
-        adapter = SurrealAdapter() if backend == "surrealdb" else PostgreSQLAdapter()
-        _default_adapters[backend] = adapter
-    return adapter
+    global _default_adapter
+    if _default_adapter is None:
+        _default_adapter = SurrealAdapter()
+    return _default_adapter
 
 
 database_adapter = get_database_adapter()
@@ -45,8 +33,6 @@ database_adapter = get_database_adapter()
 __all__ = [
     "get_database_adapter",
     "database_adapter",
-    "uses_surreal",
     "SurrealAdapter",
-    "PostgreSQLAdapter",
     "DatabaseUnavailableError",
 ]

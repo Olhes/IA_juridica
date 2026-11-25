@@ -32,9 +32,6 @@ El comando levanta SurrealDB y Redis, importa
 FastAPI responda a `/ready` antes de iniciar Next.js. Los arranques
 posteriores usan el corpus del volumen persistente.
 
-PostgreSQL no arranca por defecto. Para acceder a datos antiguos solo cuando
-sea necesario, usa `docker compose --profile legacy-postgres up -d postgres`.
-
 | Servicio | Dirección local |
 | --- | --- |
 | Interfaz Next.js | [localhost:3000](http://localhost:3000) |

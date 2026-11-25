@@ -530,7 +530,7 @@ def main(argv=None):
     mode.add_argument(
         "--cache-only",
         action="store_true",
-        help="Reutiliza el caché PostgreSQL en solo lectura, sin llamar a Voyage",
+        help="Reutiliza el caché SurrealDB en solo lectura, sin llamar a Voyage",
     )
     parser.add_argument("--stages", choices=list(STAGE_MODES), default="combined")
     parser.add_argument(
@@ -566,20 +566,20 @@ def main(argv=None):
         import os
 
         load_dotenv(BACKEND / ".env")
-        from database.postgres_connection import connect_postgres
+        from retrieval.voyage import connect_surreal_voyage
 
         key = os.environ.get("VOYAGE_API_KEY", "")
         provider = VoyageProvider(
             key,
-            connect=connect_postgres,
+            connect=connect_surreal_voyage,
             dimension=args.dimension,
         )
     elif args.cache_only:
-        from database.postgres_connection import connect_postgres
+        from retrieval.voyage import connect_surreal_voyage
 
         provider = VoyageProvider(
             "",
-            connect=connect_postgres,
+            connect=connect_surreal_voyage,
             dimension=args.dimension,
             cache_only=True,
         )

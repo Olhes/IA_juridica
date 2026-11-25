@@ -1,40 +1,7 @@
 services:
-  postgres:
-    # Solo para migraciones o recuperación de datos anteriores a SurrealDB.
-    profiles: ["legacy-postgres"]
-    image: postgres:18.7-alpine
-    container_name: ia_juridica_postgres
-    environment:
-      POSTGRES_DB: juridica_db
-      POSTGRES_USER: juridica_user
-      POSTGRES_PASSWORD: juridica_password
-      POSTGRES_HOST_AUTH_METHOD: trust
-      POSTGRES_INITDB_ARGS: "--auth-host=trust"
-    ports:
-      - "127.0.0.1:5433:5432"
-    volumes:
-      # PostgreSQL 18 cambió PGDATA a /var/lib/postgresql/18/docker y declara el
-      # VOLUME en /var/lib/postgresql. Montar en /var/lib/postgresql/data deja la
-      # base en un volumen anónimo que se pierde al recrear el contenedor.
-      - postgres_data:/var/lib/postgresql
-      # Mismo esquema inicial que producción; solo corre sobre un volumen vacío.
-      - ./backend/database/init_multi_schema.sql:/docker-entrypoint-initdb.d/01_init_multi_schema.sql:ro
-      - ./backend/database/migrations/001_add_auth_roles_permissions.sql:/docker-entrypoint-initdb.d/02_auth_roles_permissions.sql:ro
-      - ./backend/database/migrations/002_add_picture_column.sql:/docker-entrypoint-initdb.d/03_picture_column.sql:ro
-    networks:
-      - ia_juridica_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U juridica_user -d juridica_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Backend por defecto: SurrealDB v4. El backend corre en el host (ver
+  # Base de datos única: SurrealDB v4. El backend corre en el host (ver
   # backend/.env.example), por eso el puerto se publica en loopback y no hay
-  # servicio `backend` aquí. PostgreSQL se conserva como rollback.
-  # Host 8010: el 8000 lo ocupa el backend FastAPI, y con ambos en 8000
-  # Docker se queda con el puerto y /ready responde vacío (SurrealDB).
+  # servicio `backend` aquí. Host 8010: el 8000 lo ocupa el backend FastAPI.
   surreal:
     image: surrealdb/surrealdb:v4.0.1
     container_name: ia_juridica_surreal
@@ -45,9 +12,7 @@ services:
     ports:
       - "127.0.0.1:8010:8000"
     volumes:
-      # Nombre explícito: el corpus migrado vive en `surreal_data`, creado a mano
-      # con `docker run` (rocksdb). Sin `name:` Compose usaría
-      # `ia_juridica_surreal_data` y el corpus quedaría invisible.
+      # Nombre explícito: el corpus SAT vive en `surreal_data` (rocksdb).
       - surreal_data:/data
     networks:
       - ia_juridica_network
@@ -77,9 +42,8 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
   surreal_data:
-    # Volumen externo: guarda el corpus SAT migrado; scripts/dev-full.mjs lo asegura antes de arrancar.
+    # Volumen externo: guarda el corpus SAT; scripts/dev-full.mjs lo asegura antes de arrancar.
     name: surreal_data
     external: true
   redis_data:

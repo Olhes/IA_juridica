@@ -89,6 +89,10 @@ export function useChat({ sessionId, language, onSessionUpdated, onSessionMissin
             timestamp: new Date(msg.created_at),
             metadata: msg.metadata,
             apiResponse: msg.role === 'assistant' ? msg.metadata?.api_response : undefined,
+            requestId:
+              msg.role === 'assistant' && typeof msg.metadata?.request_id === 'string'
+                ? msg.metadata.request_id
+                : undefined,
           }));
           setMessages(chatMessages);
         }

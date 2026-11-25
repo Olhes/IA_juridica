@@ -17,8 +17,7 @@ redis_module = sys.modules["database.redis_adapter"]
 
 
 def test_default_adapter_is_shared_between_calls(monkeypatch):
-    monkeypatch.setattr(adapter_module.settings, "DATABASE_BACKEND", "surrealdb")
-    monkeypatch.setattr(adapter_module, "_default_adapters", {})
+    monkeypatch.setattr(adapter_module, "_default_adapter", None)
 
     first = adapter_module.get_database_adapter()
     second = adapter_module.get_database_adapter()
@@ -26,17 +25,16 @@ def test_default_adapter_is_shared_between_calls(monkeypatch):
     assert first is second
 
 
-def test_patched_postgres_factory_still_yields_fresh_instances(monkeypatch):
-    monkeypatch.setattr(adapter_module.settings, "DATABASE_BACKEND", "surrealdb")
-    monkeypatch.setattr(adapter_module, "_default_adapters", {})
+def test_patched_adapter_factory_still_yields_fresh_instances(monkeypatch):
+    monkeypatch.setattr(adapter_module, "_default_adapter", None)
 
-    class FakePostgres:
+    class FakeAdapter:
         pass
 
-    first = adapter_module.get_database_adapter(FakePostgres)
-    second = adapter_module.get_database_adapter(FakePostgres)
+    first = adapter_module.get_database_adapter(FakeAdapter)
+    second = adapter_module.get_database_adapter(FakeAdapter)
 
-    assert isinstance(first, FakePostgres)
+    assert isinstance(first, FakeAdapter)
     assert first is not second
 
 

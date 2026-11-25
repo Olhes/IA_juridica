@@ -58,7 +58,7 @@ def google_oauth(monkeypatch):
         get_user_by_id=AsyncMock(return_value=user),
         get_user_roles=AsyncMock(return_value=[{"name": "user"}]),
     )
-    monkeypatch.setattr(auth_routes, "PostgreSQLAdapter", lambda: db)
+    monkeypatch.setattr(auth_routes, "SurrealAdapter", lambda: db)
     cache = {}
     async def write_profile(key, value, _ttl):
         cache[key] = json.loads(value)
@@ -366,7 +366,7 @@ async def test_google_refresh_token_renews_the_access_session(monkeypatch):
         async def close(self):
             self.closed = True
 
-    monkeypatch.setattr(auth_service, "PostgreSQLAdapter", FakeDatabase)
+    monkeypatch.setattr(auth_service, "SurrealAdapter", FakeDatabase)
     service = auth_service.AuthService()
     refresh = security.AuthService().create_refresh_token({"user_id": "user-1", "email": "persona@example.test"})
     access = await service.refresh_access_token(refresh)
