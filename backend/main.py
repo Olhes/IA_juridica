@@ -1,91 +1,80 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, Query
-from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
-import uvicorn
-from pathlib import Path
-from contextlib import asynccontextmanager
-from typing import Any, Dict, Literal, Optional
-import json
-import logging
+"""FastAPI application entrypoint, lifespan wiring, middleware, and system routes."""
+
 import asyncio
-import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import logging
+from pathlib import Path
+from typing import Optional
+import uuid
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+import uvicorn
 
 from utils.console import configure_console_output
 
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent  # Subir a la raíz del proyecto
+PROJECT_ROOT = BASE_DIR.parent
 configure_console_output()
 load_dotenv(BASE_DIR / ".env")
 
-# Módulos del sistema
-from config.settings import settings
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from security import (
-    Principal,
-    client_ip_key,
-    issue_session,
-    limiter,
-    principal_from_request,
-    require_principal,
-    set_session_cookie,
-    verify_admin_api_key,
-)
-from ingestion.pipeline import LegalIngestionPipeline
-from ingestion.source_evidence import persist_source_evidence
-from ingestion.conversion import convert_for_ingestion
-from ingestion.sat_graph.store import stage_document
-from ingestion.sat_graph.runtime import runtime_sat_store
-from ingestion.sat_graph.postgres import PostgresSATGraphStore
-from database.postgres_connection import connect_postgres
-from retrieval.sat import SATRetriever, SearchPlan
-from retrieval.voyage import VoyageProvider, VoyageError, connect_surreal_voyage
 from agents.pydantic_agents import LegalAgent
+from config.settings import settings
 from context.context_engineering import ContextEngineer
+from database.errors import DatabaseUnavailableError
 from database.redis_adapter import redis_adapter
 from database.surreal_connection import close_all_surreal
-from modules.chat.services.chat_service import chat_service
-from modules.chat.routes.chat_routes import router as chat_router
+from ingestion.pipeline import LegalIngestionPipeline
+from ingestion.sat_graph.postgres import PostgresSATGraphStore
+from ingestion.sat_graph.runtime import runtime_sat_store
+from ingestion.sat_graph.store import stage_document
 from modules.auth.routes.auth_routes import router as auth_router
-from modules.voice.services.tts_service import TTSService
-
-# ── Módulos de validación y optimización ──────────────────────────────
+from modules.chat.routes.chat_routes import router as chat_router
+from modules.chat.services.chat_service import chat_service
 from modules.validation.services.response_validator import (
     ResponseValidator,
     ValidationConfig,
 )
 from optimization.llm_optimizer import LLMOptimizer
-from optimization.query_cache import answer_cache_key
-from services.legal_queries import answer_query
 from retrieval.sat_chat import SATChatRetriever
-from services.legal_stream import stream_legal_query
-from services.stream_guard import guard_stream
-from services.stream_telemetry import StreamTelemetry, stream_metrics
-from services.feedback_store import FeedbackIn, FeedbackStore
-from services.quality_access import require_quality_admin
+from routers.documents import router as documents_router
+from routers.quality import router as quality_router
+from routers.queries import (
+    LegalQueryRequest,
+    _extract_response_text,
+    _ndjson_event,
+    _prepare_query_context,
+    legal_query,
+    legal_query_stream,
+    router as queries_router,
+)
+from routers.sat_admin import router as sat_admin_router
+from security import (
+    client_ip_key,
+    issue_session,
+    limiter,
+    principal_from_request,
+    set_session_cookie,
+)
 from services.quality_reports import admin_overview, load_published
-from services.sat_corpus_routes import router as sat_corpus_router
 from services.sat_api import router as sat_api_router
-from context.conversation_prompt import bounded_history, with_conversation
-from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
-from database.errors import DatabaseUnavailableError
-
-# ─────────────────────────────────────────────────────────────────────────────
-
+from services.sat_corpus_routes import router as sat_corpus_router
 
 DOCS_DIR = PROJECT_ROOT / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
 PROCESSED_DIR = DOCS_DIR / "processed"
 KNOWLEDGE_GRAPH_DIR = DOCS_DIR / "knowledge_graph"
 
+logger = logging.getLogger("ia_juridica.api")
+
+
 def sat_graph_store():
     return runtime_sat_store()
-
-logger = logging.getLogger("ia_juridica.api")
 
 
 def _log_failure(
@@ -100,19 +89,19 @@ def _log_failure(
     )
 
 
-def _get_document_processor(app: FastAPI):
-    processor = getattr(app.state, "document_processor", None)
+def _get_document_processor(app_instance: FastAPI):
+    processor = getattr(app_instance.state, "document_processor", None)
     if processor is None:
         from ingestion.docling_processor import LegalDocumentProcessor
 
         processor = LegalDocumentProcessor()
-        app.state.document_processor = processor
+        app_instance.state.document_processor = processor
     return processor
 
 
-def _get_pdf_processor(app: FastAPI):
-    processor = getattr(app.state, "pdf_processor", None)
-    return processor if processor is not None else _get_document_processor(app)
+def _get_pdf_processor(app_instance: FastAPI):
+    processor = getattr(app_instance.state, "pdf_processor", None)
+    return processor if processor is not None else _get_document_processor(app_instance)
 
 
 async def _evaluate_harness(provider="application", limit=None):
@@ -125,123 +114,21 @@ async def _evaluate_harness(provider="application", limit=None):
         raise FileNotFoundError("Cassette de evaluación no disponible")
 
     with tempfile.TemporaryDirectory(prefix="legal-qa-eval-") as directory:
-        kwargs = {"judge_name": "none", "real": False, "samples": 1, "results_dir": directory}
+        kwargs = {
+            "judge_name": "none",
+            "real": False,
+            "samples": 1,
+            "results_dir": directory,
+        }
         if provider == "nvidia-voyage":
             kwargs.update(provider=provider, limit=limit, cassette_path=cassette)
         _, report = await run_legal_qa(**kwargs)
     return report
 
 
-# ── Modelos de request/response ────────────────────────────────────────────────
-
-
-class LegalQueryRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    query: NonBlankMessage
-    language: SupportedLanguage = "spanish"
-    context: Optional[RequestContext] = None
-    conversation_id: Optional[str] = None
-
-
-async def _prepare_query_context(payload, owner_id, mode):
-    history = []
-    if payload.conversation_id:
-        if not await chat_service.get_conversation(payload.conversation_id, owner_id):
-            raise HTTPException(404, "Conversation not found")
-        messages = await chat_service.get_conversation_messages(
-            payload.conversation_id, owner_id, limit=12
-        )
-        history = bounded_history(messages)
-    try:
-        with_conversation("", history, payload.context)
-    except ValueError:
-        raise HTTPException(422, "Conversation context exceeds the prompt budget")
-    engine = getattr(app.state, "query_retriever", None) or getattr(app.state, "rag_engine", None)
-    revision_fn = getattr(engine, "get_cache_revision", None)
-    revision = revision_fn() if callable(revision_fn) else None
-    key = None
-    if isinstance(revision, str) and revision:
-        key = answer_cache_key(
-            payload.query,
-            payload.language,
-            owner_id,
-            payload.context,
-            history,
-            payload.conversation_id,
-            revision,
-            mode,
-        )
-    return key, history
-
-
-class PDFReportRequest(BaseModel):
-    query: str = Field(..., min_length=1)
-    response: Dict[str, Any]
-
-
-def _ndjson_event(payload: Dict[str, Any]) -> str:
-    """Serializa eventos NDJSON manejando datetime/enums/modelos pydantic."""
-    serializable = jsonable_encoder(payload)
-    return json.dumps(serializable, ensure_ascii=False) + "\n"
-
-
-def _extract_response_text(response_payload: Any, language: str) -> str:
-    if not isinstance(response_payload, dict):
-        return str(response_payload or "")
-
-    field_order = (
-        ("respuesta_quechua", "quechua", "respuesta_espanol", "spanish", "answer")
-        if language == "quechua"
-        else ("respuesta_espanol", "spanish", "answer", "respuesta_quechua", "quechua")
-    )
-    for field in field_order:
-        value = response_payload.get(field)
-        if isinstance(value, str) and value.strip():
-            return value
-    return ""
-
-
-async def _persist_assistant_response(
-    conversation_id: Optional[str],
-    owner_id: str,
-    response_payload: Any,
-    language: str,
-    metadata: Dict[str, Any],
-) -> None:
-    if not conversation_id:
-        return
-
-    content = _extract_response_text(response_payload, language)
-    if not content:
-        print("Skipping empty assistant response persistence")
-        return
-
-    try:
-        from models.chat_models import MessageCreate, MessageRole
-
-        await chat_service.add_message(
-            conversation_id=conversation_id,
-            user_id=owner_id,
-            message_data=MessageCreate(
-                content=content,
-                role=MessageRole.ASSISTANT,
-                language=language,
-                metadata=metadata,
-            ),
-        )
-    except DatabaseUnavailableError:
-        raise
-    except Exception as error:
-        _log_failure("assistant_persistence_failed", error)
-        raise HTTPException(503, "Chat persistence unavailable")
-
-
-# ── Lifespan ───────────────────────────────────────────────────────────────────
-
-
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    print(f"Inicializando IA Jurídica {settings.APP_VERSION}...")
+async def lifespan(app_instance: FastAPI):
+    logger.info("Starting IA Jurídica %s", settings.APP_VERSION)
 
     configuration = settings.validate_configuration()
     if not configuration["valid"]:
@@ -249,54 +136,59 @@ async def lifespan(app: FastAPI):
             "Invalid configuration: " + "; ".join(configuration["issues"])
         )
 
-    # Inicializar chat service
     try:
         await chat_service.initialize()
-        print("Chat service inicializado correctamente")
-    except Exception:
-        print("Error inicializando chat service")
-        print("Continuando sin chat persistente...")
+        logger.info("Chat service initialized")
+    except Exception as error:
+        logger.warning(
+            "chat_service_init_failed error_type=%s; continuing without persistent chat",
+            type(error).__name__,
+        )
 
-    # Inicializar componentes básicos primero para startup rápido
-    if not hasattr(app.state, "rag_engine"):
+    if not hasattr(app_instance.state, "rag_engine"):
         RAW_PDFS_DIR.mkdir(parents=True, exist_ok=True)
         PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
         KNOWLEDGE_GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Crear instancias pero no inicializar componentes pesados
         sat_mode = settings.RAG_ENGINE.lower() == "sat"
-        app.state.rag_engine = None
+        app_instance.state.rag_engine = None
         if not sat_mode:
             from modules.rag.services.lightrag_engine import LegalRAGEngine
 
-            app.state.rag_engine = LegalRAGEngine(working_dir=str(KNOWLEDGE_GRAPH_DIR))
+            app_instance.state.rag_engine = LegalRAGEngine(
+                working_dir=str(KNOWLEDGE_GRAPH_DIR)
+            )
         if sat_mode:
             store = await asyncio.to_thread(sat_graph_store)
             if isinstance(store, PostgresSATGraphStore):
-                # Un esquema todavía vacío no debe tumbar la API: el esquema se
-                # prepara y el editor queda disponible para publicar el corpus.
-                # Si PostgreSQL no responde, /health y /ready ya lo reportan.
                 if not await asyncio.to_thread(store.is_ready):
                     try:
                         await asyncio.to_thread(store.ensure_schema)
                     except Exception as error:
-                        logger.warning("sat_schema_unavailable error_type=%s", type(error).__name__)
+                        logger.warning(
+                            "sat_schema_unavailable error_type=%s",
+                            type(error).__name__,
+                        )
                     else:
-                        logger.warning("sat_corpus_empty: publica el primer documento en /sat-graph/review")
-            app.state.query_retriever = SATChatRetriever(store, settings.SAT_AS_OF)
+                        logger.warning(
+                            "sat_corpus_empty: publica el primer documento en /sat-graph/review"
+                        )
+            app_instance.state.query_retriever = SATChatRetriever(
+                store, settings.SAT_AS_OF
+            )
         else:
-            app.state.query_retriever = app.state.rag_engine
-        app.state.ingestion_pipeline = LegalIngestionPipeline(
-            rag_engine=app.state.rag_engine,
+            app_instance.state.query_retriever = app_instance.state.rag_engine
+
+        app_instance.state.ingestion_pipeline = LegalIngestionPipeline(
+            rag_engine=app_instance.state.rag_engine,
             legacy_rag_write=not sat_mode and settings.SAT_INGESTION_LEGACY_RAG,
             sat_store_factory=sat_graph_store,
         )
-        app.state.legal_agent = LegalAgent()
-        app.state.context_engineer = ContextEngineer()
+        app_instance.state.legal_agent = LegalAgent()
+        app_instance.state.context_engineer = ContextEngineer()
 
-        # ── Componentes de validación y optimización [NUEVO] ──────────────────
         validation_config = ValidationConfig(
-            hallucination_threshold=settings.EVALUATION_THRESHOLD,  # 0.7 por defecto
+            hallucination_threshold=settings.EVALUATION_THRESHOLD,
             cross_check_threshold=0.55,
             min_confidence_score=0.30,
             max_self_correction_retries=2,
@@ -304,48 +196,45 @@ async def lifespan(app: FastAPI):
             enable_self_correction=True,
             enable_cultural_validation=True,
         )
-        app.state.response_validator = ResponseValidator(
-            rag_engine=app.state.query_retriever,
-            cohere_client=app.state.legal_agent.cohere_client,
-            context_engineer=app.state.context_engineer,
+        app_instance.state.response_validator = ResponseValidator(
+            rag_engine=app_instance.state.query_retriever,
+            cohere_client=app_instance.state.legal_agent.cohere_client,
+            context_engineer=app_instance.state.context_engineer,
             config=validation_config,
         )
-        app.state.llm_optimizer = LLMOptimizer(
+        app_instance.state.llm_optimizer = LLMOptimizer(
             cache_ttl_seconds=settings.CACHE_TTL,
             max_cache_size=settings.CACHE_MAX_SIZE,
         )
-        print("Componentes básicos inicializados")
-        # ─────────────────────────────────────────────────────────────────────
-
-        app.state.evaluation_suite = None
-
-        print("Inicialización básica completada - iniciando servidor...")
-    else:
-        print("Componentes ya inicializados, saltando...")
+        logger.info("Core components initialized")
 
     if settings.RAG_ENGINE.lower() == "sat":
-        # El corpus vive en PostgreSQL y puede publicarse sin reiniciar, así que
-        # la frescura se consulta al responder; aquí solo se refleja el estado real.
-        retriever = app.state.query_retriever
-        app.state.corpus_state = (
+        retriever = app_instance.state.query_retriever
+        app_instance.state.corpus_state = (
             "ready" if await asyncio.to_thread(retriever.corpus_ready) else "degraded"
         )
-        app.state.corpus_task = asyncio.create_task(asyncio.sleep(0))
+        app_instance.state.corpus_task = asyncio.create_task(asyncio.sleep(0))
     else:
-        app.state.corpus_state = "loading"
-        app.state.corpus_task = asyncio.create_task(load_heavy_components(app.state.rag_engine, PROCESSED_DIR))
+        app_instance.state.corpus_state = "loading"
+        app_instance.state.corpus_task = asyncio.create_task(
+            load_heavy_components(app_instance.state.rag_engine, PROCESSED_DIR)
+        )
     try:
         yield
     finally:
-        task = app.state.corpus_task
+        task = app_instance.state.corpus_task
         if not task.done():
             task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        app.state.corpus_state = "stopped"
-        finalizer = getattr(getattr(app.state.rag_engine, "rag", None), "finalize_storages", None)
+        app_instance.state.corpus_state = "stopped"
+        finalizer = getattr(
+            getattr(app_instance.state.rag_engine, "rag", None),
+            "finalize_storages",
+            None,
+        )
         if callable(finalizer):
             try:
                 await finalizer()
@@ -364,7 +253,9 @@ async def load_heavy_components(rag_engine, processed_dir):
     for attempt in range(3):
         try:
             await asyncio.wait_for(rag_engine.initialize_storages(), timeout=60)
-            await asyncio.wait_for(rag_engine.load_processed_documents(str(processed_dir)), timeout=120)
+            await asyncio.wait_for(
+                rag_engine.load_processed_documents(str(processed_dir)), timeout=120
+            )
             if not rag_engine.documents:
                 app.state.corpus_state = "degraded"
             elif settings.NEO4J_ENABLED and not rag_engine._storages_initialized:
@@ -380,9 +271,6 @@ async def load_heavy_components(rag_engine, processed_dir):
                 await asyncio.sleep(0.5 * (attempt + 1))
     app.state.corpus_state = "failed"
 
-
-
-# ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="IA Jurídica - Sistema Legal Bilingüe",
@@ -426,9 +314,12 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
-# Registrar rutas de chat persistente (DESPUÉS del middleware)
 app.include_router(chat_router)
 app.include_router(auth_router)
+app.include_router(documents_router)
+app.include_router(queries_router)
+app.include_router(quality_router)
+app.include_router(sat_admin_router)
 if settings.RAG_ENGINE.lower() == "sat":
     app.include_router(sat_corpus_router)
     app.include_router(sat_api_router)
@@ -444,9 +335,6 @@ async def database_unavailable_handler(
     )
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────────
-
-
 @app.post("/session/bootstrap")
 @limiter.limit(settings.SESSION_BOOTSTRAP_RATE_LIMIT, key_func=client_ip_key)
 async def bootstrap_session(request: Request, response: Response):
@@ -460,8 +348,8 @@ async def bootstrap_session(request: Request, response: Response):
                 principal.expires_at, timezone.utc
             ).isoformat(),
         }
-    except Exception as e:
-        print(f"Error in session bootstrap: {e}")
+    except Exception as error:
+        _log_failure("session_bootstrap_failed", error, request)
         raise HTTPException(status_code=500, detail="Failed to create session")
 
 
@@ -476,7 +364,9 @@ async def root():
 async def readiness():
     phase = getattr(app.state, "corpus_state", "unavailable")
     if phase == "degraded":
-        probe = getattr(getattr(app.state, "query_retriever", None), "corpus_ready", None)
+        probe = getattr(
+            getattr(app.state, "query_retriever", None), "corpus_ready", None
+        )
         if callable(probe) and await asyncio.to_thread(probe):
             app.state.corpus_state = phase = "ready"
     if phase != "ready":
@@ -487,9 +377,10 @@ async def readiness():
 @app.get("/health")
 async def health_check():
     """Health check que incluye estado del pipeline de validación."""
-    components = {"corpus": getattr(app.state, "corpus_state", "unavailable")}
-
-    components["cohere"] = "ready" if settings.COHERE_API_KEY else "not_configured"
+    components = {
+        "corpus": getattr(app.state, "corpus_state", "unavailable"),
+        "cohere": "ready" if settings.COHERE_API_KEY else "not_configured",
+    }
 
     try:
         rag = getattr(app.state, "rag_engine", None)
@@ -501,45 +392,45 @@ async def health_check():
             components["lightrag"] = "unavailable"
     except Exception:
         components["lightrag"] = "error"
+
     if settings.RAG_ENGINE.lower() == "sat":
-        components["sat"] = "ready" if getattr(app.state, "query_retriever", None) else "unavailable"
+        components["sat"] = (
+            "ready" if getattr(app.state, "query_retriever", None) else "unavailable"
+        )
 
     try:
         agent = getattr(app.state, "legal_agent", None)
-        if agent:
-            components["pydantic_ai"] = "fallback"  # The legal agent calls Cohere directly.
-        else:
-            components["pydantic_ai"] = "unavailable"
+        components["pydantic_ai"] = "fallback" if agent else "unavailable"
     except Exception:
         components["pydantic_ai"] = "error"
 
     components["context_engineer"] = (
         "ready" if getattr(app.state, "context_engineer", None) else "unavailable"
     )
-    # ── Estado de validación [NUEVO] ───────────────────────────────────────────
     components["response_validator"] = (
         "ready" if getattr(app.state, "response_validator", None) else "unavailable"
     )
     components["llm_optimizer"] = (
         "ready" if getattr(app.state, "llm_optimizer", None) else "unavailable"
     )
-    # ── Comprobación de estado de Redis ────────────────────────────────────────
+
     try:
         redis_health = await redis_adapter.health_check()
         components["redis"] = redis_health.get("status", "unknown")
     except Exception:
         components["redis"] = "error"
-    # ── Comprobación de estado del servicio de chat ────────────────────────────
+
     try:
         db_health = await chat_service.db.health_check()
         components["postgresql"] = db_health.get("status", "unknown")
     except Exception:
-        components["chat_service"] = "error"
+        components["postgresql"] = "error"
 
+    primary_engine = "sat" if settings.RAG_ENGINE.lower() == "sat" else "lightrag"
     critical_ok = (
         all(
-            components.get(c) in ("ready", "fallback")
-            for c in ("cohere", "sat" if settings.RAG_ENGINE.lower() == "sat" else "lightrag", "pydantic_ai")
+            components.get(name) in ("ready", "fallback")
+            for name in ("cohere", primary_engine, "pydantic_ai")
         )
         and components.get("postgresql") == "healthy"
         and components.get("corpus") == "ready"
@@ -552,862 +443,6 @@ async def health_check():
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
     }
-
-
-class DocumentQueryRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="Pregunta sobre el documento")
-    language: SupportedLanguage = "spanish"
-
-
-@app.post("/query-document")
-@limiter.limit(settings.LLM_RATE_LIMIT)
-async def query_document(
-    request: Request,
-    file: UploadFile = File(...),
-    query: str = Form(...),
-    language: SupportedLanguage = Form("spanish"),
-    principal: Principal = Depends(require_principal),
-):
-    """
-    Procesa un documento temporalmente (imagen/PDF) y responde preguntas usando Cohere.
-    El documento NO se guarda en el RAG permanentemente.
-    """
-    from ingestion.docling_processor import LegalDocumentProcessor
-
-    temp_path: Optional[Path] = None
-    try:
-        # Validar archivo
-        original_name = (
-            (file.filename or "upload").replace("\\", "/").rsplit("/", 1)[-1]
-        )
-        original_name = "".join(char for char in original_name if char.isprintable())[:255]
-
-        file_ext = Path(original_name).suffix.lower()
-        supported_exts = LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS | LegalDocumentProcessor.SUPPORTED_DOC_FORMATS
-        if file_ext not in supported_exts:
-            raise HTTPException(
-                400,
-                f"Formato no soportado: {file_ext}. "
-                f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
-            )
-        # Guardar archivo temporalmente
-        temp_dir = BASE_DIR / "temp"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        temp_path = temp_dir / f"{uuid.uuid4().hex}{file_ext}"
-
-        total_size = 0
-        with temp_path.open("xb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                total_size += len(chunk)
-                if total_size > settings.MAX_FILE_SIZE:
-                    raise HTTPException(413, "File exceeds maximum allowed size")
-                buffer.write(chunk)
-
-        if total_size == 0:
-            raise HTTPException(400, "Empty file")
-
-        # Procesar documento con Docling
-        document_processor = LegalDocumentProcessor()
-        markdown_content = await document_processor.process_document(
-            str(temp_path), write_output=False
-        )
-
-        # Verificar tamaño del documento y decidir: Contexto Largo vs RAG
-        import tiktoken
-
-        try:
-            encoding = tiktoken.encoding_for_model("command-r-plus-08-2024")
-            token_count = len(encoding.encode(markdown_content))
-        except Exception:
-            # Fallback si tiktoken no tiene el modelo específico
-            encoding = tiktoken.get_encoding("cl100k_base")
-            token_count = len(encoding.encode(markdown_content))
-
-        use_rag_fallback = (settings.RAG_ENGINE.lower() != "sat"
-                            and token_count > settings.MAX_UPLOAD_TOKENS
-                            and settings.ENABLE_UPLOAD_RAG_FALLBACK)
-
-        if use_rag_fallback:
-            logger.info(f"Documento grande ({token_count} tokens > {settings.MAX_UPLOAD_TOKENS}), usando RAG temporal")
-        else:
-            logger.info(f"Documento pequeño ({token_count} tokens <= {settings.MAX_UPLOAD_TOKENS}), usando contexto largo")
-
-        # Preparar prompt para Cohere con el contenido del documento
-        from agents.pydantic_agents import LegalAgent
-
-        legal_agent = LegalAgent()
-
-        if not legal_agent.cohere_client:
-            raise HTTPException(500, "Cohere client not initialized")
-
-        from context.prompt_templates import get_legal_system_prompt
-
-        if use_rag_fallback:
-            # Fallback: Usar RAG temporal para documentos grandes
-            logger.info("Iniciando RAG temporal para documento grande")
-
-            # Crear directorio temporal para RAG
-            temp_rag_dir = temp_dir / f"temp_rag_{uuid.uuid4().hex}"
-            temp_rag_dir.mkdir(parents=True, exist_ok=True)
-
-            try:
-                # Inicializar RAG temporal
-                from modules.rag.services.lightrag_engine import LegalRAGEngine
-                temp_rag = LegalRAGEngine(working_dir=str(temp_rag_dir))
-                temp_rag._ensure_initialized()
-
-                # Inicializar storages
-                await temp_rag.initialize_storages()
-
-                # Agregar documento al RAG temporal
-                await temp_rag.add_document(
-                    content=markdown_content,
-                    metadata={"filename": original_name, "source": "temp_upload"},
-                    document_id="temp_doc"
-                )
-
-                # Realizar consulta con RAG
-                rag_result = await temp_rag.query_with_rerank(query, top_k=5, rerank_candidates=20)
-
-                # Construir prompt con el contexto recuperado del RAG
-                retrieved_context = rag_result.get("answer", "No se encontró información relevante")
-
-                system_prompt = f"""{get_legal_system_prompt()}
-
-INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS GRANDES:
-1. El documento proporcionado es muy grande, por lo que se recuperaron fragmentos relevantes usando búsqueda semántica
-2. Basa tu respuesta SOLO en los fragmentos recuperados proporcionados
-3. Si la información necesaria no está en los fragmentos, indica explícitamente que no está disponible
-4. Cita la fuente específica cuando sea posible
-5. Organiza la respuesta en secciones claras con encabezados
-6. Mantén el tono profesional y técnico pero accesible
-
-Responde en {language}."""
-
-                user_message = f"""FRAGMENTOS RECUPERADOS DEL DOCUMENTO:
-{retrieved_context}
-
-PREGUNTA:
-{query}
-
-Responde en {language}."""
-
-                # Llamar a Cohere con contexto del RAG
-                response = await legal_agent.cohere_client.chat(
-                    model="command-r-plus-08-2024",
-                    message=user_message,
-                    preamble=system_prompt,
-                    chat_history=[],
-                    temperature=0.3,
-                )
-
-                # Limpiar directorio temporal RAG
-                import shutil
-                shutil.rmtree(temp_rag_dir, ignore_errors=True)
-
-            except Exception as e:
-                logger.error(f"Error en RAG temporal: {e}")
-                # Fallback adicional: usar contexto largo truncado
-                logger.warning("RAG temporal falló, usando contexto largo truncado")
-                truncated_content = markdown_content[:10000]  # Truncar a ~10k caracteres
-                user_message = f"""DOCUMENTO (TRUNCADO):
-{truncated_content}
-
-[Nota: El documento es muy grande y se ha truncado. Esta respuesta puede no incluir toda la información.]
-
-PREGUNTA:
-{query}
-
-Responde en {language}."""
-                response = await legal_agent.cohere_client.chat(
-                    model="command-r-plus-08-2024",
-                    message=user_message,
-                    preamble=system_prompt,
-                    chat_history=[],
-                    temperature=0.3,
-                )
-        else:
-            # Contexto largo para documentos pequeños
-            system_prompt = f"""{get_legal_system_prompt()}
-
-INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS DE DOCUMENTOS:
-1. Analiza el documento proporcionado en formato Markdown
-2. Identifica el tipo de documento (ley, reglamento, jurisprudencia, etc.)
-3. Extrae y estructura la información relevante: artículos modificados, cambios principales, plazos, entidades involucradas
-4. Cita artículos específicos y números de ley cuando sea posible
-5. Organiza la respuesta en secciones claras con encabezados
-6. Si el documento es una modificación legislativa, explica claramente qué cambia y qué no
-7. Mantén el tono profesional y técnico pero accesible
-
-Responde en {language}."""
-
-            user_message = f"""DOCUMENTO:
-{markdown_content}
-
-PREGUNTA:
-{query}
-
-Responde en {language}."""
-
-            # Llamar a Cohere
-            try:
-                response = await legal_agent.cohere_client.chat(
-                    model="command-r-plus-08-2024",
-                    message=user_message,
-                    preamble=system_prompt,
-                    chat_history=[],
-                    temperature=0.3,
-                )
-            except AttributeError as e:
-                import traceback
-                error_details = f"AttributeError: {str(e)}\n{traceback.format_exc()}"
-                logging.getLogger("ia_juridica.api").error(f"Cohere client error: {error_details}")
-                raise HTTPException(500, f"Cohere client error: {str(e)}")
-            except Exception as e:
-                import traceback
-                error_details = f"Error: {str(e)}\n{traceback.format_exc()}"
-                logging.getLogger("ia_juridica.api").error(f"Cohere API error: {error_details}")
-                raise HTTPException(500, f"Cohere API error: {str(e)}")
-
-        # Retornar respuesta
-        return {
-            "success": True,
-            "query": query,
-            "response": response.text,
-            "language": language,
-            "document_type": "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document",
-            "original_filename": original_name,
-            "processing_method": "rag_fallback" if use_rag_fallback else "long_context",
-            "token_count": token_count,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as error:
-        _log_failure("document_query_failed", error, request)
-        raise HTTPException(500, "Document query failed")
-    finally:
-        # Limpiar archivo temporal
-        if temp_path and temp_path.exists():
-            temp_path.unlink(missing_ok=True)
-        await file.close()
-
-
-@app.post("/upload-document")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def upload_document(
-    request: Request,
-    file: UploadFile = File(...),
-    _auth: bool = Depends(verify_admin_api_key),
-):
-    """Sube y procesa un documento legal (PDF, imagen, DOCX, etc.) con Docling."""
-    from ingestion.docling_processor import LegalDocumentProcessor
-
-    file_ext = ""
-    raw_path: Optional[Path] = None
-    processed_path: Optional[Path] = None
-    processed_created = False
-    evidence_published = False
-    try:
-        original_name = (
-            (file.filename or "upload").replace("\\", "/").rsplit("/", 1)[-1]
-        )
-        original_name = "".join(char for char in original_name if char.isprintable())[
-            :255
-        ]
-
-        # Verificar extensión del archivo
-        file_ext = Path(original_name).suffix.lower()
-        supported_exts = LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS | LegalDocumentProcessor.SUPPORTED_DOC_FORMATS
-        if file_ext not in supported_exts:
-            raise HTTPException(
-                400,
-                f"Formato no soportado: {file_ext}. "
-                f"Formatos soportados: PDF, DOCX, PPTX, XLSX, imágenes (PNG, JPEG, TIFF, etc.)"
-            )
-
-        if file_ext == ".pdf" and file.content_type != "application/pdf":
-            raise HTTPException(400, "Invalid PDF media type")
-
-        raw_directory = RAW_PDFS_DIR.resolve()
-        raw_directory.mkdir(parents=True, exist_ok=True)
-        server_name = f"{uuid.uuid4().hex}{file_ext}"
-        raw_path = (raw_directory / server_name).resolve()
-        if raw_path.parent != raw_directory:
-            raise HTTPException(400, "Invalid upload path")
-
-        total_size = 0
-        first_chunk = True
-        with raw_path.open("xb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                if first_chunk and file_ext == ".pdf" and not chunk.startswith(b"%PDF-"):
-                    raise HTTPException(400, "Invalid PDF signature")
-                first_chunk = False
-                total_size += len(chunk)
-                if total_size > settings.MAX_FILE_SIZE:
-                    raise HTTPException(413, "File exceeds maximum allowed size")
-                buffer.write(chunk)
-
-        if total_size == 0:
-            raise HTTPException(400, "Empty file")
-        if file_ext == ".pdf":
-            artifact = await convert_for_ingestion(_get_pdf_processor(app), str(raw_path))
-            processed_content = artifact.markdown
-        else:
-            processed_content = await _get_document_processor(app).process_document(
-                str(raw_path), write_output=False
-            )
-
-        processed_directory = PROCESSED_DIR.resolve()
-        processed_directory.mkdir(parents=True, exist_ok=True)
-        processed_path = processed_directory / f"{raw_path.stem}.md"
-        with processed_path.open("x", encoding="utf-8", newline="") as f:
-            processed_created = True
-            f.write(processed_content)
-
-        # Determinar tipo de documento
-        document_type = "image" if file_ext in LegalDocumentProcessor.SUPPORTED_IMAGE_FORMATS else "document"
-
-        evidence = sat_result = None
-        if file_ext == ".pdf":
-            # Solo PDF entran al almacén de evidencia SAT.
-            evidence = persist_source_evidence(
-                raw_path, processed_path, processed_content,
-                PROCESSED_DIR.parent / "source_evidence",
-            )
-            evidence_published = True
-            sat_result = await asyncio.to_thread(
-                lambda: stage_document(sat_graph_store(), evidence, processed_content, artifact.docling_document),
-            )
-
-        legacy_write = app.state.rag_engine is not None and (
-            file_ext != ".pdf" or settings.SAT_INGESTION_LEGACY_RAG
-        )
-        if legacy_write:
-            await app.state.rag_engine.add_document(
-                processed_content,
-                {
-                    "filename": server_name,
-                    "original_filename": original_name,
-                    "title": original_name,
-                    "document_type": "legal_pdf" if file_ext == ".pdf" else document_type,
-                    "source": "upload-pdf" if file_ext == ".pdf" else "upload-document",
-                },
-                server_name,
-            )
-
-        # Actualizar el CrossChecker con el nuevo documento [NUEVO]
-        if legacy_write and hasattr(app.state, "response_validator"):
-            app.state.response_validator.cross_checker.update_documents(
-                app.state.rag_engine.documents
-            )
-
-        return {
-            "success": True,
-            "filename": server_name,
-            "original_filename": original_name,
-            "file_type": document_type,
-            "evidence_id": evidence.evidence_id if evidence else None,
-            "graph_write_state": "unverified" if legacy_write else "pending_review",
-            "sat_graph": sat_result,
-            "message": f"{document_type.capitalize()} procesado correctamente con Docling",
-        }
-    except HTTPException:
-        if raw_path and not evidence_published:
-            raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path and not evidence_published:
-            processed_path.unlink(missing_ok=True)
-        raise
-    except Exception as error:
-        if raw_path and not evidence_published:
-            raw_path.unlink(missing_ok=True)
-        if processed_created and processed_path and not evidence_published:
-            processed_path.unlink(missing_ok=True)
-        _log_failure("document_upload_failed", error, request)
-        raise HTTPException(500, "PDF processing failed" if file_ext == ".pdf" else "Document processing failed")
-    finally:
-        await file.close()
-
-
-# Mantener el endpoint antiguo por compatibilidad
-@app.post("/upload-pdf")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def upload_pdf(
-    request: Request,
-    file: UploadFile = File(...),
-    _auth: bool = Depends(verify_admin_api_key),
-):
-    """Sube y procesa un PDF legal con Docling (endpoint deprecado, usar /upload-document)."""
-    if Path((file.filename or "").replace("\\", "/")).suffix.lower() != ".pdf":
-        await file.close()
-        raise HTTPException(400, "Only PDFs are accepted by this endpoint")
-    return await upload_document(request, file, _auth)
-
-
-@app.post("/batch-process")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def batch_process_pdfs(
-    request: Request, _auth: bool = Depends(verify_admin_api_key)
-):
-    """Procesa todos los PDFs del directorio raw_pdfs."""
-    try:
-        results = await app.state.ingestion_pipeline.process_all_pdfs()
-        return {
-            "success": True,
-            "processed": results["processed_count"],
-            "failed": results["failed_count"],
-            "details": results["details"],
-        }
-    except Exception as error:
-        _log_failure("batch_processing_failed", error, request)
-        raise HTTPException(500, "Batch processing failed")
-
-
-@app.post("/legal-query")
-@limiter.limit(settings.LLM_RATE_LIMIT)
-async def legal_query(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
-    try:
-        cache_key, history = await _prepare_query_context(payload, principal.id, "query")
-        return await answer_query(app.state, payload.query, payload.language, history=history,
-                                  context=payload.context, cache_key=cache_key)
-    except HTTPException:
-        raise
-    except DatabaseUnavailableError:
-        raise HTTPException(503, "Chat persistence unavailable")
-    except Exception as error:
-        _log_failure("legal_query_failed", error, request)
-        raise HTTPException(500, "Legal query failed")
-
-
-
-@app.post("/legal-query-stream")
-@limiter.limit(settings.LLM_RATE_LIMIT)
-async def legal_query_stream(request: Request, payload: LegalQueryRequest, principal: Principal = Depends(require_principal)):
-    """NDJSON v1: español progresivo, con respuesta final validada.
-
-    Autorización y conversación ajena (401/404) se resuelven antes de abrir el
-    stream; los fallos posteriores salen como evento `error` con `code`.
-    """
-    try:
-        cache_key, history = await _prepare_query_context(payload, principal.id, "query")
-        if payload.conversation_id:
-            from models.chat_models import MessageCreate, MessageRole
-            await chat_service.add_message(payload.conversation_id, principal.id,
-                MessageCreate(content=payload.query, role=MessageRole.USER, language=payload.language))
-    except HTTPException:
-        raise
-    except DatabaseUnavailableError:
-        raise HTTPException(503, "Chat persistence unavailable")
-    except ValueError:
-        raise HTTPException(404, "Conversation not found")
-    except Exception as error:
-        _log_failure("legal_query_stream_failed", error, request)
-        raise HTTPException(500, "Legal query stream failed")
-
-    async def persist(result):
-        metadata = {"sources": result["sources"], "validation": result["validation"]}
-        if any(c.get("sat_section") for c in result.get("metadata", {}).get("citations", [])):
-            # Keep the citation tied to the version used, even after a corpus update.
-            metadata["api_response"] = result
-        await _persist_assistant_response(payload.conversation_id, principal.id, result["response"],
-                                         payload.language, metadata)
-
-    request_id = getattr(request.state, "request_id", "unknown")
-    source = stream_legal_query(
-        run_pipeline=lambda on_stage, on_delta=None: answer_query(app.state, payload.query, payload.language, history=history,
-                                                   context=payload.context, cache_key=cache_key, on_stage=on_stage,
-                                                   **({"on_delta": on_delta} if on_delta is not None else {})),
-        extract_text=lambda result: _extract_response_text(result["response"], payload.language),
-        persist=persist,
-        request_id=request_id,
-        language=payload.language,
-        timeout_s=settings.STREAM_PIPELINE_TIMEOUT_SECONDS,
-        live_text=payload.language == "spanish",
-    )
-    # El guardián verifica el esquema, la secuencia, los terminales y el timeout.
-    events = guard_stream(
-        source,
-        extract_text=lambda data: _extract_response_text(data["response"], payload.language),
-        request_id=request_id,
-        idle_timeout_s=settings.STREAM_IDLE_TIMEOUT_SECONDS,
-        live_text=payload.language == "spanish",
-    )
-    return StreamingResponse(events, media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
-
-
-
-MAX_TELEMETRY_BYTES = 4096
-
-
-@app.post("/telemetry/stream", status_code=204)
-@limiter.limit(settings.TELEMETRY_RATE_LIMIT)
-async def stream_telemetry(request: Request):
-    """Telemetría del cliente: solo números y el `request_id`, nunca texto.
-
-    Acepta `text/plain` (navigator.sendBeacon evita así el preflight CORS); el cuerpo es JSON.
-    """
-    body = await request.body()
-    if len(body) > MAX_TELEMETRY_BYTES:
-        raise HTTPException(413, "Telemetry payload too large")
-    try:
-        item = StreamTelemetry.model_validate_json(body)
-    except ValueError:
-        raise HTTPException(422, "Invalid telemetry payload")
-    stream_metrics.record(item)
-    return Response(status_code=204)
-
-
-@app.get("/telemetry/stream/summary")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def stream_telemetry_summary(request: Request, _auth: bool = Depends(verify_admin_api_key)):
-    """p50/p95 por etapa, resultados y líneas inválidas de los últimos streams (solo administración)."""
-    return {"success": True, "summary": stream_metrics.summary()}
-
-
-def _feedback_store() -> FeedbackStore:
-    store = getattr(app.state, "feedback_store", None)
-    if store is None:
-        store = FeedbackStore(settings.FEEDBACK_DIR)
-        app.state.feedback_store = store
-    return store
-
-
-async def _rated_exchange(conversation_id: str, owner_id: str):
-    """Última consulta y respuesta de una conversación **propia**; ``(None, None)`` si no se pueden leer."""
-    try:
-        if not await chat_service.get_conversation(conversation_id, owner_id):
-            return None, None
-        messages = await chat_service.get_conversation_messages(conversation_id, owner_id, limit=12)
-    except (DatabaseUnavailableError, ValueError):
-        return None, None
-    role = lambda m: getattr(m.role, "value", m.role)  # noqa: E731
-    answer = next((m.content for m in reversed(messages) if role(m) == "assistant"), None)
-    query = next((m.content for m in reversed(messages) if role(m) == "user"), None)
-    return query, answer
-
-
-@app.post("/feedback", status_code=201)
-@limiter.limit(settings.FEEDBACK_RATE_LIMIT)
-async def submit_feedback(request: Request, payload: FeedbackIn, principal: Principal = Depends(require_principal)):
-    """👍/👎 con motivo. El texto solo se guarda con `share_text` y 👎 (cola de candidatos, pendiente de revisión)."""
-    query = answer = None
-    if payload.share_text and payload.rating == "down" and payload.conversation_id:
-        query, answer = await _rated_exchange(payload.conversation_id, principal.id)
-    record = _feedback_store().add(principal.id, payload, query=query, answer=answer)
-    return {"success": True, "id": record["id"], "queued": record["queue_status"] == "pending"}
-
-
-@app.get("/feedback/queue")
-@limiter.limit(settings.QUALITY_RATE_LIMIT)
-async def feedback_queue(request: Request, _admin: str = Depends(require_quality_admin)):
-    store = _feedback_store()
-    return {"success": True, "summary": store.summary(), "items": store.queue("pending")[:50]}
-
-
-class QueueDecision(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    decision: Literal["accept", "reject"]
-
-
-@app.post("/feedback/queue/{item_id}/decision")
-@limiter.limit(settings.QUALITY_RATE_LIMIT)
-async def decide_feedback(request: Request, item_id: str, payload: QueueDecision, _admin: str = Depends(require_quality_admin)):
-    """Acepta o descarta un candidato. Aceptar NO lo agrega al gold: lo deja listo para que abogados lo redacten."""
-    record = _feedback_store().decide(item_id, payload.decision)
-    if record is None:
-        raise HTTPException(404, "Queue item not found")
-    return {"success": True, "id": record["id"], "queue_status": record["queue_status"]}
-
-
-@app.get("/quality/published")
-@limiter.limit(settings.QUALITY_RATE_LIMIT)
-async def quality_published(request: Request):
-    """Métricas publicadas (agregados, sin texto de consultas ni respuestas)."""
-    return {"success": True, "published": load_published()}
-
-
-@app.get("/quality/admin/overview")
-@limiter.limit(settings.QUALITY_RATE_LIMIT)
-async def quality_admin_overview(request: Request, _admin: str = Depends(require_quality_admin)):
-    """Regresiones entre commits, colas de revisión, feedback y latencia del stream."""
-    return {"success": True, "overview": admin_overview(_feedback_store(), stream_metrics)}
-
-
-@app.post(
-    "/generate-pdf-report",
-    responses={
-        500: {"description": "PDF generation failed"},
-        503: {"description": "PDF generation unavailable"},
-    },
-)
-async def generate_pdf_report(
-    payload: PDFReportRequest,
-    principal: Principal = Depends(require_principal),
-):
-    """Genera reporte PDF legal con ReportLab."""
-    try:
-        from utils.pdf_generator import generate_legal_pdf_bytes
-
-        pdf_bytes = generate_legal_pdf_bytes(
-            query=payload.query,
-            response_data=payload.response,
-        )
-
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": 'attachment; filename="reporte_legal.pdf"',
-                "Cache-Control": "no-store",
-            },
-        )
-    except ImportError:
-        raise HTTPException(503, "PDF generation unavailable")
-    except Exception as error:
-        _log_failure("pdf_generation_failed", error)
-        raise HTTPException(500, "PDF generation failed")
-
-
-@app.get("/knowledge-graph")
-async def get_knowledge_graph(engine: str | None = None, _auth: bool = Depends(verify_admin_api_key)):
-    engine = engine or settings.RAG_ENGINE.lower()
-    try:
-        if engine == "sat":
-            graph_data = await asyncio.to_thread(
-                lambda: sat_graph_store().export()
-            )
-            return {"success": True, "graph": graph_data}
-        if engine != "lightrag":
-            raise HTTPException(422, "Unknown graph engine")
-        if app.state.rag_engine is None:
-            raise HTTPException(409, "LightRAG is disabled in SAT mode")
-        graph_data = await app.state.rag_engine.get_knowledge_graph()
-        return {"success": True, "graph": graph_data}
-    except HTTPException:
-        raise
-    except Exception as error:
-        _log_failure("knowledge_graph_read_failed", error)
-        raise HTTPException(500, "Failed to get knowledge graph")
-
-
-@app.get("/sat-graph/resolve")
-async def resolve_sat_version(resource_id: str, component: str, as_of: str,
-                              _auth: bool = Depends(verify_admin_api_key)):
-    """Lectura admin determinística; no cambia el recuperador del chat legado."""
-    try:
-        return await asyncio.to_thread(
-            lambda: sat_graph_store().resolve(
-                resource_id, component, as_of
-            )
-        )
-    except ValueError:
-        raise HTTPException(422, "Invalid SAT query")
-    except Exception as error:
-        _log_failure("sat_graph_read_failed", error)
-        raise HTTPException(500, "Failed to read SAT graph")
-
-
-@app.get("/sat-graph/structure")
-async def sat_candidate_structure(evidence_id: str, parse_id: str | None = None,
-                                  _auth: bool = Depends(verify_admin_api_key)):
-    """AST y layout candidatos, solo para revisión administrativa autorizada."""
-    try:
-        return await asyncio.to_thread(
-            lambda: sat_graph_store().structure(evidence_id, parse_id)
-        )
-    except ValueError:
-        raise HTTPException(422, "Missing or ambiguous SAT structure; specify a valid parse_id")
-    except Exception as error:
-        _log_failure("sat_structure_read_failed", error)
-        raise HTTPException(500, "Failed to read SAT structure")
-
-
-@app.post("/sat-graph/search")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def search_sat_graph(request: Request, plan: SearchPlan, use_voyage: bool = False,
-                           _auth: bool = Depends(verify_admin_api_key)):
-    """Ruta experimental admin. Egreso Voyage solo con opt-in explícito por consulta."""
-    def retrieve():
-        provider = None
-        if use_voyage:
-            provider = VoyageProvider(
-                settings.VOYAGE_API_KEY.get_secret_value(),
-                connect=(
-                    connect_postgres
-                    if settings.DATABASE_BACKEND.lower().startswith("postgres")
-                    else connect_surreal_voyage
-                ),
-                dimension=settings.VOYAGE_DIMENSION,
-                daily_requests=settings.VOYAGE_DAILY_REQUESTS,
-                daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,
-                requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
-                token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
-            )
-        graph = sat_graph_store().export()
-        return SATRetriever(graph).search(plan, provider=provider)
-
-    try:
-        return await asyncio.to_thread(retrieve)
-    except VoyageError:
-        raise HTTPException(503, "Voyage unavailable or local budget exhausted")
-    except ValueError:
-        raise HTTPException(422, "Invalid SAT retrieval parameters")
-    except Exception as error:
-        _log_failure("sat_graph_search_failed", error, request)
-        raise HTTPException(500, "Failed to search SAT graph")
-
-
-@app.get("/sat-graph/history")
-async def sat_graph_history(resource_id: str, component: str,
-                            _auth: bool = Depends(verify_admin_api_key)):
-    try:
-        return await asyncio.to_thread(lambda: SATRetriever(
-            sat_graph_store().export()
-        ).history(resource_id, component))
-    except Exception as error:
-        _log_failure("sat_graph_history_failed", error)
-        raise HTTPException(500, "Failed to read SAT history")
-
-
-class TTSRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    text: str = Field(..., min_length=1, max_length=5000)
-    language: SupportedLanguage = "spanish"
-
-
-@app.post("/tts/synthesize")
-@limiter.limit(settings.LLM_RATE_LIMIT)
-async def synthesize_speech(
-    request: Request,
-    payload: TTSRequest,
-    principal: Principal = Depends(require_principal),
-):
-    """
-    Sintetiza texto a voz.
-    - Para español: Retorna indicación de usar Web Speech API en el frontend
-    - Para quechua: Usa MMS-TTS para generar audio WAV
-    """
-    try:
-        language_code = "qu" if payload.language == "quechua" else "es"
-
-        # Para español, usar Web Speech API en el frontend
-        if language_code == "es":
-            return {
-                "success": True,
-                "method": "web_speech_api",
-                "language": "es",
-                "message": "Use Web Speech API in the browser for Spanish",
-                "text": payload.text,
-            }
-
-        # Para quechua, usar MMS-TTS
-        tts_service = TTSService()
-
-        if not tts_service.is_available(language_code):
-            raise HTTPException(
-                503,
-                f"TTS not available for language: {payload.language}"
-            )
-
-        audio_bytes = await tts_service.synthesize_quechua(payload.text)
-
-        if audio_bytes is None:
-            raise HTTPException(500, "Failed to synthesize audio")
-
-        return Response(
-            content=audio_bytes,
-            media_type="audio/wav",
-            headers={
-                "Content-Disposition": 'attachment; filename="quechua_audio.wav"',
-                "Cache-Control": "no-store",
-            },
-        )
-
-    except HTTPException:
-        raise
-    except Exception as error:
-        _log_failure("tts_synthesis_failed", error, request)
-        raise HTTPException(500, "TTS synthesis failed")
-
-
-@app.post("/evaluate-system")
-@limiter.limit(settings.ADMIN_RATE_LIMIT)
-async def evaluate_system(
-    request: Request, _auth: bool = Depends(verify_admin_api_key),
-    provider: Literal["application", "nvidia-voyage"] = "application",
-    limit: Optional[int] = Query(default=None, ge=1, le=1000),
-):
-    try:
-        if not settings.EVALUATION_ENABLED:
-            raise HTTPException(503, "Evaluación deshabilitada por configuración")
-        if provider == "nvidia-voyage" and limit is None:
-            raise HTTPException(422, "Indica el límite usado al grabar el cassette")
-        report = await _evaluate_harness(provider, limit) if provider == "nvidia-voyage" else await _evaluate_harness()
-        # No divulgar respuestas del cassette ni presentar reproducción como evaluación del modelo actual.
-        return {
-            "success": report["n_cases"] > 0 and report["n_errors"] == 0,
-            "results": {
-                "evaluation_scope": "recorded_responses_not_live_model",
-                "provider": provider,
-                "judge": report["judge"],
-                "n_cases": report["n_cases"],
-                "n_errors": report["n_errors"],
-                "metrics": report["metrics"],
-                "gold": report["gold"],
-                **({"ragas_non_llm_string_similarity": report["ragas_non_llm_string_similarity"]}
-                   if "ragas_non_llm_string_similarity" in report else {}),
-            },
-        }
-    except HTTPException:
-        raise
-    except (FileNotFoundError, ImportError) as error:
-        _log_failure("evaluation_unavailable", error, request)
-        raise HTTPException(503, "Harness de evaluación no disponible") from None
-    except Exception as error:
-        _log_failure("evaluation_failed", error, request)
-        raise HTTPException(500, "Evaluation failed")
-
-
-@app.get("/documents")
-async def list_documents(_auth: bool = Depends(verify_admin_api_key)):
-    if app.state.rag_engine is None:
-        raise HTTPException(409, "Use the SAT corpus review to list documents in SAT mode")
-    try:
-        docs = await app.state.rag_engine.list_documents()
-        return {"success": True, "documents": docs}
-    except Exception as error:
-        _log_failure("document_listing_failed", error)
-        raise HTTPException(500, "Failed to list documents")
-
-
-# ── Endpoint de estadísticas de validación ────────────────────────────
-
-
-@app.get("/validation-stats")
-async def get_validation_stats(_auth: bool = Depends(verify_admin_api_key)):
-    """
-    Retorna estadísticas del pipeline de validación y uso del optimizador.
-    Útil para monitoreo y ajuste de umbrales.
-    """
-    try:
-        optimizer: LLMOptimizer = app.state.llm_optimizer
-        rag_stats = app.state.rag_engine.get_stats() if app.state.rag_engine else {"engine": "sat"}
-
-        return {
-            "success": True,
-            "optimizer": optimizer.get_session_stats(),
-            "rag_engine": rag_stats,
-            "validation_config": {
-                "hallucination_threshold": app.state.response_validator.config.hallucination_threshold,
-                "cross_check_threshold": app.state.response_validator.config.cross_check_threshold,
-                "min_confidence_score": app.state.response_validator.config.min_confidence_score,
-                "self_correction_retries": app.state.response_validator.config.max_self_correction_retries,
-            },
-        }
-    except Exception as error:
-        _log_failure("validation_stats_failed", error)
-        raise HTTPException(500, "Stats failed")
 
 
 if __name__ == "__main__":

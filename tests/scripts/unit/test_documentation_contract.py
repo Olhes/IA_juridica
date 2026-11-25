@@ -45,6 +45,10 @@ def test_api_documented_explicit_routes_exist_in_current_source():
     routes = set()
     for name, prefix, receiver in [
         ("backend/main.py", "", "app"),
+        ("backend/routers/documents.py", "", "router"),
+        ("backend/routers/queries.py", "", "router"),
+        ("backend/routers/quality.py", "", "router"),
+        ("backend/routers/sat_admin.py", "", "router"),
         ("backend/modules/chat/routes/chat_routes.py", "/chat", "router"),
     ]:
         tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
