@@ -23,7 +23,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from retrieval.lexical import BM25Index as _BM25Index, terms
+from retrieval.lexical import BM25Index as _BM25Index, legal_terms, terms
 from utils.vectors import cosine_scores
 
 class RankStages(BaseModel):
@@ -170,8 +170,11 @@ class SATRetriever:
         from threading import RLock
         self._rank_cache_lock = RLock()
         self.outgoing = defaultdict(list)
+        self.incoming_contains = defaultdict(list)
         for edge in self.edges:
             self.outgoing[(edge["source"], edge["type"])].append(edge["target"])
+            if edge["type"] == "contains_version":
+                self.incoming_contains[edge["target"]].append(edge["source"])
 
     def _texts(self, version, language):
         return [
@@ -179,6 +182,42 @@ class SATRetriever:
             for target in self.outgoing[(version["id"], "has_text")]
             if self.nodes[target].get("language") == language
         ]
+
+    def _ancestor_headings(self, version_id: str, language: str) -> str:
+        """Collect structural parent labels and short container headings via contains_version."""
+        parts: list[str] = []
+        seen = {version_id}
+        frontier = list(self.incoming_contains.get(version_id, ()))
+        depth = 0
+        while frontier and depth < 8:
+            next_frontier: list[str] = []
+            for parent_id in frontier:
+                if parent_id in seen:
+                    continue
+                seen.add(parent_id)
+                parent_ctv = self.nodes.get(parent_id)
+                if not parent_ctv or parent_ctv.get("type") != "CTV":
+                    continue
+                work = self.nodes.get(parent_ctv.get("work_id"))
+                if work:
+                    label = (work.get("label") or "").strip()
+                    if label:
+                        parts.append(label)
+                    if work.get("kind") not in {"article", "numeral", "inciso", "subinciso"}:
+                        texts = self._texts(parent_ctv, language)
+                        if len(texts) == 1:
+                            lines = [
+                                line.lstrip("#").strip()
+                                for line in (texts[0].get("text") or "").splitlines()[:3]
+                                if line.strip()
+                            ]
+                            snippet = " ".join(lines)[:200].strip()
+                            if snippet and snippet != label:
+                                parts.append(snippet)
+                next_frontier.extend(self.incoming_contains.get(parent_id, ()))
+            frontier = next_frontier
+            depth += 1
+        return " ".join(dict.fromkeys(parts))
 
     def eligible(self, plan: SearchPlan) -> list[dict]:
         cache_key = (plan.as_of, plan.scope, plan.language, tuple(plan.resource_ids), plan.component)
@@ -370,8 +409,18 @@ class SATRetriever:
         with self._rank_cache_lock:
             if self._rank_cache is None or self._rank_cache[0] != cache_key:
                 chunks = self.chunks(plan)
-                raw_index = _BM25Index({c['id']: c['content'] for c in chunks})
-                metadata_index = _BM25Index({c['id']: f'{c["resource_label"]} {c["label"]} {c["component"]} {c["content"]}' for c in chunks})
+                raw_index = _BM25Index({c['id']: c['content'] for c in chunks}, tokenize=legal_terms)
+                metadata_index = _BM25Index(
+                    {
+                        c['id']: (
+                            f'{c["resource_label"]} '
+                            f'{self._ancestor_headings(c["version_id"], plan.language)} '
+                            f'{c["label"]} {c["component"]} {c["content"]}'
+                        )
+                        for c in chunks
+                    },
+                    tokenize=legal_terms,
+                )
                 self._rank_cache = (cache_key, chunks, raw_index, metadata_index)
             _, chunks, raw_index, metadata_index = self._rank_cache
         by_id = {chunk["id"]: chunk for chunk in chunks}

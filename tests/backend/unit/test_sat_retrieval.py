@@ -307,3 +307,68 @@ def test_bm25_keeps_exact_tie_break_and_ignores_unknown_terms():
     assert bm25("...", texts) == {}
     assert bm25("niñez", {"empty": ""}) == {}
     assert bm25("niñez", {}) == {}
+
+
+def test_legal_terms_drops_stopwords_and_stems_spanish_inflections():
+    from retrieval.lexical import legal_terms
+
+    tokens = legal_terms("El papá de mi hija no sé dónde trabaja y qué necesito para hacerlo")
+    for stop in ("el", "de", "mi", "no", "donde", "y", "que", "para", "hacerlo"):
+        assert stop not in tokens
+    assert set(legal_terms("donde trabaja el padre")) & set(legal_terms("centro de trabajo"))
+    assert set(legal_terms("pension alimenticia")) & set(legal_terms("prestacion de alimentos"))
+    # Stopword-only input falls back rather than returning empty when text had words.
+    assert legal_terms("el de la") != []
+
+
+def test_metadata_search_inherits_ancestor_chapter_and_subchapter_headings(tmp_path):
+    store = SATGraphStore(tmp_path / "ancestors.sqlite3")
+    with store._transaction() as db:
+        def add(key, kind, label, text, parent=None, resource="pe:dl:768"):
+            work, version, clv = (f"{p}:{key}" for p in ("work", "ctv", "clv"))
+            store._node(db, work, "Work", {
+                "resource_id": resource, "component": key, "kind": kind, "label": label,
+            })
+            store._node(db, version, "CTV", {
+                "work_id": work, "scope": "PE", "provenance_state": "user_attested_snapshot",
+                "snapshot_as_of": "2026-11-12", "valid_from": None, "valid_to": None,
+                "checked_through": "2026-11-12", "review_id": "r",
+            })
+            store._node(db, clv, "CLV", {
+                "language": "es", "text": text, "start": 0,
+                "source_url": "https://example.org", "evidence_id": "source",
+            })
+            store._edge(db, version, "has_text", clv, {})
+            if parent:
+                store._edge(db, f"ctv:{parent}", "contains_version", version, {})
+
+        add("sub1", "subcapitulo", "Subcapítulo 1", "## Subcapítulo 1\nAlimentos")
+        add(
+            "art564", "article", "Artículo 564.- Acceso de oficio a información",
+            "El juez solicita informe al centro de trabajo sobre la remuneración del demandado.",
+            parent="sub1",
+        )
+        add("cap4", "capitulo", "CAPÍTULO IV. Omisión de asistencia familiar", "CAPÍTULO IV. Omisión de asistencia familiar", resource="pe:dl:635")
+        add(
+            "art149", "article", "Artículo 149°",
+            "El que omite cumplir su obligación de prestar los alimentos que establece una resolución judicial o abandona su trabajo.",
+            parent="cap4", resource="pe:dl:635",
+        )
+        add("tit3", "titulo", "TÍTULO III FALTAS CONTRA EL PATRIMONIO", "TÍTULO III FALTAS CONTRA EL PATRIMONIO", resource="pe:dl:635")
+        add(
+            "art445", "article", "Artículo 445°",
+            "El que se hace servir alimentos o bebidas en un restaurante con el designio de no pagar o sabiendo que no podía hacerlo.",
+            parent="tit3", resource="pe:dl:635",
+        )
+
+    engine = SATRetriever(store.export())
+    res = engine.search(SearchPlan(
+        query="no sé dónde trabaja, quiero pedir pensión de alimentos y qué necesito para hacerlo",
+        strategy="metadata",
+        structural_units=True,
+        top_k=3,
+    ))
+    ordered_ids = [h["version_id"] for h in res["hits"]]
+    assert "ctv:art564" in ordered_ids[:2]
+    assert ordered_ids.index("ctv:art149") < ordered_ids.index("ctv:art445")
+
