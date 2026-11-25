@@ -264,3 +264,36 @@ test('el request_id del evento meta queda en el mensaje para poder calificar la 
   await act(async () => { await result.current.sendQuery('q'); });
   expect(result.current.messages[1].requestId).toBe(id);
 });
+test('reabrir una conversación hidrata citas, tiempos y request_id desde metadata', async () => {
+  const id = '0123456789abcdef0123456789abcdef';
+  const savedPayload = {
+    ...payload,
+    metadata: {
+      ...payload.metadata,
+      evidence: [{ source: 'Ley 28970', document: 'Ley 28970', excerpt: 'Artículo 3.' }],
+      citations: [{ key: 'ley:28970', text: 'Ley 28970', status: 'verified', source: 'Ley 28970' }],
+      timings: { total_ms: 4200, stages: { retrieval: 800 }, cache_hit: false },
+    },
+  };
+  vi.spyOn(apiService, 'getConversation').mockResolvedValueOnce({
+    success: true,
+    data: {
+      conversation: conversation('reopened'),
+      messages: [
+        {
+          id: 'm-assistant',
+          conversation_id: 'reopened',
+          role: 'assistant',
+          content: savedPayload.response.respuesta_espanol,
+          created_at: '2026-11-24T21:00:00Z',
+          metadata: { api_response: savedPayload, request_id: id },
+        },
+      ],
+      total_messages: 1,
+    },
+  } as any);
+  const { result } = renderHook(() => useChat({ sessionId: 'reopened', language: 'spanish' }));
+  await waitFor(() => expect(result.current.messages).toHaveLength(1));
+  expect(result.current.messages[0].apiResponse).toEqual(savedPayload);
+  expect(result.current.messages[0].requestId).toBe(id);
+});

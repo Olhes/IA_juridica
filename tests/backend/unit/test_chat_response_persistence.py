@@ -217,3 +217,90 @@ async def test_cached_stream_persists_response_with_same_extractor(monkeypatch):
         "message_data"
     ]
     assert assistant_message.content == "Cached Spanish response"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stream_persists_citations_timings_and_request_id_without_sat_section(monkeypatch):
+    optimizer = MagicMock()
+    optimizer.get_cached.return_value = None
+    optimizer.get_session_stats.return_value = {}
+
+    async def stream_text(*_args, **_kwargs):
+        yield "Según el artículo 3 de la Ley 28970."
+
+    validator = MagicMock()
+    validator.validate = AsyncMock(
+        return_value=SimpleNamespace(
+            answer_data={"respuesta_espanol": "Según el artículo 3 de la Ley 28970."},
+            validation_report=SimpleNamespace(model_dump=lambda: {"status": "passed"}),
+            sources=["Ley 28970"],
+            is_reliable=True,
+        )
+    )
+    chat_service = MagicMock()
+    chat_service.add_message = AsyncMock()
+    chat_service.get_conversation = AsyncMock(return_value=object())
+    chat_service.get_conversation_messages = AsyncMock(return_value=[])
+
+    monkeypatch.setattr(main, "chat_service", chat_service)
+    monkeypatch.setattr(main.app.state, "llm_optimizer", optimizer, raising=False)
+    monkeypatch.setattr(
+        main.app.state,
+        "rag_engine",
+        SimpleNamespace(
+            query_with_rerank=AsyncMock(
+                return_value={
+                    "documents": [
+                        {
+                            "content": "Artículo 3 de la Ley 28970 sobre REDAM.",
+                            "metadata": {"title": "Ley 28970"},
+                            "relevance_score": 0.9,
+                        }
+                    ],
+                    "method": "sat",
+                }
+            )
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        main.app.state,
+        "context_engineer",
+        SimpleNamespace(build_legal_prompt=MagicMock(return_value=("prompt", {}))),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        main.app.state,
+        "legal_agent",
+        SimpleNamespace(
+            respond_general=AsyncMock(
+                return_value={"respuesta_espanol": "Según el artículo 3 de la Ley 28970."}
+            ),
+            stream_general_text=stream_text,
+            build_general_response_from_text=MagicMock(return_value={}),
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(main.app.state, "response_validator", validator, raising=False)
+
+    request = make_request()
+    request.state.request_id = "0123456789abcdef0123456789abcdef"
+    response = await main.legal_query_stream(
+        request=request,
+        payload=main.LegalQueryRequest(
+            query="Contenido del REDAM", conversation_id="conversation-id"
+        ),
+        principal=Principal("c5d4a819-f0b1-4775-a374-f280bfc2085c", 9999999999),
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assistant_message = chat_service.add_message.await_args_list[1].kwargs[
+        "message_data"
+    ]
+    assert assistant_message.metadata["request_id"] == "0123456789abcdef0123456789abcdef"
+    persisted = assistant_message.metadata["api_response"]
+    assert persisted["metadata"]["evidence"][0]["document"] == "Ley 28970"
+    assert persisted["metadata"]["citations"]
+    assert "total_ms" in persisted["metadata"]["timings"]

@@ -201,14 +201,16 @@ async def legal_query_stream(
         runtime._log_failure("legal_query_stream_failed", error, request)
         raise HTTPException(500, "Legal query stream failed")
 
+    request_id = getattr(request.state, "request_id", "unknown")
+
     async def persist(result):
-        metadata = {"sources": result["sources"], "validation": result["validation"]}
-        if any(
-            c.get("sat_section")
-            for c in result.get("metadata", {}).get("citations", [])
-        ):
-            # Keep the citation tied to the version used, even after a corpus update.
-            metadata["api_response"] = result
+        metadata = {
+            "sources": result["sources"],
+            "validation": result["validation"],
+            "api_response": jsonable_encoder(result),
+        }
+        if request_id and request_id != "unknown":
+            metadata["request_id"] = request_id
         await _persist_assistant_response(
             payload.conversation_id,
             principal.id,
@@ -217,7 +219,6 @@ async def legal_query_stream(
             metadata,
         )
 
-    request_id = getattr(request.state, "request_id", "unknown")
     source = stream_legal_query(
         run_pipeline=lambda on_stage, on_delta=None: answer_query(
             runtime.app.state,
