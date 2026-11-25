@@ -44,6 +44,52 @@ def _prompt_attribution(hit):
                        (match.group() if match else section)}
 
 
+def _component_is_coherent(hit, item, children, by_version) -> bool:
+    node = item['text']
+    text, start = node['text'], node['start']
+    if hit['content'] not in text:
+        return False
+    resource_id = item['work']['resource_id']
+    for child_id in children:
+        for child in by_version[child_id]:
+            offset = child['text']['start'] - start
+            body = child['text']['text']
+            if (
+                child['work']['resource_id'] != resource_id
+                or offset < 0
+                or text[offset:offset + len(body)] != body
+            ):
+                return False
+    return True
+
+
+def _has_structural_overlap(item, children, selected) -> bool:
+    resource_id = item['work']['resource_id']
+    version_id = item['version']['id']
+    return any(
+        resource_id == previous['work']['resource_id']
+        and (
+            version_id == previous['version']['id']
+            or version_id in covered
+            or previous['version']['id'] in children
+        )
+        for previous, covered in selected
+    )
+
+
+def _abstain_component(result, reason, omitted):
+    return {
+        **result,
+        'hits': [],
+        'state': 'abstain',
+        'reason': reason,
+        'context_bytes': 0,
+        'omitted_components': omitted,
+        'reference': {'status': 'unresolved', 'reason': reason},
+        'warning': 'No puedo entregar íntegra la sección principal dentro del contexto disponible o con su estructura actual. Precisa un numeral o literal; no presentaré un fragmento como respuesta completa.',
+    }
+
+
 def _expand_ranked_component(result, retriever, plan):
     """Pack complete eligible CLVs in rank order, never silently truncate them.
 
@@ -53,9 +99,8 @@ def _expand_ranked_component(result, retriever, plan):
     hits = result.get('hits', [])
     if not hits:
         return result
-    eligible = retriever.eligible(plan)
     by_version = {}
-    for item in eligible:
+    for item in retriever.eligible(plan):
         by_version.setdefault(item['version']['id'], []).append(item)
 
     article_parents = {}
@@ -78,51 +123,53 @@ def _expand_ranked_component(result, retriever, plan):
     packed, selected, used, omitted = [], [], 0, []
     for hit in hits:
         candidates = by_version.get(hit.get('version_id'), [])
-        reason = None
         if len(candidates) != 1:
             reason = 'ambiguous_component_text'
-        else:
-            item = candidates[0]
-            node = item['text']
-            text, start = node['text'], node['start']
-            children = descendants(item['version']['id'])
-            coherent = hit['content'] in text
-            for child_id in children:
-                for child in by_version[child_id]:
-                    offset = child['text']['start'] - start
-                    body = child['text']['text']
-                    coherent = coherent and (
-                        child['work']['resource_id'] == item['work']['resource_id']
-                        and offset >= 0 and text[offset:offset + len(body)] == body)
-            if not coherent:
-                reason = 'inconsistent_component_structure'
-            elif any(item['work']['resource_id'] == previous['work']['resource_id'] and (
-                item['version']['id'] == previous['version']['id']
-                or item['version']['id'] in covered
-                or previous['version']['id'] in children
-            ) for previous, covered in selected):
-                omitted.append({'version_id': hit['version_id'], 'reason': 'structural_overlap'})
-                continue
-            elif used + len(text.encode('utf-8')) > plan.context_bytes:
-                reason = 'complete_component_exceeds_budget'
-        if reason:
             omitted.append({'version_id': hit['version_id'], 'reason': reason})
             if not packed:
-                return {**result, 'hits': [], 'state': 'abstain', 'reason': reason,
-                        'context_bytes': 0, 'omitted_components': omitted,
-                        'reference': {'status': 'unresolved', 'reason': reason},
-                        'warning': 'No puedo entregar íntegra la sección principal dentro del contexto disponible o con su estructura actual. Precisa un numeral o literal; no presentaré un fragmento como respuesta completa.'}
+                return _abstain_component(result, reason, omitted)
             continue
+
+        item = candidates[0]
+        children = descendants(item['version']['id'])
+        if not _component_is_coherent(hit, item, children, by_version):
+            reason = 'inconsistent_component_structure'
+            omitted.append({'version_id': hit['version_id'], 'reason': reason})
+            if not packed:
+                return _abstain_component(result, reason, omitted)
+            continue
+
+        if _has_structural_overlap(item, children, selected):
+            omitted.append({'version_id': hit['version_id'], 'reason': 'structural_overlap'})
+            continue
+
+        node = item['text']
+        text, start = node['text'], node['start']
         size = len(text.encode('utf-8'))
+        if used + size > plan.context_bytes:
+            reason = 'complete_component_exceeds_budget'
+            omitted.append({'version_id': hit['version_id'], 'reason': reason})
+            if not packed:
+                return _abstain_component(result, reason, omitted)
+            continue
+
         work = item['work']
         parents = article_parents.get(hit['version_id'], ())
-        heading = (parents[0].get('label') if work['kind'] == 'article' and len(parents) == 1
-                   and parents[0]['resource_id'] == work['resource_id'] else None)
-        packed.append({**hit, 'content': text, 'start': start, 'end': start + len(text),
-                       'amending_heading': heading,
-                       'text_sha256': sha256(text.encode('utf-8')).hexdigest(),
-                       'id': 'tu:' + fingerprint([hit['version_id'], node['id'], 0, len(text)]),
-                       'context_complete': True})
+        heading = (
+            parents[0].get('label')
+            if work['kind'] == 'article' and len(parents) == 1 and parents[0]['resource_id'] == work['resource_id']
+            else None
+        )
+        packed.append({
+            **hit,
+            'content': text,
+            'start': start,
+            'end': start + len(text),
+            'amending_heading': heading,
+            'text_sha256': sha256(text.encode('utf-8')).hexdigest(),
+            'id': 'tu:' + fingerprint([hit['version_id'], node['id'], 0, len(text)]),
+            'context_complete': True,
+        })
         selected.append((item, children))
         used += size
     return {**result, 'hits': packed, 'context_bytes': used, 'omitted_components': omitted}

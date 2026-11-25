@@ -22,6 +22,53 @@ REFERENCE_PATTERN = (
 PROTECTED_PATTERN = STRUCTURE_PATTERN + "|" + REFERENCE_PATTERN
 
 
+_PLACEHOLDER_RE = re.compile(r"ZXQREF\d+QXZ")
+_MAX_SEGMENT_CHARS = 4000
+
+
+def _protect_legal_tokens(text: str) -> tuple[str, list[str]]:
+    protected: list[str] = []
+
+    def protect(match: re.Match) -> str:
+        protected.append(match.group())
+        return f"ZXQREF{len(protected) - 1}QXZ"
+
+    prepared = re.sub(PROTECTED_PATTERN, protect, text, flags=re.I | re.M)
+    return prepared, protected
+
+
+def _iter_protected_segments(part: str, max_chars: int = _MAX_SEGMENT_CHARS):
+    while part:
+        end = min(max_chars, len(part))
+        if end < len(part):
+            boundary = max(part.rfind(" ", 0, end), part.rfind("\n", 0, end))
+            if boundary > 0:
+                end = boundary
+            # Never bisect a protected legal reference.
+            for token in _PLACEHOLDER_RE.finditer(part):
+                if token.start() < end < token.end():
+                    end = token.start() or token.end()
+                    break
+        yield part[:end]
+        part = part[end:]
+
+
+def _has_translatable_text(body: str) -> bool:
+    unprotected = _PLACEHOLDER_RE.sub("", body)
+    return any(char.isalpha() for char in unprotected)
+
+
+def _restore_legal_tokens(output: str, prepared: str, protected: list[str]) -> str:
+    if _PLACEHOLDER_RE.findall(output) != _PLACEHOLDER_RE.findall(prepared):
+        raise ValueError("Legal structure or reference order changed")
+    for idx, reference in enumerate(protected):
+        token = f"ZXQREF{idx}QXZ"
+        if output.count(token) != 1:
+            raise ValueError("Invalid legal reference coverage")
+        output = output.replace(token, reference)
+    return output
+
+
 class TranslationService:
     """Servicio de traducción bilingüe especializado (Singleton)"""
 
@@ -75,77 +122,37 @@ class TranslationService:
         key = (source_lang, target_lang, hashlib.sha256(text.encode()).hexdigest())
         if key in self.translation_cache:
             return dict(self.translation_cache[key])
-        protected = []
-
-        def protect(match):
-            # Usa marcadores para que el proveedor no reescriba citas ni enlaces.
-            protected.append(match.group())
-            return f"ZXQREF{len(protected)-1}QXZ"
-
-        prepared = re.sub(
-            PROTECTED_PATTERN,
-            protect,
-            text,
-            flags=re.I | re.M,
-        )
+        prepared, protected = _protect_legal_tokens(text)
         parts = re.split(r"(\n[ \t]*\n+)", prepared)
-        translated_parts = []
+        translated_parts: list[str] = []
         segment_count = 0
         try:
             for part in parts:
                 if not part.strip():
                     translated_parts.append(part)
                     continue
-                while part:
-                    end = min(4000, len(part))
-                    if end < len(part):
-                        boundary = max(
-                            part.rfind(" ", 0, end), part.rfind("\n", 0, end)
-                        )
-                        if boundary > 0:
-                            end = boundary
-                        # Never bisect a protected legal reference.
-                        for token in re.finditer(r"ZXQREF\d+QXZ", part):
-                            if token.start() < end < token.end():
-                                end = token.start() or token.end()
-                                break
-                    segment, part = part[:end], part[end:]
+                for segment in _iter_protected_segments(part):
+                    body = segment.strip()
+                    if not body or not _has_translatable_text(body):
+                        translated_parts.append(segment)
+                        continue
                     prefix = segment[: len(segment) - len(segment.lstrip())]
                     suffix = segment[len(segment.rstrip()) :]
-                    body = segment.strip()
-                    if not body:
-                        translated_parts.append(segment)
-                        continue
-                    unprotected = re.sub(r"ZXQREF\d+QXZ", "", body)
-                    if not any(char.isalpha() for char in unprotected):
-                        translated_parts.append(segment)
-                        continue
                     result = await self._translate_with_google(
                         body, source_lang, target_lang
                     )
                     output = result.get("translated_text", "")
-                    if (
-                        not result.get("success")
-                        or not output.strip()
-                    ):
+                    if not result.get("success") or not output.strip():
                         raise ValueError("Incomplete translation segment")
                     if len(output.strip()) < len(body) * 0.2:
                         raise ValueError("Suspicious translation coverage")
-                    for token in re.findall(r"ZXQREF\d+QXZ", body):
+                    for token in _PLACEHOLDER_RE.findall(body):
                         if output.count(token) != body.count(token):
                             raise ValueError("Lost legal reference")
                     translated_parts.append(prefix + output.strip() + suffix)
                     segment_count += 1
-            output = "".join(translated_parts)
-            if re.findall(r"ZXQREF\d+QXZ", output) != re.findall(
-                r"ZXQREF\d+QXZ", prepared
-            ):
-                raise ValueError("Legal structure or reference order changed")
-            for i, reference in enumerate(protected):
-                token = f"ZXQREF{i}QXZ"
-                if output.count(token) != 1:
-                    raise ValueError("Invalid legal reference coverage")
-                output = output.replace(token, reference)
+
+            output = _restore_legal_tokens("".join(translated_parts), prepared, protected)
             result = {
                 "success": True,
                 "complete": True,
