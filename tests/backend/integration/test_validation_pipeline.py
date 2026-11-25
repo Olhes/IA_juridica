@@ -69,10 +69,9 @@ class TestResponseValidatorIntegration:
             language     ="spanish",
         )
         assert isinstance(result, ValidatedResponse)
-        # Con alucinaciones detectadas debe haberse intentado corrección
-        assert result.validation_report.corrections_applied >= 0
-        # El resultado debe ser un status conocido
-        assert result.validation_report.status in ValidationStatus.__members__.values()
+        assert result.validation_report.corrections_applied >= 1
+        assert result.validation_report.status == ValidationStatus.CORRECTED
+        mock_cohere_client.chat.assert_awaited()
 
     # ── Estructura del ValidatedResponse ──────────────────────────────────────
 
@@ -150,10 +149,13 @@ class TestResponseValidatorIntegration:
             rag_result   =sample_rag_result,
             query        ="alimentos",
         )
-        # is_reliable = status OK + confidence != LOW
-        if result.validation_report.status in (ValidationStatus.PASSED, ValidationStatus.WARNED, ValidationStatus.CORRECTED):
-            expected = result.validation_report.confidence != ConfidenceLevel.LOW
-            assert result.is_reliable == expected
+        expected = (
+            result.validation_report.status
+            in (ValidationStatus.PASSED, ValidationStatus.WARNED, ValidationStatus.CORRECTED)
+            and result.validation_report.confidence != ConfidenceLevel.LOW
+        )
+        assert result.is_reliable is expected
+        assert result.is_reliable is True
 
     # ── Configuraciones alternativas ───────────────────────────────────────────
 

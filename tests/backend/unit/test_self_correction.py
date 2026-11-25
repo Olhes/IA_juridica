@@ -155,8 +155,8 @@ class TestSelfCorrectionEngine:
             rag_context         =rag_context_str,
             query               ="alimentos",
         )
-        # No debe lanzar, debe retornar el texto más reciente
-        assert isinstance(corrected, str)
+        assert corrected == hallucinated_response_text
+        assert n == 0
 
     @pytest.mark.asyncio
     async def test_empty_cohere_response_uses_original(

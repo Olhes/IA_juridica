@@ -136,7 +136,7 @@ class TestLLMOptimizerTokenTracking:
 
     def test_estimate_tokens_empty_string(self, llm_optimizer):
         """String vacío → mínimo 1 token."""
-        assert llm_optimizer.estimate_tokens("") >= 0
+        assert llm_optimizer.estimate_tokens("") == 1
 
     def test_track_accumulates_usage(self, llm_optimizer):
         """Múltiples llamadas a track() deben acumular el total de tokens."""

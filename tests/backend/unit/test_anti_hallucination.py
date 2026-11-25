@@ -44,10 +44,14 @@ class TestAntiHallucinationLayer:
         report = anti_hallucination_layer.analyze("", rag_score=0.90)
         assert report.requires_correction
 
-    def test_very_short_response_flagged(self, anti_hallucination_layer):
-        """Respuesta de 1 palabra también debe generar report."""
+    def test_very_short_response_without_hallucination_patterns_is_low_risk(
+        self, anti_hallucination_layer
+    ):
+        """Respuesta corta no vacía sin patrones de riesgo no dispara corrección."""
         report = anti_hallucination_layer.analyze("Sí.", rag_score=0.90)
-        assert isinstance(report, HallucinationReport)
+        assert report.risk_score == 0.0
+        assert report.flags == []
+        assert report.requires_correction is False
 
     # ── Penalización por rag_score bajo ────────────────────────────────────────
 
@@ -148,10 +152,9 @@ class TestAntiHallucinationLayer:
 
         text = "La pensión mínima es de S/ 500 por ley."   # Tiene 1 flag
 
-        report_strict  = strict.analyze(text, rag_score=0.70)
+        report_strict = strict.analyze(text, rag_score=0.70)
         report_lenient = lenient.analyze(text, rag_score=0.70)
 
-        # Con umbral estricto podría requerir corrección; con leniente, no
-        # (Al menos uno de los dos debe diferir del otro)
-        assert not (report_strict.requires_correction and report_lenient.requires_correction) \
-            or report_strict.risk_score == report_lenient.risk_score
+        assert report_strict.risk_score == report_lenient.risk_score == 0.50
+        assert report_strict.requires_correction is True
+        assert report_lenient.requires_correction is False
