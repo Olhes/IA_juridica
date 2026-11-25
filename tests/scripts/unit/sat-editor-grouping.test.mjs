@@ -248,5 +248,26 @@ test('selection reuses tree DOM, parent options hydrate on focus, and history lo
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(batchCalls, 1);
     assert.match(details[1].textContent, /Texto histórico archivado/);
+
+    // 4. Reverting an edited label back to original restores tree badges from 'Borrador' to 'Vigente en SAT'.
+    window.document.querySelector('[data-tab="structure"]').click();
+    $('node-label').value = 'Artículo 1 cambiado';
+    $('node-label').dispatchEvent(new window.Event('input', {bubbles: true}));
+    $('edit-form').dispatchEvent(new window.Event('submit', {cancelable: true}));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal($('draft-state').textContent, 'Borrador sin publicar');
+    assert.equal(
+      window.document.querySelector('[data-node-id="art1"] .version-cell .cell-label').firstChild.nodeValue,
+      'Borrador',
+    );
+    $('node-label').value = 'Artículo 1';
+    $('node-label').dispatchEvent(new window.Event('input', {bubbles: true}));
+    $('edit-form').dispatchEvent(new window.Event('submit', {cancelable: true}));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal($('draft-state').textContent, 'Sin cambios');
+    assert.equal(
+      window.document.querySelector('[data-node-id="art1"] .version-cell .cell-label').firstChild.nodeValue,
+      'Vigente en SAT',
+    );
   } finally {window.close();}
 });

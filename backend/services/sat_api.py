@@ -59,12 +59,14 @@ class TextBatch(BaseModel):
 class CanonicalGraph:
     def __init__(self, graph):
         self.nodes = {n["id"]: n for n in graph["nodes"]}
-        self.links = defaultdict(list)
+        links = defaultdict(list)
         self.parents = {}
         for e in graph["edges"]:
-            self.links[(e["source"], e["type"])].append(e["target"])
+            links[(e["source"], e["type"])].append(e["target"])
             if e["type"] == "has_part":
                 self.parents[e["target"]] = e["source"]
+        # Freeze as a plain dict so concurrent reads on the cached graph never mutate keys.
+        self.links = {key: tuple(targets) for key, targets in links.items()}
 
     def node(self, identity, kinds):
         node = self.nodes.get(identity)
@@ -93,7 +95,7 @@ class CanonicalGraph:
     def texts(self, identity, language=None, aspects=None):
         self.node(identity, {"CTV"})  # Missing Version != existing Version with no texts.
         result = []
-        for tid in self.links[(identity, "has_text")]:
+        for tid in self.links.get((identity, "has_text"), ()):
             t = self.nodes[tid]
             if (language and t["language"] != language) or (aspects is not None and "canonical" not in aspects):
                 continue
@@ -106,7 +108,7 @@ class CanonicalGraph:
     def children(self, identity, versions=False):
         if versions:
             self.node(identity, {"CTV"})
-            return [self.version(i) for i in self.links[(identity, "contains_version")]]
+            return [self.version(i) for i in self.links.get((identity, "contains_version"), ())]
         self.item(identity)
         return [self.item(n["id"]) for n in self.nodes.values()
                 if n["type"] in {"Work", "Resource"} and self.item(n["id"])["parentId"] == identity]

@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const BASE = '/sat-graph/review';
 const API = '/sat-graph/api';
 const kinds = {document:'Documento',instrument:'Norma',libro:'Libro',titulo:'Título',capitulo:'Capítulo',subcapitulo:'Subcapítulo',article:'Artículo',numeral:'Numeral',inciso:'Inciso',subinciso:'Subinciso',disposition:'Disposición',disposition_group:'Grupo de disposiciones',amendment_payload:'Texto modificatorio'};
-let library = [], doc = null, draft = null, draftCpOffsets = new Uint32Array([0]), draftCpLength = 0, draftBaselineJson = '', selected = null, folded = new Set(), dirty = false, formDirty = false, busy = false, selection = null;
+let library = [], doc = null, docCpOffsets = new Uint32Array([0]), docComponentsById = new Map(), draft = null, draftCpOffsets = new Uint32Array([0]), draftCpLength = 0, draftBaselineJson = '', selected = null, folded = new Set(), dirty = false, formDirty = false, busy = false, selection = null;
 let draftById = new Map(), draftChildren = new Map(), draftOrderedRows = [], rowElements = new Map();
 let currentVersions = new Map(), historyDocument = null, historyRenderToken = 0;
 let candidates = [], showingCandidates = false;
@@ -176,6 +176,8 @@ function showDocument(next,position=null){
     clearTimeout(searchDebounceTimer);
     doc=next;draft=clone(doc.edition);draftBaselineJson=JSON.stringify(doc.edition);
     syncDraftIndex();
+    docCpOffsets=draftCpOffsets;
+    docComponentsById=new Map((doc.edition?.components||[]).map(n=>[n.id,n]));
     dirty=false;formDirty=false;folded.clear();selected=draft?.components[0]?.id||null;
     if(position?.node&&draftById.has(position.node))selected=position.node;
     currentVersions=new Map(doc.versions.filter(v=>!v.archived).map(v=>[v.component_id,v]));
@@ -428,6 +430,7 @@ async function stage(event){
     if(!label||!body.trim())throw new Error('La etiqueta y el texto no pueden estar vacíos.');
     const originalCount=next.components.length;
     const originalParent=n.parent_id;
+    const wasDirty=dirty;
     const textChanged=body!==textFor(n);
     if(textChanged)next=await post(`${BASE}/preview`,{edition:next,component_id:n.id,text:body});
     if(generation!==inspectorGeneration)return false;
@@ -438,7 +441,7 @@ async function stage(event){
     $('node-start').value=n.start;$('node-end').value=n.end;
     busy=false;setDirty(true);
     const removed=originalCount-next.components.length;
-    if(removed||parentId!==originalParent||textChanged||!updateRowInPlace(n)){
+    if(removed||parentId!==originalParent||textChanged||wasDirty!==dirty||!updateRowInPlace(n)){
       renderTree();
     }
     notice(removed?`Borrador guardado: se retiraron ${removed} nodo(s) cuyo texto borraste por completo.`:'Cambios guardados automáticamente en el borrador.');
@@ -453,9 +456,10 @@ async function hydrateVersionDetails(details,v){
   let texts=v.texts||[];
   const needsFetch=!texts.length||texts.some(t=>t.text===undefined);
   if(needsFetch){
-    const activeNode=!v.archived&&draftById.get(v.component_id);
-    if(activeNode){
-      texts=[{id:texts[0]?.id||'',language:texts[0]?.language||'es',text:textFor(activeNode)}];
+    const persistedNode=!v.archived&&docComponentsById.get(v.component_id);
+    if(persistedNode&&doc?.edition?.markdown){
+      const persistedText=doc.edition.markdown.slice(docCpOffsets[persistedNode.start]??0,docCpOffsets[persistedNode.end]??doc.edition.markdown.length);
+      texts=[{id:texts[0]?.id||'',language:texts[0]?.language||'es',text:persistedText}];
     }else{
       const status=el('p','Cargando texto almacenado…','muted');
       details.append(status);

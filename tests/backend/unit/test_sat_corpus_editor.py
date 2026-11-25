@@ -241,3 +241,15 @@ def test_core_entities_match_vendored_upstream_schemas(client):
     for kind, endpoint in [("Item","items/w:art1"),("Version","versions/v:art1"),("TextUnit","text-units/t:art1")]:
         schema={"$ref":"#/components/schemas/"+kind,"components":spec["components"]}
         jsonschema.validate(client.get("/sat-graph/api/"+endpoint).json(),schema)
+
+
+def test_canonical_graph_links_are_immutable_during_concurrent_reads(corpus):
+    from services.sat_api import CanonicalGraph
+
+    cg = CanonicalGraph(corpus.store.export())
+    keys_before = set(cg.links.keys())
+    # Querying a leaf CTV (no contains_version edges) must never mutate cg.links.
+    assert cg.children("v:inciso", versions=True) == []
+    assert set(cg.links.keys()) == keys_before
+    for _key in cg.links:
+        assert cg.children("v:art2", versions=True) == []

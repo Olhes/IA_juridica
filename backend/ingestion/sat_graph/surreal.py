@@ -609,11 +609,16 @@ class SurrealSATGraphStore(SATGraphStore):
                 "SELECT payload FROM sat_nodes WHERE kind='CTV' AND work_id IN $wids",
                 {"wids": work_ids},
             )
+            has_active_ctv = False
             rev_ids = set()
             for row in ctv_rows:
                 payload = json.loads(row["payload"])
-                if not payload.get("editorial_superseded_by") and payload.get("documentary_revision"):
-                    rev_ids.add(payload["documentary_revision"])
+                if not payload.get("editorial_superseded_by"):
+                    has_active_ctv = True
+                    if payload.get("documentary_revision"):
+                        rev_ids.add(payload["documentary_revision"])
+            if not has_active_ctv:
+                return None
             if not rev_ids:
                 meta = {"id": resource_id, "edition": None, "directory": None, "candidate_pdf": None, "evidence_id": None}
                 _cache_put(key, meta)
