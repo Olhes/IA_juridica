@@ -16,9 +16,13 @@ def test_admin_endpoints_disabled_without_key(monkeypatch, tmp_path):
     """Disabled admin configuration keeps upload unavailable when no API key is configured."""
     monkeypatch.setattr(settings, "ADMIN_ENDPOINTS_ENABLED", False)
     monkeypatch.setattr(settings, "ADMIN_API_KEY", None)
-    client = TestClient(main.app)
-    client.post("/session/bootstrap")
-    assert upload(client).status_code == 404
+    monkeypatch.setattr(main.limiter, "enabled", False)
+    client = TestClient(main.app)  # No lifespan: no Redis/Postgres/LLM startup.
+    try:
+        client.post("/session/bootstrap")
+        assert upload(client).status_code == 404
+    finally:
+        client.close()
 
 
 def test_upload_generates_confined_name_and_preserves_sanitized_metadata(monkeypatch, tmp_path):

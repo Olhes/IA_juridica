@@ -91,12 +91,8 @@ No forman parte de CI ni del informe de SonarQube:
 
 | Archivo | Uso |
 |---|---|
-| `backend/manual/diagnose_connection.py` | Conectividad local PostgreSQL/Redis. |
 | `backend/manual/diagnose_pg_connection.py` | Comparación heredada de conexiones psycopg. |
-| `backend/manual/diagnose_postgres.py` | Comparación heredada de clientes PostgreSQL. |
 | `backend/manual/diagnose_settings_connection.py` | Conexión con la configuración del backend. |
-| `backend/manual/benchmark_optimized_pipeline.py` | No ejecutable: faltan módulos. |
-| `backend/manual/benchmark_real_performance.py` | No ejecutar sobre datos reales: borra resultados y backups. |
 
 Para investigar la ingesta y recuperación, consulta los
 [experimentos SAT-Graph](../docs/SAT-GRAPH-EXPERIMENTS.md) y la

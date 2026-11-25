@@ -9,14 +9,17 @@ names are whitelisted rather than taken from user input.
 import asyncio
 from datetime import datetime, timezone
 import json
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
 from surrealdb import RecordID
 from surrealdb.errors import NotFoundError
 
-from database.postgres_adapter_final import DatabaseUnavailableError
+from database.errors import DatabaseUnavailableError
 from database.surreal_connection import close_surreal, connect_surreal
+
+logger = logging.getLogger("ia_juridica.surreal")
 
 
 AUTH_DB = "auth_schema"
@@ -91,7 +94,7 @@ class SurrealAdapter:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    print(f"SurrealDB connection attempt {attempt + 1}/{max_retries}...")
+                    logger.info("SurrealDB connection attempt %s/%s", attempt + 1, max_retries)
 
                     def connect_sync():
                         auth = connect_surreal(AUTH_DB)
@@ -107,8 +110,7 @@ class SurrealAdapter:
                     )
                     self.conn, self.conv_conn = conn, conv_conn
                     version = await self._server_version()
-                    print(f"SurrealDB connected: {version}")
-                    print("SurrealDB connection initialized")
+                    logger.info("SurrealDB connected version=%s", version)
                     return
                 except Exception:
                     self.conn = None
@@ -116,7 +118,7 @@ class SurrealAdapter:
                     if attempt < max_retries - 1:
                         await asyncio.sleep(3)
                     else:
-                        print("SurrealDB unavailable; continuing without persistence")
+                        logger.warning("SurrealDB unavailable; continuing without persistence")
                         return
 
     async def close(self):
@@ -127,7 +129,7 @@ class SurrealAdapter:
                 await asyncio.get_event_loop().run_in_executor(
                     None, lambda conn=connection: close_surreal(conn)
                 )
-        print("SurrealDB connections closed")
+        logger.info("SurrealDB connections closed")
 
     async def health_check(self) -> Dict[str, Any]:
         if not self.conn:
@@ -294,7 +296,7 @@ class SurrealAdapter:
         if not self.conv_conn:
             raise DatabaseUnavailableError("SurrealDB unavailable")
 
-        owner = "00000000-0000-0000-0000-000000000001" if user_id == "debug-user" else user_id
+        owner = user_id
         identity = str(uuid.uuid4())
         timestamp = _now()
         resolved_title = title or f"Conversación en {language}"

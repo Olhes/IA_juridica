@@ -8,7 +8,8 @@ asyncio loop on shutdown.
 """
 
 from config.settings import settings
-from database.postgres_adapter_final import DatabaseUnavailableError, PostgreSQLAdapter
+from database.errors import DatabaseUnavailableError
+from database.postgres_adapter_final import PostgreSQLAdapter
 from database.surreal_adapter import SurrealAdapter
 
 _ORIGINAL_POSTGRES_ADAPTER = PostgreSQLAdapter

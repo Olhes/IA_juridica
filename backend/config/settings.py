@@ -1,9 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, SecretStr
 from typing import List, Optional, Dict, Any, Literal
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+
+logger = logging.getLogger("ia_juridica.config")
 
 # El entorno del proceso (p. ej. el perfil de dev:full) prevalece sobre .env.
 load_dotenv(override=False)
@@ -138,7 +141,6 @@ class Settings(BaseSettings):
     
     # Configuración de Seguridad
     SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30
     ANONYMOUS_SESSION_SECRET: str = "local-development-session-secret-change-me"
     ANONYMOUS_SESSION_COOKIE_NAME: str = "ia_juridica_session"
@@ -239,8 +241,7 @@ class Settings(BaseSettings):
             try:
                 Path(directory).mkdir(parents=True, exist_ok=True)
             except (OSError, PermissionError) as e:
-                # Ignorar errores al crear directorios (ej: unidad no existente)
-                print(f"Warning: No se pudo crear directorio {directory}: {e}")
+                logger.warning("Could not create directory %s: %s", directory, type(e).__name__)
     
     def is_development(self) -> bool:
         return self.DEBUG or self.ENVIRONMENT.lower() == "development"

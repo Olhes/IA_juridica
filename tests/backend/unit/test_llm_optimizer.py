@@ -11,7 +11,6 @@ Cobertura:
   - Invalidación manual y limpieza total
 """
 
-import time
 import pytest
 from optimization.llm_optimizer import LLMOptimizer, TokenUsage
 
@@ -40,9 +39,10 @@ class TestLLMOptimizerCache:
 
     def test_cache_expiry_after_ttl(self):
         """Entradas expiradas (TTL vencido) deben retornar None."""
-        optimizer = LLMOptimizer(cache_ttl_seconds=1)
+        now = [100.0]
+        optimizer = LLMOptimizer(cache_ttl_seconds=1, clock=lambda: now[0])
         optimizer.cache_response("prompt expirado", "respuesta temporal")
-        time.sleep(1.1)
+        now[0] += 1.1
         assert optimizer.get_cached("prompt expirado") is None
 
     def test_cache_valid_within_ttl(self):
@@ -136,7 +136,7 @@ class TestLLMOptimizerTokenTracking:
 
     def test_estimate_tokens_empty_string(self, llm_optimizer):
         """String vacío → mínimo 1 token."""
-        assert llm_optimizer.estimate_tokens("") >= 0
+        assert llm_optimizer.estimate_tokens("") == 1
 
     def test_track_accumulates_usage(self, llm_optimizer):
         """Múltiples llamadas a track() deben acumular el total de tokens."""

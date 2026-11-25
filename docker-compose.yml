@@ -79,8 +79,9 @@ services:
 volumes:
   postgres_data:
   surreal_data:
-    # Volumen existente fuera del proyecto Compose: guarda el corpus SAT migrado.
+    # Volumen externo: guarda el corpus SAT migrado; scripts/dev-full.mjs lo asegura antes de arrancar.
     name: surreal_data
+    external: true
   redis_data:
 
 networks:

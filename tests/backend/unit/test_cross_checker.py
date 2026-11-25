@@ -25,8 +25,7 @@ class TestRAGCrossChecker:
         """Respuesta con términos del corpus → overlap alto → is_grounded=True."""
         result = cross_checker.check(good_legal_response_text, query="pensión alimentos")
         assert isinstance(result, CrossCheckResult)
-        assert result.overlap_score >= 0.0
-        # Con un corpus legal real y una respuesta legal, el overlap debe ser razonable
+        assert result.overlap_score > 0.0
         assert result.total_claims >= 1
         assert result.checked_against > 0
 
@@ -36,9 +35,7 @@ class TestRAGCrossChecker:
         """Respuesta con términos inventados → afirmaciones no fundadas."""
         result = cross_checker.check(hallucinated_response_text, query="pensión alimentos")
         assert result.total_claims >= 1
-        # Las afirmaciones con términos inventados deben aparecer como no fundadas
-        # (al menos algunas, dado que el corpus no contiene "artículo 9876" etc.)
-        assert isinstance(result.ungrounded_claims, list)
+        assert len(result.ungrounded_claims) >= 1
 
     def test_empty_response_returns_result(self, cross_checker):
         """Respuesta vacía → CrossCheckResult con is_grounded=False."""
@@ -69,8 +66,7 @@ class TestRAGCrossChecker:
         result = cross_checker.check(
             good_legal_response_text, query="artículo 472 alimentos"
         )
-        # Si el corpus tiene contenido relevante, debe haber supporting chunks
-        assert isinstance(result.supporting_chunks, list)
+        assert len(result.supporting_chunks) >= 1
 
     def test_total_claims_count_is_correct(self, cross_checker):
         """El total de afirmaciones debe ser >= grounded + ungrounded."""

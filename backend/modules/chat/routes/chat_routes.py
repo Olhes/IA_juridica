@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
-from typing import Annotated, Optional
+from typing import Annotated
 import uuid
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from config.settings import settings
-from database.postgres_adapter_final import DatabaseUnavailableError
+from database.errors import DatabaseUnavailableError
 from models.chat_models import (
     ChatRequest,
     ChatResponse,
@@ -42,8 +42,7 @@ async def send_message(
     principal: CurrentPrincipal,
 ):
     try:
-        principal_id = principal.id
-        return await chat_service.process_chat_message(payload, principal_id)
+        return await chat_service.process_chat_message(payload, principal.id)
     except ValueError:
         raise conversation_not_found()
 
@@ -55,16 +54,10 @@ async def get_user_conversations(
     limit: int = Query(default=20, ge=1, le=100),
     active_only: bool = Query(default=True),
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-    # Convertir la cadena a booleano si es necesario
-    if isinstance(active_only, str):
-        active_only = active_only.lower() in ("true", "1", "yes")
-
     try:
-        conversations = await chat_service.get_user_conversations(principal_id, limit)
+        conversations = await chat_service.get_user_conversations(principal.id, limit)
     except DatabaseUnavailableError:
-        raise HTTPException(503, "Chat persistence unavailable")
+        raise
     except Exception as e:
         logger.error(
             "chat_operation_failed request_id=%s error_type=%s",
@@ -74,13 +67,11 @@ async def get_user_conversations(
         raise HTTPException(500, "Failed to list conversations")
 
     if active_only:
-        conversations = [
-            conversation for conversation in conversations if conversation.is_active
-        ]
+        conversations = [c for c in conversations if c.is_active]
     return ConversationList(
         conversations=conversations,
         total_count=len(conversations),
-        active_count=sum(conversation.is_active for conversation in conversations),
+        active_count=sum(c.is_active for c in conversations),
     )
 
 
@@ -91,17 +82,14 @@ async def get_conversation_history(
     principal: CurrentPrincipal,
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-
-    conversation = await chat_service.get_conversation(conversation_id, principal_id)
+    conversation = await chat_service.get_conversation(conversation_id, principal.id)
     if not conversation:
         raise conversation_not_found()
     messages = await chat_service.get_conversation_messages(
-        conversation_id, principal_id, limit
+        conversation_id, principal.id, limit
     )
     context_summary = await chat_service._build_conversation_context(
-        conversation_id, principal_id, conversation.language
+        conversation_id, principal.id, conversation.language
     )
     return ConversationHistory(
         conversation=conversation,
@@ -118,19 +106,15 @@ async def create_conversation(
     conversation_data: ConversationCreate,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-
     try:
         conversation = await chat_service.create_conversation(
-            user_id=principal_id,
+            user_id=principal.id,
             title=conversation_data.title,
             language=conversation_data.language,
         )
     except DatabaseUnavailableError:
-        raise HTTPException(status_code=503, detail="Chat persistence unavailable")
+        raise
     except Exception as e:
-        # Gestionar otros errores (por ejemplo, si el usuario no existe)
         logger.error(
             "chat_operation_failed request_id=%s error_type=%s",
             request.state.request_id,
@@ -144,7 +128,7 @@ async def create_conversation(
                 conversation_id=conversation.id,
                 language=conversation_data.language,
             ),
-            principal_id,
+            principal.id,
         )
     return conversation
 
@@ -156,20 +140,15 @@ async def update_conversation(
     update_data: ConversationUpdate,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-
     try:
         updated = await chat_service.update_conversation(
-            conversation_id, principal_id, update_data
+            conversation_id, principal.id, update_data
         )
         if not updated:
             raise conversation_not_found()
         return updated
-    except HTTPException:
+    except (HTTPException, DatabaseUnavailableError):
         raise
-    except DatabaseUnavailableError:
-        raise HTTPException(503, "Chat persistence unavailable")
     except Exception as e:
         logger.error(
             "conversation_update_failed request_id=%s error_type=%s",
@@ -185,14 +164,7 @@ async def delete_conversation(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-
-    # Temporary mock for debugging - bypass database
-    if principal_id == "debug-user":
-        return {"success": True}
-
-    if not await chat_service.delete_conversation(conversation_id, principal_id):
+    if not await chat_service.delete_conversation(conversation_id, principal.id):
         raise conversation_not_found()
     return {"success": True}
 
@@ -204,9 +176,7 @@ async def search_conversations(
     q: str = Query(..., min_length=2),
     limit: int = Query(default=10, ge=1, le=50),
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-    conversations = await chat_service.search_conversations(principal_id, q, limit)
+    conversations = await chat_service.search_conversations(principal.id, q, limit)
     return {
         "success": True,
         "results": conversations,
@@ -220,9 +190,7 @@ async def get_conversation_stats(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-    stats = await chat_service.get_conversation_stats(conversation_id, principal_id)
+    stats = await chat_service.get_conversation_stats(conversation_id, principal.id)
     if not stats:
         raise conversation_not_found()
     return {"success": True, "stats": stats}
@@ -236,10 +204,7 @@ async def continue_conversation(
     payload: ContinueConversationRequest,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
-
-    conversation = await chat_service.get_conversation(conversation_id, principal_id)
+    conversation = await chat_service.get_conversation(conversation_id, principal.id)
     if not conversation:
         raise conversation_not_found()
     return await chat_service.process_chat_message(
@@ -248,7 +213,7 @@ async def continue_conversation(
             conversation_id=conversation_id,
             language=conversation.language,
         ),
-        principal_id,
+        principal.id,
     )
 
 
@@ -258,10 +223,8 @@ async def invalidate_conversation_cache(
     conversation_id: str,
     principal: CurrentPrincipal,
 ):
-    # Solución temporal de depuración: usar un identificador de principal predeterminado cuando la autenticación esté deshabilitada.
-    principal_id = principal.id
     if not await chat_service.invalidate_conversation_cache(
-        conversation_id, principal_id
+        conversation_id, principal.id
     ):
         raise conversation_not_found()
     return {"success": True}

@@ -48,28 +48,18 @@ from .schemas import (
 @dataclass
 class ValidationConfig:
     """Configuración tuneable del pipeline de validación."""
-    hallucination_threshold    : float = 0.40   # risk_score mínimo para requerir corrección
-    cross_check_threshold      : float = 0.55   # overlap mínimo para is_grounded=True
-    min_confidence_score       : float = 0.30   # Debajo de esto → ValidationStatus.FAILED
-    max_self_correction_retries: int   = 2
-    enable_cross_check         : bool  = True
-    enable_self_correction     : bool  = True
-    enable_cultural_validation : bool  = True
+
+    hallucination_threshold: float = 0.40
+    cross_check_threshold: float = 0.55
+    min_confidence_score: float = 0.30
+    max_self_correction_retries: int = 2
+    enable_cross_check: bool = True
+    enable_self_correction: bool = True
+    enable_cultural_validation: bool = True
 
 
 class ResponseValidator:
-    """
-    Orquestador del pipeline completo de validación.
-
-    Inicialización recomendada: una sola instancia por request o en el lifespan de la app
-    (el CrossChecker tiene estado interno cacheado del corpus RAG).
-
-    Argumentos:
-        rag_engine:        LegalRAGEngine – se accede a .documents y .cohere_client
-        cohere_client:     AsyncClient de Cohere del LegalAgent (reutilización, sin doble instancia)
-        context_engineer:  ContextEngineer para validación cultural (opcional)
-        config:            ValidationConfig con umbrales personalizables
-    """
+    """Orquestador del pipeline completo de validación."""
 
     def __init__(
         self,
@@ -85,91 +75,78 @@ class ResponseValidator:
             risk_threshold=cfg.hallucination_threshold
         )
         self.cross_checker = RAGCrossChecker(
-            documents         =rag_engine.documents,
+            documents=rag_engine.documents,
             grounded_threshold=cfg.cross_check_threshold,
         )
         self.self_correction = SelfCorrectionEngine(
             cohere_client=cohere_client,
-            max_retries  =cfg.max_self_correction_retries,
+            max_retries=cfg.max_self_correction_retries,
         )
         self.context_engineer = context_engineer
-        self._rag_engine      = rag_engine
+        self._rag_engine = rag_engine
 
         logger.info("ResponseValidator inicializado (pipeline completo)")
 
-    # ── API pública ────────────────────────────────────────────────────────────
-
     async def validate(
         self,
-        response_data : Dict[str, Any],
-        rag_result    : Dict[str, Any],
-        query         : str,
-        language      : str = "spanish",
+        response_data: Dict[str, Any],
+        rag_result: Dict[str, Any],
+        query: str,
+        language: str = "spanish",
         enriched_context: Optional[Dict[str, Any]] = None,
     ) -> ValidatedResponse:
-        """
-        Pipeline principal de validación.
-
-        Argumentos:
-            response_data:    Dict serializado de GeneralLegalResponse (o similar)
-            rag_result:       Resultado de rag_engine.query_with_rerank()
-            query:            Consulta original del usuario
-            language:         Idioma de la respuesta
-            enriched_context: Contexto cultural del ContextEngineer (opcional)
-
-        Retorna:
-            ValidatedResponse con answer_data validado e informe completo
-        """
+        """Pipeline principal de validación."""
         t0 = time.monotonic()
 
-        # ── Extraer texto plano de la respuesta para análisis ──────────────────
-        answer_text  = self._extract_answer_text(response_data)
-        rag_score    = self._compute_avg_rag_score(rag_result)
-        rag_context  = self._build_rag_context_str(rag_result)
-        sources      = rag_result.get("sources", [])
+        answer_text = self._extract_answer_text(response_data)
+        rag_score = self._compute_avg_rag_score(rag_result)
+        rag_context = self._build_rag_context_str(rag_result)
+        sources = rag_result.get("sources", [])
 
-        # Asegurar que el CrossChecker use el corpus actualizado
         retrieved = rag_result.get("documents") or []
         if rag_result.get("method") == "sat" or not retrieved:
             # La validación debe usar los mismos fragmentos SAT de esta consulta.
-            documents = {str(i): {"content": d.get("content", ""), "chunks": [d.get("content", "")]}
-                         for i, d in enumerate(retrieved)}
-            checker = RAGCrossChecker(documents, grounded_threshold=self.cross_checker.threshold)
+            documents = {
+                str(i): {"content": d.get("content", ""), "chunks": [d.get("content", "")]}
+                for i, d in enumerate(retrieved)
+            }
+            checker = RAGCrossChecker(
+                documents, grounded_threshold=self.cross_checker.threshold
+            )
         else:
             self.cross_checker.update_documents(self._rag_engine.documents)
             checker = self.cross_checker
 
-        warnings : List[str] = []
-        status   = ValidationStatus.PASSED
+        warnings: List[str] = []
+        status = ValidationStatus.PASSED
 
-        # ── PASO 1: Anti-hallucination ─────────────────────────────────────────
         hallucination_report: HallucinationReport = self.anti_hallucination.analyze(
             response=answer_text,
             rag_score=rag_score,
         )
 
-        # ── PASO 2: Self-correction ────────────────────────────────────────────
         corrections_applied = 0
-        if retrieved and self.config.enable_self_correction and hallucination_report.requires_correction:
+        if (
+            retrieved
+            and self.config.enable_self_correction
+            and hallucination_report.requires_correction
+        ):
             corrected_text, corrections_applied = await self.self_correction.correct(
-                original_text        =answer_text,
-                hallucination_report =hallucination_report,
-                rag_context          =rag_context,
-                query                =query,
-                language             =language,
+                original_text=answer_text,
+                hallucination_report=hallucination_report,
+                rag_context=rag_context,
+                query=query,
+                language=language,
             )
             if corrections_applied > 0:
                 status = ValidationStatus.CORRECTED
-                # Actualizar el campo de respuesta en español con el texto corregido
                 response_data = self._inject_corrected_text(response_data, corrected_text)
                 answer_text = self._extract_answer_text(response_data)
-                # Re-analizar el texto corregido
                 hallucination_report = self.anti_hallucination.analyze(
                     response=answer_text,
                     rag_score=rag_score,
                 )
 
-        # ── PASO 3: Verificación léxica sobre el texto que se entrega ────────────
         cross_result: Optional[CrossCheckResult] = None
         if self.config.enable_cross_check:
             cross_result = checker.check(answer_text, query)
@@ -178,7 +155,6 @@ class ResponseValidator:
                     f"Solapamiento léxico bajo o no evaluable (overlap={cross_result.overlap_score:.2f})"
                 )
 
-        # ── PASO 4: Validación cultural ────────────────────────────────────────
         cultural_issues: List[str] = []
         if (
             self.config.enable_cultural_validation
@@ -193,12 +169,15 @@ class ResponseValidator:
             if cultural_issues and status == ValidationStatus.PASSED:
                 status = ValidationStatus.WARNED
 
-        # ── PASO 5: Score de confianza final ───────────────────────────────────
-        confidence_score = self._compute_confidence_score(
-            hallucination_report=hallucination_report,
-            cross_result        =cross_result,
-            rag_score           =rag_score,
-        ) if retrieved else 0.0
+        confidence_score = (
+            self._compute_confidence_score(
+                hallucination_report=hallucination_report,
+                cross_result=cross_result,
+                rag_score=rag_score,
+            )
+            if retrieved
+            else 0.0
+        )
 
         if confidence_score < self.config.min_confidence_score:
             status = ValidationStatus.FAILED
@@ -209,32 +188,35 @@ class ResponseValidator:
         elif status == ValidationStatus.PASSED and hallucination_report.flags:
             status = ValidationStatus.WARNED
 
-        # ── Construir ValidationReport ─────────────────────────────────────────
         processing_ms = round((time.monotonic() - t0) * 1000, 2)
 
         report = ValidationReport(
-            status             =status,
-            confidence         =ConfidenceLevel.from_score(confidence_score),
-            confidence_score   =round(confidence_score, 4),
-            hallucination_risk =hallucination_report.risk_score,
-            is_grounded        =cross_result.is_grounded if cross_result else False,
+            status=status,
+            confidence=ConfidenceLevel.from_score(confidence_score),
+            confidence_score=round(confidence_score, 4),
+            hallucination_risk=hallucination_report.risk_score,
+            is_grounded=cross_result.is_grounded if cross_result else False,
             corrections_applied=corrections_applied,
-            flags              =[
+            flags=[
                 HallucinationFlag(
                     pattern_name=d["name"],
-                    description =d["description"],
-                    severity    =d["severity"],
+                    description=d["description"],
+                    severity=d["severity"],
                 )
                 for d in hallucination_report.pattern_details
             ],
-            cross_check=CrossCheckSummary(
-                is_grounded      =cross_result.is_grounded,
-                overlap_score    =cross_result.overlap_score,
-                ungrounded_claims=cross_result.ungrounded_claims,
-                supporting_chunks=cross_result.supporting_chunks,
-            ) if cross_result else None,
-            cultural_issues   =cultural_issues,
-            warnings          =warnings,
+            cross_check=(
+                CrossCheckSummary(
+                    is_grounded=cross_result.is_grounded,
+                    overlap_score=cross_result.overlap_score,
+                    ungrounded_claims=cross_result.ungrounded_claims,
+                    supporting_chunks=cross_result.supporting_chunks,
+                )
+                if cross_result
+                else None
+            ),
+            cultural_issues=cultural_issues,
+            warnings=warnings,
             processing_time_ms=processing_ms,
         )
 
@@ -245,11 +227,11 @@ class ResponseValidator:
         )
 
         return ValidatedResponse(
-            answer_data      =response_data,
+            answer_data=response_data,
             validation_report=report,
-            query            =query,
-            language         =language,
-            sources          =sources,
+            query=query,
+            language=language,
+            sources=sources,
         )
 
     # ── Helpers privados ───────────────────────────────────────────────────────

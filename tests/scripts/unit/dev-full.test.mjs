@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   CORE_SERVICES,
+  SURREAL_VOLUME,
   BACKEND_HEALTH_URL,
   composeUpArgs,
   developmentProfile,
   ensureSatCorpus,
+  ensureSurrealVolume,
   profileEnvironment,
   isServiceReady,
   startFrontendAfterBackend,
@@ -56,6 +58,23 @@ test("readiness checks the selected backend rather than the default", async () =
 test("development startup brings up the database the backend defaults to", () => {
   assert.deepEqual(CORE_SERVICES, ["surreal", "redis"]);
   assert.deepEqual(composeUpArgs(), ["compose", "up", "-d", "surreal", "redis"]);
+});
+
+test("development startup ensures the external SurrealDB volume before compose up", async () => {
+  const calls = [];
+  await ensureSurrealVolume({
+    runProcess: async (...args) => {
+      calls.push(args);
+      return { code: 0, stdout: `${SURREAL_VOLUME}\n`, stderr: "" };
+    },
+  });
+  assert.deepEqual(calls, [["docker", ["volume", "create", "surreal_data"]]]);
+  await assert.rejects(
+    ensureSurrealVolume({
+      runProcess: async () => ({ code: 1, stdout: "", stderr: "daemon unavailable" }),
+    }),
+    /surreal_data: daemon unavailable/,
+  );
 });
 
 test("Docker Compose excludes legacy PostgreSQL by default", (t) => {

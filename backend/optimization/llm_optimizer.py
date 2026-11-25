@@ -29,7 +29,7 @@ import hashlib
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from loguru import logger
 
@@ -95,10 +95,12 @@ class LLMOptimizer:
         cache_ttl_seconds: int = 3600,
         max_cache_size: int = 500,
         chars_per_token: int = 4,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.ttl = cache_ttl_seconds
         self.max_cache_size = max_cache_size
         self.chars_per_token = chars_per_token
+        self._clock = clock
 
         self._cache: OrderedDict[str, _CacheEntry] = OrderedDict()
         self._usage = TokenUsage()
@@ -124,7 +126,7 @@ class LLMOptimizer:
             return None
 
         response_text, timestamp = entry
-        if (time.monotonic() - timestamp) > self.ttl:
+        if (self._clock() - timestamp) > self.ttl:
             del self._cache[key]
             self._usage.cache_misses += 1
             logger.debug("Cache MISS (expired)")
@@ -137,7 +139,7 @@ class LLMOptimizer:
     def cache_response(self, prompt: str, response: Any) -> None:
         """Almacena una respuesta en caché."""
         key = self._hash(prompt)
-        self._cache[key] = (response, time.monotonic())
+        self._cache[key] = (response, self._clock())
         self._cache.move_to_end(key)
         if len(self._cache) > self.max_cache_size:
             self._cache.popitem(last=False)

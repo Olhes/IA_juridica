@@ -47,7 +47,7 @@ def test_every_pair_is_found_in_its_printed_source(pairs):
     assert [problem for pair in pairs for problem in verify_pair(pair)] == []
 
 
-def test_checked_in_jsonl_matches_the_seed_definition(pairs):
+def test_checked_in_translation_jsonl_matches_the_seed_definition(pairs):
     """El JSONL se regenera con ``python -m evaluation.harness.translation_seed``; no se edita a mano."""
     built, dropped = build_seed()
     assert sorted(built, key=lambda p: p.id) == sorted(pairs, key=lambda p: p.id)

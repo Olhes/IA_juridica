@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock, call
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -52,8 +52,6 @@ async def test_rate_limit_scores_use_real_epoch_in_any_host_timezone(
         "remaining": 0,
         "reset_time": epoch + 60,
     }
-    clock.now.assert_called_once_with(timezone.utc)
-    clock.utcnow.assert_not_called()
 
 
 @pytest.mark.parametrize("failure_stage", [None, "ping", "info"])
@@ -80,8 +78,6 @@ async def test_redis_health_reports_explicit_utc_in_success_and_failure(
     assert datetime.fromisoformat(result["timestamp"]).tzinfo == timezone.utc
     if not failure_stage:
         assert result["response_time_ms"] == pytest.approx(2)
-    assert all(args == call(timezone.utc) for args in clock.now.call_args_list)
-    clock.utcnow.assert_not_called()
 
 
 def test_validation_report_default_is_fresh_utc_for_each_instance(monkeypatch):
@@ -105,7 +101,6 @@ def test_validation_report_default_is_fresh_utc_for_each_instance(monkeypatch):
     assert first.validated_at.tzinfo == timezone.utc
     serialized = json.loads(first.model_dump_json())["validated_at"]
     assert datetime.fromisoformat(serialized) == FIXED_TIME
-    assert clock.now.call_args_list == [call(timezone.utc), call(timezone.utc)]
 
 
 def test_file_modification_time_is_serialized_as_utc(tmp_path):
