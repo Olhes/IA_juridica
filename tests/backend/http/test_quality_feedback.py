@@ -38,6 +38,12 @@ def exchange(query="¿Cuánto es la pensión?", answer="Respuesta del asistente"
     return [SimpleNamespace(role="user", content=query), SimpleNamespace(role="assistant", content=answer)]
 
 
+def persisted_items(store: FeedbackStore) -> list[dict]:
+    if not store.path.exists():
+        return []
+    return json.loads(store.path.read_text(encoding="utf-8"))["items"]
+
+
 def test_feedback_requires_an_anonymous_session(api, store):
     client, _, _ = api
     assert client.post("/feedback", json=vote()).status_code == 401
@@ -48,7 +54,7 @@ def test_a_thumbs_up_stores_only_labels_and_numbers(api, store):
     client.post("/session/bootstrap")
     response = client.post("/feedback", json={"request_id": REQUEST_ID, "rating": "up", "language": "quechua", "translation_quality": "alta"})
     assert response.status_code == 201 and response.json()["queued"] is False
-    (item,) = store._items
+    (item,) = persisted_items(store)
     assert item["rating"] == "up" and item["translation_quality"] == "alta" and "query" not in item and "answer" not in item
     assert item["owner"] != "" and "principal" not in json.dumps(item)
 
@@ -58,14 +64,14 @@ def test_text_is_stored_only_when_the_person_shares_it_with_a_thumbs_down(api, s
     chat = conversation(monkeypatch, exchange())
     client.post("/session/bootstrap")
     private = client.post("/feedback", json=vote(conversation_id="c1"))  # sin share_text
-    assert private.json()["queued"] is False and "query" not in store._items[-1]
+    assert private.json()["queued"] is False and "query" not in persisted_items(store)[-1]
     shared = client.post("/feedback", json=vote(request_id="f" * 32, conversation_id="c1", share_text=True, comment="falta el artículo"))
     assert shared.status_code == 201 and shared.json()["queued"] is True
     (candidate,) = store.queue("pending")
     assert candidate["query"] == "¿Cuánto es la pensión?" and candidate["answer"] == "Respuesta del asistente" and candidate["comment"] == "falta el artículo"
     assert chat.get_conversation.await_args.args[1] != ""  # se verifica el propietario antes de leer el texto
     client.post("/feedback", json={"request_id": "e" * 32, "rating": "up", "conversation_id": "c1", "share_text": True})
-    assert all("query" not in i for i in store._items if i["rating"] == "up")
+    assert all("query" not in i for i in persisted_items(store) if i["rating"] == "up")
 
 
 def test_a_foreign_or_unreadable_conversation_never_leaks_text(api, store, monkeypatch):
@@ -75,7 +81,8 @@ def test_a_foreign_or_unreadable_conversation_never_leaks_text(api, store, monke
     chat.get_conversation = AsyncMock(return_value=None)  # no es del propietario
     response = client.post("/feedback", json=vote(conversation_id="ajena", share_text=True))
     assert response.status_code == 201 and response.json()["queued"] is False
-    assert store._items[-1]["text_unavailable"] is True and "query" not in store._items[-1]
+    last = persisted_items(store)[-1]
+    assert last["text_unavailable"] is True and "query" not in last
 
 
 @pytest.mark.parametrize(
@@ -93,7 +100,8 @@ def test_a_foreign_or_unreadable_conversation_never_leaks_text(api, store, monke
 def test_invalid_feedback_is_rejected(api, store, payload):
     client, _, _ = api
     client.post("/session/bootstrap")
-    assert client.post("/feedback", json=payload).status_code == 422 and store._items == []
+    assert client.post("/feedback", json=payload).status_code == 422
+    assert store.summary()["total"] == 0 and persisted_items(store) == []
 
 
 def test_one_vote_per_person_and_request_the_latest_wins(api, store):
@@ -101,7 +109,8 @@ def test_one_vote_per_person_and_request_the_latest_wins(api, store):
     client.post("/session/bootstrap")
     client.post("/feedback", json=vote())
     client.post("/feedback", json={"request_id": REQUEST_ID, "rating": "up"})
-    assert [i["rating"] for i in store._items] == ["up"]
+    summary = store.summary()
+    assert summary["total"] == 1 and summary["up"] == 1 and summary["down"] == 0
 
 
 def test_the_queue_requires_admin_and_decisions_never_touch_the_gold(api, store, monkeypatch):

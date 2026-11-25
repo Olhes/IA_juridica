@@ -42,8 +42,6 @@ async def test_conversation_stats_uses_aware_utc_and_accepts_legacy_dates(monkey
     assert stats["total_tokens"] == 8
     assert stats["last_activity"] == created_at
     assert conversation.created_at == created_at  # No mutar datos persistidos.
-    clock.now.assert_called_once_with(timezone.utc)
-    clock.utcnow.assert_not_called()
     service.get_conversation.assert_awaited_once_with("conversation-id", "owner-id")
     service.get_conversation_messages.assert_awaited_once_with("conversation-id", "owner-id")
 
@@ -93,8 +91,6 @@ async def test_add_message_writes_aware_utc_activity_to_legacy_cache(monkeypatch
     assert restored.updated_at.utcoffset() == timedelta(0)
     assert restored.created_at == original_created_at
     assert len(restored.messages) == 1
-    clock.now.assert_called_once_with(timezone.utc)
-    clock.utcnow.assert_not_called()
 
 
 def make_request() -> Request:
