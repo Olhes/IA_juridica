@@ -106,6 +106,52 @@ def rrf(rankings: list[list[str]], k: int = 60, weights=None) -> dict[str, float
     return dict(scores)
 
 
+def eligible_version_ids(
+    nodes: dict[str, dict],
+    outgoing: dict[tuple[str, str], list[str]],
+    *,
+    scope: str = "PE",
+    language: str = "es",
+) -> set[str]:
+    """Read-only eligibility check matching ``SATRetriever.eligible(SearchPlan(query='corpus'))``."""
+    groups = defaultdict(list)
+    for node in nodes.values():
+        if node.get("editorial_superseded_by"):
+            continue
+        if (
+            node["type"] == "CTV"
+            and node.get("provenance_state") in SNAPSHOT_STATES | {"reviewed"}
+            and node["scope"] == scope
+        ):
+            groups[node["work_id"]].append(node)
+    eligible: set[str] = set()
+    for wid, versions in groups.items():
+        if len(versions) > 1:
+            keys = [v.get("snapshot_as_of") or v.get("valid_from") or "" for v in versions]
+            newest = max(keys)
+            versions = [v for v, key in zip(versions, keys) if key == newest] if newest else []
+        if len(versions) != 1:
+            continue
+        version = versions[0]
+        if version.get("valid_to") is not None:
+            continue
+        work = nodes[wid]
+        if (
+            version.get("provenance_state") in SNAPSHOT_STATES
+            and work.get("kind") not in {"article", "numeral", "inciso", "subinciso", "disposition"}
+        ):
+            continue
+        texts = [
+            nodes[target]
+            for target in outgoing.get((version["id"], "has_text"), ())
+            if nodes[target].get("language") == language
+        ]
+        if len(texts) != 1:
+            continue
+        eligible.add(version["id"])
+    return eligible
+
+
 class SATRetriever:
     """Snapshot inmutable por consulta; ninguna búsqueda lee candidatos sin revisar."""
 

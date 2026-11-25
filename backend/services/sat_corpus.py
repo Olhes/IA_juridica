@@ -4,11 +4,13 @@ Original evidence is immutable. Publishing creates a new documentary/CTV/CLV
 edition and retires the previous editorial edition in one transaction.
 No legal dates are inferred. Work identities survive corrections.
 """
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
-from hashlib import sha256
+from hashlib import file_digest, sha256
 from difflib import SequenceMatcher
 from pathlib import Path
+from threading import RLock
 import json
 import uuid
 
@@ -17,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ingestion.sat_graph.store import SATGraphStore, canonical, digest, work_id
 from ingestion.sat_graph.surreal import SurrealSATGraphStore
 from ingestion.source_evidence import SourceEvidence
-from retrieval.sat import SATRetriever, SearchPlan
+from retrieval.sat import eligible_version_ids
 
 
 class Conflict(ValueError):
@@ -164,18 +166,115 @@ def replace_text(edit: TextEdit):
     return validate_edition(edition)
 
 
+_REVIEW_INDEX_LOCK = RLock()
+_REVIEW_INDEX_CACHE: dict[tuple[int, int, int], dict] = {}
+_MAX_REVIEW_INDEX_CACHE = 8
+
+_FILE_JSON_LOCK = RLock()
+_FILE_JSON_CACHE: dict[tuple[str, int, int], object] = {}
+
+_PDF_HASH_LOCK = RLock()
+_PDF_HASH_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def cached_file_sha256(path: Path) -> str:
+    """Compute file SHA-256 via streaming digest, cached by (path, mtime_ns, size)."""
+    resolved = path.resolve()
+    stat = resolved.stat()
+    key = (str(resolved), stat.st_mtime_ns, stat.st_size)
+    with _PDF_HASH_LOCK:
+        cached = _PDF_HASH_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with resolved.open("rb") as handle:
+        value = file_digest(handle, "sha256").hexdigest()
+    with _PDF_HASH_LOCK:
+        if len(_PDF_HASH_CACHE) >= 128:
+            _PDF_HASH_CACHE.clear()
+        _PDF_HASH_CACHE[key] = value
+    return value
+
+
+def _cached_json(path: Path):
+    resolved = path.resolve()
+    stat = resolved.stat()
+    key = (str(resolved), stat.st_mtime_ns, stat.st_size)
+    with _FILE_JSON_LOCK:
+        cached = _FILE_JSON_CACHE.get(key)
+    if cached is not None:
+        return cached
+    parsed = json.loads(resolved.read_text(encoding="utf-8"))
+    with _FILE_JSON_LOCK:
+        if len(_FILE_JSON_CACHE) >= 256:
+            _FILE_JSON_CACHE.clear()
+        _FILE_JSON_CACHE[key] = parsed
+    return parsed
+
+
+def _review_index(graph: dict) -> dict:
+    """Build or reuse a read-only index of nodes, edges, eligibility, and summaries."""
+    key = (id(graph), len(graph["nodes"]), len(graph["edges"]))
+    with _REVIEW_INDEX_LOCK:
+        cached = _REVIEW_INDEX_CACHE.get(key)
+    if cached is not None and cached["graph"] is graph:
+        return cached
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    outgoing = defaultdict(list)
+    parents = {}
+    derived = {}
+    for edge in graph["edges"]:
+        etype = edge["type"]
+        if etype == "has_text":
+            outgoing[(edge["source"], "has_text")].append(edge["target"])
+        elif etype == "documentary_has_part":
+            parents[edge["target"]] = edge["source"]
+        elif etype == "derived_from_documentary":
+            derived[edge["source"]] = edge["target"]
+    eligible = eligible_version_ids(nodes, outgoing)
+    summaries = _document_summaries(nodes, eligible)
+    summaries_by_id = {d["id"]: d for d in summaries}
+    ctvs_by_resource = defaultdict(list)
+    components_by_revision = defaultdict(list)
+    history_by_resource = defaultdict(list)
+    for node in nodes.values():
+        ntype = node["type"]
+        if ntype == "CTV":
+            rid = nodes[node["work_id"]]["resource_id"]
+            ctvs_by_resource[rid].append(node)
+        elif ntype == "DocumentaryComponent":
+            components_by_revision[node["revision_id"]].append(node)
+        elif ntype == "EditorialReview":
+            history_by_resource[node["resource_id"]].append(node)
+    entry = {
+        "graph": graph,
+        "nodes": nodes,
+        "outgoing": outgoing,
+        "parents": parents,
+        "derived": derived,
+        "eligible": eligible,
+        "summaries": summaries,
+        "summaries_by_id": summaries_by_id,
+        "ctvs_by_resource": ctvs_by_resource,
+        "components_by_revision": components_by_revision,
+        "history_by_resource": history_by_resource,
+    }
+    with _REVIEW_INDEX_LOCK:
+        if len(_REVIEW_INDEX_CACHE) >= _MAX_REVIEW_INDEX_CACHE:
+            _REVIEW_INDEX_CACHE.clear()
+        _REVIEW_INDEX_CACHE[key] = entry
+    return entry
+
+
 def snapshot(db):
     return {
-        "nodes": [{"id": i, "type": k, **json.loads(p)} for i, k, p in db.execute("SELECT * FROM sat_nodes ORDER BY id")],
+        "nodes": [{"id": i, "type": k, **json.loads(p)} for i, k, p in db.execute("SELECT id,kind,payload FROM sat_nodes")],
         "edges": [{"id": i, "source": s, "type": k, "target": t, "evidence": json.loads(p)}
-                  for i, s, k, t, p in db.execute("SELECT * FROM sat_edges ORDER BY id")],
+                  for i, s, k, t, p in db.execute("SELECT id,source,predicate,target,payload FROM sat_edges")],
     }
 
 
 def documents(graph):
-    retriever = SATRetriever(graph)
-    eligible = {i["version"]["id"] for i in retriever.eligible(SearchPlan(query="corpus"))}
-    return _document_summaries(retriever.nodes, eligible)
+    return [dict(item) for item in _review_index(graph)["summaries"]]
 
 
 def _document_summaries(nodes, eligible):
@@ -196,41 +295,44 @@ def _document_summaries(nodes, eligible):
             for d in sorted(docs.values(), key=lambda d: d["title"])]
 
 
-def document(graph, resource_id):
-    retriever = SATRetriever(graph)
-    nodes = retriever.nodes
-    active = {i["version"]["id"] for i in retriever.eligible(SearchPlan(query="corpus"))}
-    info = next((d for d in _document_summaries(nodes, active) if d["id"] == resource_id), None)
+def document(graph, resource_id, *, include_texts: bool = True):
+    idx = _review_index(graph)
+    nodes = idx["nodes"]
+    active = idx["eligible"]
+    info = idx["summaries_by_id"].get(resource_id)
     if info is None:
         raise ValueError("Documento no encontrado en el corpus SAT")
     revisions = [nodes[r] for r in info["revisions"] if not nodes[r].get("editorial_superseded_by")]
     editable = len(revisions) == 1
     revision = revisions[0] if editable else None
-    components = []
-    parents = {e["target"]: e["source"] for e in graph["edges"] if e["type"] == "documentary_has_part"}
-    derived = {e["source"]: e["target"] for e in graph["edges"] if e["type"] == "derived_from_documentary"}
+    parents = idx["parents"]
+    derived = idx["derived"]
+    outgoing = idx["outgoing"]
     versions = []
-    for v in nodes.values():
-        if v["type"] != "CTV" or nodes[v["work_id"]]["resource_id"] != resource_id:
-            continue
+    for v in idx["ctvs_by_resource"].get(resource_id, ()):
         w = nodes[v["work_id"]]
-        texts = [nodes[t] for t in retriever.outgoing[(v["id"], "has_text")]]
+        texts = [nodes[t] for t in outgoing.get((v["id"], "has_text"), ())]
+        version_texts = (
+            [{"id": t["id"], "language": t["language"], "text": t["text"]} for t in texts]
+            if include_texts
+            else [{"id": t["id"], "language": t["language"]} for t in texts]
+        )
         versions.append({"id": v["id"], "work_id": w["id"], "component_id": derived.get(v["id"]),
                          "label": w["label"], "kind": w.get("kind"), "retrievable": v["id"] in active,
                          "archived": bool(v.get("editorial_superseded_by")),
                          "provenance": v.get("provenance_state"), "date": v.get("snapshot_as_of") or v.get("valid_from"),
-                         "texts": [{"id": t["id"], "language": t["language"], "text": t["text"]} for t in texts]})
+                         "texts": version_texts})
+    components = []
     if revision:
-        for n in nodes.values():
-            if n["type"] == "DocumentaryComponent" and n["revision_id"] == revision["id"]:
-                components.append({"id": n["id"], "label": n["label"], "kind": n["kind"],
-                                   "start": n["start"], "end": n["end"], "parent_id": parents.get(n["id"])})
+        for n in idx["components_by_revision"].get(revision["id"], ()):
+            components.append({"id": n["id"], "label": n["label"], "kind": n["kind"],
+                               "start": n["start"], "end": n["end"], "parent_id": parents.get(n["id"])})
         # Editing only supported for a complete one-to-one documentary edition.
         attached = [v for v in versions if not v["archived"]]
         editable = (len(attached) == len(components)
                     and {v["component_id"] for v in attached} == {n["id"] for n in components}
                     and all(len(v["texts"]) == 1 and v["texts"][0]["language"] == "es" for v in attached))
-    history = [n for n in nodes.values() if n["type"] == "EditorialReview" and n["resource_id"] == resource_id]
+    history = idx["history_by_resource"].get(resource_id, ())
     return {**info, "editable": editable, "versions": versions,
             "edition": {"revision": revision["id"], "markdown": revision["markdown"],
                         "components": sorted(components, key=lambda n: (n["start"], -n["end"], n["id"]))} if revision else None,
@@ -249,8 +351,18 @@ class CorpusEditor:
     def list(self):
         return documents(self.store.export())
 
-    def get(self, resource_id):
-        return document(self.store.export(), resource_id)
+    def get(self, resource_id, *, include_texts: bool = True):
+        return document(self.store.export(), resource_id, include_texts=include_texts)
+
+    def revision_meta(self, resource_id):
+        """Fast metadata lookup for PDF/Markdown routes without full document assembly."""
+        getter = getattr(self.store, "document_revision_meta", None)
+        if callable(getter):
+            meta = getter(resource_id)
+            if meta is None:
+                raise ValueError("Documento no encontrado en el corpus SAT")
+            return meta
+        return self.get(resource_id, include_texts=False)
 
     def apply(self, resource_id, publication, actor, *, candidate=None, official=None):
         edition = validate_edition(publication.edition)
@@ -411,15 +523,18 @@ class CandidateShelf:
         for name in ("acquisition.json", "attachments.json"):
             path = self.root / name
             if path.is_file():
-                for item in json.loads(path.read_text(encoding="utf-8")):
+                for item in _cached_json(path):
                     if item.get("sha256"):
                         sources[item["sha256"]] = item
-        with self.store._reader() as db:
-            evidence = {eid: pid for eid, pid in db.execute(
-                "SELECT evidence_id,min(id) FROM sat_parses GROUP BY evidence_id HAVING count(*)=1")}
+        if hasattr(self.store, "list_candidate_parses"):
+            evidence = self.store.list_candidate_parses()
+        else:
+            with self.store._reader() as db:
+                evidence = {eid: pid for eid, pid in db.execute(
+                    "SELECT evidence_id,min(id) FROM sat_parses GROUP BY evidence_id HAVING count(*)=1")}
         result = []
         for path in sorted(self.root.glob("converted/*/report.json")):
-            report = json.loads(path.read_text(encoding="utf-8"))
+            report = _cached_json(path)
             sha = report.get("pdf_sha256")
             eid = f"pdf-sha256-{sha}"
             if eid not in evidence:
@@ -438,12 +553,15 @@ class CandidateShelf:
         item = next((row for row in self.list() if row["id"] == identity), None)
         if not item:
             raise ValueError("Candidato inexistente")
-        with self.store._reader() as db:
-            row = db.execute(
-                """SELECT d.markdown,p.artifact,n.payload,s.payload FROM sat_parses p
-                   JOIN sat_documents d ON d.evidence_id=p.evidence_id
-                   JOIN sat_nodes n ON n.id=p.id JOIN sat_nodes s ON s.id=d.evidence_id
-                   WHERE p.id=? AND p.evidence_id=?""", (item["parse_id"], item["evidence_id"])).fetchone()
+        if hasattr(self.store, "get_candidate_evidence"):
+            row = self.store.get_candidate_evidence(item["parse_id"], item["evidence_id"])
+        else:
+            with self.store._reader() as db:
+                row = db.execute(
+                    """SELECT d.markdown,p.artifact,n.payload,s.payload FROM sat_parses p
+                       JOIN sat_documents d ON d.evidence_id=p.evidence_id
+                       JOIN sat_nodes n ON n.id=p.id JOIN sat_nodes s ON s.id=d.evidence_id
+                       WHERE p.id=? AND p.evidence_id=?""", (item["parse_id"], item["evidence_id"])).fetchone()
         if not row:
             raise ValueError("Evidencia candidata inexistente")
         markdown, raw, parse, source = row
@@ -460,6 +578,6 @@ class CandidateShelf:
     def pdf_path(self, item):
         directory = (self.root / "pdf").resolve()
         path = (directory / item["pdf_name"]).resolve()
-        if not path.is_relative_to(directory) or not path.is_file() or "pdf-sha256-" + sha256(path.read_bytes()).hexdigest() != item["evidence_id"]:
+        if not path.is_relative_to(directory) or not path.is_file() or "pdf-sha256-" + cached_file_sha256(path) != item["evidence_id"]:
             raise ValueError("El PDF local no coincide con la evidencia candidata")
         return path

@@ -33,11 +33,13 @@ _SAT_TABLES = ("sat_meta", "sat_nodes", "sat_edges", "sat_documents",
                "sat_reviews", "sat_parses", "sat_chat_revision")
 
 _INDEXES = (
+    ("sat_node_nid", "sat_nodes", "nid"),
     ("sat_node_kind", "sat_nodes", "kind"),
     ("sat_node_work_id", "sat_nodes", "work_id"),
     ("sat_node_resource_id", "sat_nodes", "resource_id"),
     ("sat_node_payload_kind", "sat_nodes", "payload_kind"),
     ("sat_node_provenance_state", "sat_nodes", "provenance_state"),
+    ("sat_edge_nid", "sat_edges", "nid"),
     ("sat_edges_source_predicate", "sat_edges", "source, predicate"),
     ("sat_edges_target_predicate", "sat_edges", "target, predicate"),
     ("sat_document_evidence", "sat_documents", "evidence_id"),
@@ -72,7 +74,9 @@ def _revision_from_conn(conn):
 
 def _record_id(value):
     """Return the plain string behind a Surreal RecordID (if one was stored)."""
-    return getattr(value, "record_id", value)
+    if isinstance(value, RecordID):
+        return value.id
+    return getattr(value, "id", getattr(value, "record_id", value))
 
 
 def _cache_get(key):
@@ -111,8 +115,10 @@ class _Cursor:
 class _SurrealSQL:
     """Translate the qmark SQL emitted by SATGraphStore into SurrealQL."""
 
-    def __init__(self, connection):
+    def __init__(self, connection, *, defer_bump: bool = False):
         self.connection = connection
+        self._defer_bump = defer_bump
+        self._needs_bump = False
 
     # -- low level ---------------------------------------------------------
     def _run(self, sql, params=None):
@@ -120,7 +126,15 @@ class _SurrealSQL:
         return result[0] if result else []
 
     def _bump(self):
+        if self._defer_bump:
+            self._needs_bump = True
+            return
         self._run("UPDATE $rid SET revision = revision + 1", {"rid": _REVISION_RID})
+
+    def flush_bump(self):
+        if self._needs_bump:
+            self._needs_bump = False
+            self._run("UPDATE $rid SET revision = revision + 1", {"rid": _REVISION_RID})
 
     @staticmethod
     def _resolve_token(token, params, original):
@@ -295,15 +309,31 @@ class _SurrealSQL:
                 if (
                     table == "sat_nodes"
                     and "payload=excluded.payload" in tail.replace(" ", "")
-                    and record.get("kind") == "Resource"
+                    and record.get("kind") in {"Resource", "Work"}
                 ):
                     current = self._run(
                         "SELECT kind FROM sat_nodes WHERE nid = $p0 LIMIT 1", {"p0": key}
                     )
-                    if current and current[0].get("kind") == "Resource":
+                    if current and current[0].get("kind") == record.get("kind"):
+                        updates = {"payload": record["payload"]}
+                        try:
+                            body = json.loads(record.get("payload", "{}"))
+                        except (TypeError, ValueError):
+                            body = {}
+                        if isinstance(body, dict):
+                            if body.get("kind") is not None:
+                                updates["payload_kind"] = body["kind"]
+                            if body.get("resource_id") is not None:
+                                updates["resource_id"] = body["resource_id"]
+                        params_u = {"nid": key}
+                        assigns = []
+                        for idx, (col, val) in enumerate(updates.items()):
+                            pname = f"u{idx}"
+                            params_u[pname] = val
+                            assigns.append(f"{col} = ${pname}")
                         self._run(
-                            "UPDATE sat_nodes SET payload = $p0 WHERE nid = $p1",
-                            {"p0": record["payload"], "p1": key},
+                            f"UPDATE sat_nodes SET {', '.join(assigns)} WHERE nid = $nid",
+                            params_u,
                         )
                         self._bump()
                     return _Cursor([])
@@ -400,7 +430,9 @@ class SurrealSATGraphStore(SATGraphStore):
     @contextmanager
     def _transaction(self):
         with self._connection() as conn, conn.begin_transaction() as transaction:
-            yield _SurrealSQL(transaction)
+            sql = _SurrealSQL(transaction, defer_bump=True)
+            yield sql
+            sql.flush_bump()
 
     @contextmanager
     def _reader(self):
@@ -505,16 +537,12 @@ class SurrealSATGraphStore(SATGraphStore):
                 cached = _EXPORT_CACHE.get(key)
             if cached is not None:
                 return cached
-            node_rows = _q(
-                conn, "SELECT nid AS id, kind, payload FROM sat_nodes ORDER BY nid"
-            )
+            node_rows = _q(conn, "SELECT nid AS id, kind, payload FROM sat_nodes")
             edge_rows = _q(
                 conn,
-                "SELECT nid AS id, source, predicate, target, payload FROM sat_edges ORDER BY nid",
+                "SELECT nid AS id, source, predicate, target, payload FROM sat_edges",
             )
-            document_rows = _q(
-                conn, "SELECT evidence_id, state FROM sat_documents ORDER BY evidence_id"
-            )
+            document_rows = _q(conn, "SELECT evidence_id, state FROM sat_documents")
 
         nodes = [
             {"id": row["id"], "type": row["kind"], **json.loads(row["payload"])}
@@ -558,6 +586,112 @@ class SurrealSATGraphStore(SATGraphStore):
                 _EXPORT_CACHE.clear()
                 _EXPORT_CACHE[key] = result
         return result
+
+    def document_revision_meta(self, resource_id: str) -> dict | None:
+        """Fetch active DocumentaryRevision metadata for one resource without exporting the graph."""
+        self.ensure_schema()
+        with self._connection() as conn:
+            revision = _revision_from_conn(conn)
+            key = (self.schema, "rev_meta", resource_id, revision)
+            cached = _cache_get(key)
+            if cached is not None:
+                return cached
+            work_rows = _q(
+                conn,
+                "SELECT nid AS id FROM sat_nodes WHERE kind='Work' AND resource_id=$rid",
+                {"rid": resource_id},
+            )
+            if not work_rows:
+                return None
+            work_ids = [row["id"] for row in work_rows]
+            ctv_rows = _q(
+                conn,
+                "SELECT payload FROM sat_nodes WHERE kind='CTV' AND work_id IN $wids",
+                {"wids": work_ids},
+            )
+            rev_ids = set()
+            for row in ctv_rows:
+                payload = json.loads(row["payload"])
+                if not payload.get("editorial_superseded_by") and payload.get("documentary_revision"):
+                    rev_ids.add(payload["documentary_revision"])
+            if not rev_ids:
+                meta = {"id": resource_id, "edition": None, "directory": None, "candidate_pdf": None, "evidence_id": None}
+                _cache_put(key, meta)
+                return meta
+            rev_rows = _q(
+                conn,
+                "SELECT nid AS id, payload FROM sat_nodes WHERE kind='DocumentaryRevision' AND nid IN $rids",
+                {"rids": list(rev_ids)},
+            )
+            active_revs = []
+            for row in rev_rows:
+                body = json.loads(row["payload"])
+                if not body.get("editorial_superseded_by"):
+                    active_revs.append({"id": row["id"], **body})
+            if len(active_revs) != 1:
+                meta = {"id": resource_id, "edition": None, "directory": None, "candidate_pdf": None, "evidence_id": None}
+            else:
+                rev = active_revs[0]
+                meta = {
+                    "id": resource_id,
+                    "edition": {"revision": rev["id"], "markdown": rev["markdown"]},
+                    "directory": rev.get("directory"),
+                    "candidate_pdf": rev.get("candidate_pdf"),
+                    "evidence_id": rev.get("evidence_id"),
+                }
+            _cache_put(key, meta)
+            return meta
+
+    def list_candidate_parses(self) -> dict[str, str]:
+        """Return ``{evidence_id: parse_id}`` for candidate evidence with exactly one parse."""
+        with self._connection() as conn:
+            rows = _q(conn, "SELECT id, nid, evidence_id FROM sat_parses")
+        grouped: dict[str, list[str]] = {}
+        for row in rows:
+            eid = row.get("evidence_id")
+            pid = row.get("nid") or _record_id(row.get("id"))
+            if eid and pid:
+                grouped.setdefault(eid, []).append(str(pid))
+        return {eid: min(pids) for eid, pids in grouped.items() if len(pids) == 1}
+
+    def get_candidate_evidence(self, parse_id: str, evidence_id: str):
+        """Load candidate (markdown, artifact, parse_payload, source_payload) via direct queries."""
+        with self._connection() as conn:
+            selected = conn.select(RecordID("sat_parses", parse_id)).execute()
+            if isinstance(selected, dict) and selected.get("evidence_id") == evidence_id:
+                artifact = selected.get("artifact")
+            else:
+                parse_rows = _q(
+                    conn,
+                    "SELECT artifact FROM sat_parses WHERE nid=$pid AND evidence_id=$eid LIMIT 1",
+                    {"pid": parse_id, "eid": evidence_id},
+                )
+                if not parse_rows:
+                    return None
+                artifact = parse_rows[0].get("artifact")
+            doc_rows = _q(
+                conn,
+                "SELECT markdown FROM sat_documents WHERE evidence_id=$eid LIMIT 1",
+                {"eid": evidence_id},
+            )
+            if not doc_rows:
+                return None
+            node_rows = _q(
+                conn,
+                "SELECT id, nid, payload FROM sat_nodes WHERE id IN $rids OR nid IN $ids",
+                {
+                    "rids": [RecordID("sat_nodes", parse_id), RecordID("sat_nodes", evidence_id)],
+                    "ids": [parse_id, evidence_id],
+                },
+            )
+        payloads = {}
+        for row in node_rows:
+            key = row.get("nid") or _record_id(row.get("id"))
+            if key is not None:
+                payloads[str(key)] = row["payload"]
+        if parse_id not in payloads or evidence_id not in payloads:
+            return None
+        return (doc_rows[0]["markdown"], artifact, payloads[parse_id], payloads[evidence_id])
 
     def resolve(
         self, resource_id: str, component: str, as_of: str, scope="PE", language="es"

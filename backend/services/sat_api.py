@@ -5,6 +5,7 @@ Editorial commands deliberately live outside this canonical read API.
 """
 from collections import defaultdict
 from datetime import datetime
+from threading import RLock
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -124,8 +125,26 @@ class CanonicalGraph:
         return result
 
 
+_CANONICAL_CACHE_LOCK = RLock()
+_CANONICAL_CACHE: dict[tuple[int, int, int], tuple[dict, CanonicalGraph]] = {}
+
+
+def _canonical_graph(graph: dict) -> CanonicalGraph:
+    key = (id(graph), len(graph["nodes"]), len(graph["edges"]))
+    with _CANONICAL_CACHE_LOCK:
+        cached = _CANONICAL_CACHE.get(key)
+    if cached is not None and cached[0] is graph:
+        return cached[1]
+    built = CanonicalGraph(graph)
+    with _CANONICAL_CACHE_LOCK:
+        if len(_CANONICAL_CACHE) >= 8:
+            _CANONICAL_CACHE.clear()
+        _CANONICAL_CACHE[key] = (graph, built)
+    return built
+
+
 async def run(fn):
-    return await call(lambda: fn(CanonicalGraph(editor().store.export())))
+    return await call(lambda: fn(_canonical_graph(editor().store.export())))
 
 
 @router.get("/meta/implementation-guide", operation_id="getImplementationGuide")
