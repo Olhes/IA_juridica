@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+pytest_plugins = ["tests.backend.fixtures.validation"]
+
 # Fixtures HTTP y recuperación local (sin lifespan ni servicios externos).
 
 

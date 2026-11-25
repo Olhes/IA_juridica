@@ -6,8 +6,6 @@ from uuid import uuid4
 
 import pytest
 
-pytest_plugins = ["tests.backend.fixtures.validation"]
-
 
 def pytest_configure(config):
     # Directorio único por ejecución: no reutiliza ni borra temporales de otra sesión.
@@ -64,9 +62,3 @@ def pytest_collection_modifyitems(config, items):
         raise pytest.UsageError(
             "No hay evaluador model_quality activo; usa el harness de evaluación."
         )
-
-
-def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    directory = getattr(config, "_model_quality_report_directory", None)
-    if directory is not None:
-        terminalreporter.write_sep("=", f"Informe de calidad: {directory}")

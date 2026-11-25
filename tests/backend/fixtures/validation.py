@@ -12,26 +12,16 @@ Convención:
   - Fixtures con scope="function" → default, aislado por test
 """
 
-import asyncio
-from typing import Any, Dict, List
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# ── Módulos del proyecto ───────────────────────────────────────────────────────
 from modules.validation.services.anti_hallucination import AntiHallucinationLayer
 from modules.validation.services.cross_checker import RAGCrossChecker
 from modules.validation.services.self_correction import SelfCorrectionEngine
 from modules.validation.services.response_validator import ResponseValidator, ValidationConfig
 from optimization.llm_optimizer import LLMOptimizer
-
-
-# ── Event loop (compatibilidad pytest-asyncio) ─────────────────────────────────
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
