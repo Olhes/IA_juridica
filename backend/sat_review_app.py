@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
@@ -24,6 +25,7 @@ from services.sat_api import router as api_router
 
 def create_local_app(token):
     app = FastAPI(title="SAT Corpus · estación local de revisión", docs_url=None, redoc_url=None)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
     async def local_session(request: Request):
@@ -47,7 +49,8 @@ def create_local_app(token):
     @app.middleware("http")
     async def private_response(request, call_next):
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        if not request.url.path.startswith("/sat-graph/review/assets/"):
+            response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response

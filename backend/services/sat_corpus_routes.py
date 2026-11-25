@@ -1,6 +1,5 @@
 """Authenticated editor APIs; static shell contains no corpus data or secrets."""
 import asyncio
-from hashlib import sha256
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,7 +8,16 @@ from fastapi.responses import FileResponse, Response
 from config.settings import settings
 from ingestion.sat_graph.runtime import runtime_sat_store
 from services.quality_access import require_quality_admin
-from services.sat_corpus import CandidateShelf, CorpusEditor, Conflict, Publication, TextEdit, candidate_already_published, replace_text
+from services.sat_corpus import (
+    CandidateShelf,
+    CorpusEditor,
+    Conflict,
+    Publication,
+    TextEdit,
+    cached_file_sha256,
+    candidate_already_published,
+    replace_text,
+)
 
 router = APIRouter(prefix="/sat-graph/review", tags=["SAT corpus review"])
 ASSETS = Path(__file__).resolve().parents[1] / "static" / "sat-review"
@@ -36,14 +44,20 @@ def candidate_is_reference(item, graph):
             or any(n["type"] == "Work" and n.get("resource_id") == official_id for n in graph["nodes"]))
 
 
-def review_document(resource_id):
+def review_document(resource_id, *, include_texts: bool = True):
     if resource_id.startswith("candidate:"):
         item = candidate_shelf().get(resource_id)
         graph = editor().store.export()
         published = any(candidate_already_published(item, n) for n in graph["nodes"])
         return {**item, "published": published, "editable": not published,
                 "reference_only": candidate_is_reference(item, graph)}
-    return editor().get(resource_id)
+    return editor().get(resource_id, include_texts=include_texts)
+
+
+def review_document_meta(resource_id):
+    if resource_id.startswith("candidate:"):
+        return review_document(resource_id, include_texts=False)
+    return editor().revision_meta(resource_id)
 
 
 async def call(fn):
@@ -66,7 +80,7 @@ async def page():
 async def asset(name: str):
     if name not in {"editor.js", "editor.css", "favicon.svg"}:
         raise HTTPException(404)
-    return FileResponse(ASSETS / name, headers={"Cache-Control": "no-cache"})
+    return FileResponse(ASSETS / name, headers={"Cache-Control": "private, no-cache"})
 
 
 @router.get("/documents", dependencies=[Depends(require_quality_admin)])
@@ -86,8 +100,8 @@ async def list_candidates():
 
 
 @router.get("/documents/{resource_id}", dependencies=[Depends(require_quality_admin)])
-async def get_document(resource_id: str):
-    return await call(lambda: review_document(resource_id))
+async def get_document(resource_id: str, include_texts: bool = True):
+    return await call(lambda: review_document(resource_id, include_texts=include_texts))
 
 
 @router.post("/preview", dependencies=[Depends(require_quality_admin)])
@@ -112,7 +126,7 @@ async def publish(resource_id: str, publication: Publication, request: Request,
 
 @router.get("/documents/{resource_id}/markdown", dependencies=[Depends(require_quality_admin)])
 async def markdown(resource_id: str):
-    doc = await call(lambda: review_document(resource_id))
+    doc = await call(lambda: review_document_meta(resource_id))
     if not doc["edition"]:
         raise HTTPException(404, "Sin edición documental")
     return Response(doc["edition"]["markdown"], media_type="text/markdown",
@@ -122,7 +136,7 @@ async def markdown(resource_id: str):
 @router.get("/documents/{resource_id}/pdf", dependencies=[Depends(require_quality_admin)])
 async def pdf(resource_id: str):
     def locate():
-        doc = review_document(resource_id)
+        doc = review_document_meta(resource_id)
         if doc.get("candidate") or doc.get("candidate_pdf"):
             name = doc.get("candidate_pdf") or doc.get("pdf_name")
             if not doc.get("candidate") and doc.get("candidate_pdf"):
@@ -130,7 +144,7 @@ async def pdf(resource_id: str):
                 directory = (REVIEWS / "published-references").resolve()
                 bundled = (directory / name).resolve()
                 if (bundled.is_relative_to(directory) and bundled.is_file()
-                        and "pdf-sha256-" + sha256(bundled.read_bytes()).hexdigest() == doc["evidence_id"]):
+                        and "pdf-sha256-" + cached_file_sha256(bundled) == doc["evidence_id"]):
                     return bundled
             return candidate_shelf().pdf_path({**doc, "pdf_name": name})
         if not doc["directory"]:
@@ -138,7 +152,7 @@ async def pdf(resource_id: str):
         path = (REVIEWS / doc["directory"] / "source.pdf").resolve()
         if not path.is_relative_to(REVIEWS.resolve()) or not path.is_file():
             raise ValueError("PDF local no disponible")
-        if "pdf-sha256-" + sha256(path.read_bytes()).hexdigest() != doc["evidence_id"]:
+        if "pdf-sha256-" + cached_file_sha256(path) != doc["evidence_id"]:
             raise ValueError("El PDF no coincide con la evidencia del grafo")
         return path
     return FileResponse(await call(locate), media_type="application/pdf")
