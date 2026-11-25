@@ -15,6 +15,18 @@ def test_source_identity_is_pinned():
         parse_cpc((PDF_DIR / CPC_PDF).read_bytes() + b"\n")
 
 
+def test_parse_cpc_joins_wrapped_article_and_structure_headings():
+    _, components = parse_cpc((PDF_DIR / CPC_PDF).read_bytes())
+    by_id = {c["id"]: c for c in components}
+    assert by_id["new:cpc-566"]["label"] == "Artículo 566.- Ejecución anticipada y ejecución forzada"
+    assert by_id["new:cpc-564"]["label"] == (
+        "Artículo 564.- Acceso de oficio a información en línea sobre la capacidad económica del demandado"
+    )
+    assert by_id["new:cpc-566-a"]["label"] == "Artículo 566-A.- Apercibimiento y remisión al Fiscal"
+    subchapter = by_id[by_id["new:cpc-564"]["parent_id"]]
+    assert "Alimentos" in subchapter["label"]
+
+
 @pytest.mark.slow
 @pytest.mark.asyncio
 async def test_full_official_cpc_and_amending_law_are_searchable(tmp_path):

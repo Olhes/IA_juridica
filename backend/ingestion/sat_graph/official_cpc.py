@@ -31,6 +31,41 @@ _DISPOSITION = re.compile(r'^[“"]?(?:Primera|Segunda|Tercera|Cuarta|Quinta|Sex
 _GROUP = re.compile(r"^DISPOSICIONES (COMPLEMENTARIAS|FINALES|TRANSITORIAS|MODIFICATORIAS|DEROGATORIAS)$")
 _PART = re.compile(r"(?m)^(\d+|[a-zñ])[.)]\s+")
 _NOTE = re.compile(r'(?m)^(?:\(\s*\*\s*\))|[”»]\s+\(\s*\*\s*\)')
+_WRAP_ENDINGS = (
+    " y", " e", " o", " de", " del", " la", " las", " los", " en",
+    " al", " por", " para", " a", " con", " sobre", " ante", ",", "-",
+)
+
+
+def _article_label(value: str, block: list[str]) -> str:
+    head = _ARTICLE.match(block[0])[2].strip()
+    if not head or head.startswith("("):
+        return f"Artículo {value}.- {head}".strip()
+    for nxt in block[1:4]:
+        cand = nxt.strip()
+        if not cand or cand[0] in '“"«(' or re.match(r"^(?:\d+|[a-zñ])[.)]\s+", cand):
+            break
+        if head.endswith("."):
+            break
+        continues = cand[0].islower() or (
+            head.lower().endswith(_WRAP_ENDINGS) and len(cand) <= 55 and not cand.endswith(".")
+        )
+        if not continues:
+            break
+        head = f"{head} {cand}".strip()
+    return f"Artículo {value}.- {head}".strip()
+
+
+def _structure_label(block: list[str]) -> str:
+    parts = []
+    for raw in block[:3]:
+        line = raw.strip('“”" ')
+        if not line or line.startswith("("):
+            break
+        parts.append(line)
+    if len(parts) >= 2 and ":" not in parts[0] and ".-" not in parts[0]:
+        return f"{parts[0]}: {' '.join(parts[1:])}"
+    return " ".join(parts)
 
 
 def _pages(pdf, expected_hash, page_count):
@@ -135,7 +170,7 @@ def parse_cpc(pdf):
                 edition.close(hierarchy.pop()[1])
             node = edition.add({"SECCIÓN":"seccion", "TÍTULO":"titulo", "CAPÍTULO":"capitulo",
                                 "Subcapítulo":"subcapitulo"}.get(value, "disposition_group"),
-                               lines[i].strip('“”"'), parent=(hierarchy[-1][1] if hierarchy else edition.root)["id"])
+                               _structure_label(lines[i:end]), parent=(hierarchy[-1][1] if hierarchy else edition.root)["id"])
             hierarchy.append((depth, node))
             edition.write("## " + text)
             continue
@@ -151,7 +186,7 @@ def parse_cpc(pdf):
             continue
         if kind == "article":
             article_ids.append(value)
-            label = f"Artículo {value}.- {_ARTICLE.match(lines[i])[2]}".strip()
+            label = _article_label(value, lines[i:end])
             node = edition.add("article", label, parent=parent, identity=f"new:cpc-{value.lower()}")
             # Mantener el cuerpo y la nota de la edición; no confundir una nota
             # de modificación de un numeral con derogación de todo el artículo.
