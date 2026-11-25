@@ -346,13 +346,13 @@ class VoyageProvider:
 
     def embed(self, groups: list[list[str]], *, input_type="document"):
         """Cache por documento contextual completo; otros grupos no lo invalidan."""
-        if input_type not in {"document", "query"} or not groups or len(groups) > 1000:
+        if input_type not in {"document", "query"} or not groups:
             raise ValueError("Entradas contextualizadas inválidas")
         if any(
             not group or (input_type == "query" and len(group) != 1) for group in groups
         ):
             raise ValueError("Grupo contextual inválido")
-        if sum(map(len, groups)) > 16000 or any(
+        if any(
             not isinstance(text, str) or not text.strip()
             for group in groups
             for text in group
@@ -395,11 +395,17 @@ class VoyageProvider:
                 "Grupos Voyage no disponibles en caché de solo lectura"
             )
         while missing:
-            batch, size = [], 0
-            while missing and size + bounds[missing[0]] <= limit:
+            batch, size, text_count = [], 0, 0
+            while (
+                missing
+                and len(batch) < 1000
+                and size + bounds[missing[0]] <= limit
+                and text_count + len(groups[missing[0]]) <= 16000
+            ):
                 index = missing.pop(0)
                 batch.append(index)
                 size += bounds[index]
+                text_count += len(groups[index])
             vectors, consumed = self._embed_batch(
                 [groups[i] for i in batch], input_type=input_type
             )

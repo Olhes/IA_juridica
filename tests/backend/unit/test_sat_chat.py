@@ -296,3 +296,84 @@ async def test_explicit_article_walks_eligible_ctv_tree_without_siblings(tmp_pat
     )
     assert by_heading["sat_reference"]["article"] == "13"
     assert by_heading["verbatim_answer"].endswith("- a. Uno.\n- b. Dos.")
+
+
+@pytest.mark.asyncio
+async def test_sat_chat_uses_voyage_hybrid_dense_and_rerank_and_falls_back_on_error(tmp_path):
+    from retrieval.voyage import VoyageError
+
+    store = SATGraphStore(tmp_path / "voyage_chat.sqlite3")
+    with store._transaction() as db:
+        for key, label, text in (
+            ("a1", "Artículo 445°", "Hurto famélico de alimentos en un restaurante."),
+            ("a2", "Artículo 149°", "Omisión de prestación de alimentos fijados por juez."),
+        ):
+            store._node(db, f"work:{key}", "Work", {
+                "resource_id": "pe:dl:635", "component": key, "kind": "article", "label": label,
+            })
+            store._node(db, f"ctv:{key}", "CTV", {
+                "work_id": f"work:{key}", "scope": "PE", "provenance_state": "user_attested_snapshot",
+                "snapshot_as_of": "2026-11-12", "valid_from": None, "valid_to": None,
+                "checked_through": "2026-11-12", "review_id": "r",
+            })
+            store._node(db, f"clv:{key}", "CLV", {
+                "language": "es", "text": text, "start": 0,
+                "source_url": "https://example.org", "evidence_id": "source",
+            })
+            store._edge(db, f"ctv:{key}", "has_text", f"clv:{key}", {})
+
+    calls = []
+
+    class FakeVoyage:
+        tpm = 120000
+
+        def embed(self, groups, *, input_type="document"):
+            calls.append(("embed", input_type, len(groups)))
+            if input_type == "query":
+                return [[[0.0, 1.0]]], {"requests": 1, "tokens": 5, "cache_hits": 0}
+            vecs = []
+            for group in groups:
+                vecs.append([[0.0, 1.0] if "Omisión" in t else [1.0, 0.0] for t in group])
+            return vecs, {"requests": 1, "tokens": 10, "cache_hits": 0}
+
+        def rerank(self, query, docs, *, top_k=5):
+            calls.append(("rerank", len(docs)))
+            scored = [(i, 0.95 if "Omisión" in d else 0.1) for i, d in enumerate(docs)]
+            return sorted(scored, key=lambda pair: -pair[1])[:top_k], {"requests": 1, "tokens": 12, "cache_hits": 0}
+
+    trace = {}
+    adapter = SATChatRetriever(store, provider=FakeVoyage())
+    res = await adapter.query_with_rerank("incumplimiento de alimentos", trace=trace)
+    assert trace["sat_result"]["strategy"] == "hybrid"
+    assert trace["sat_result"]["dense_status"] == "executed"
+    assert trace["sat_result"]["rerank_status"] == "executed"
+    assert res["documents"][0]["document_id"] == "work:a2"
+    assert [c[0] for c in calls] == ["embed", "embed", "rerank"]
+
+    class BrokenVoyage:
+        tpm = 120000
+
+        def embed(self, groups, *, input_type="document"):
+            raise VoyageError("Cuota local Voyage agotada")
+
+        def rerank(self, query, docs, *, top_k=5):
+            raise VoyageError("Cuota local Voyage agotada")
+
+    fallback_trace = {}
+    fallback = SATChatRetriever(store, provider=BrokenVoyage())
+    fb_res = await fallback.query_with_rerank("incumplimiento de alimentos", trace=fallback_trace)
+    assert fb_res["documents"]
+    assert fallback_trace["sat_result"]["strategy"] == "metadata"
+    assert fallback_trace["sat_result"]["dense_status"] == "not_run"
+
+    class RerankOnlyVoyage(FakeVoyage):
+        def embed(self, groups, *, input_type="document"):
+            raise VoyageError("429 cooldown on embed")
+
+    rerank_trace = {}
+    rr = SATChatRetriever(store, provider=RerankOnlyVoyage())
+    rr_res = await rr.query_with_rerank("incumplimiento de alimentos", trace=rerank_trace)
+    assert rr_res["documents"][0]["document_id"] == "work:a2"
+    assert rerank_trace["sat_result"]["dense_status"] == "not_run"
+    assert rerank_trace["sat_result"]["rerank_status"] == "executed"
+

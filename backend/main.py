@@ -42,6 +42,7 @@ from modules.validation.services.response_validator import (
 )
 from optimization.llm_optimizer import LLMOptimizer
 from retrieval.sat_chat import SATChatRetriever
+from retrieval.voyage import VoyageProvider, connect_surreal_voyage
 from routers.documents import router as documents_router
 from routers.quality import router as quality_router
 from routers.queries import (
@@ -173,8 +174,32 @@ async def lifespan(app_instance: FastAPI):
                         logger.warning(
                             "sat_corpus_empty: publica el primer documento en /sat-graph/review"
                         )
+            voyage_provider = None
+            voyage_key = settings.VOYAGE_API_KEY.get_secret_value().strip()
+            if settings.SAT_VOYAGE_ENABLED and voyage_key:
+                try:
+                    voyage_provider = await asyncio.to_thread(
+                        VoyageProvider,
+                        voyage_key,
+                        connect=connect_surreal_voyage,
+                        dimension=settings.VOYAGE_DIMENSION,
+                        daily_requests=settings.VOYAGE_DAILY_REQUESTS,
+                        daily_token_reservation=settings.VOYAGE_DAILY_TOKEN_RESERVATION,
+                        requests_per_minute=settings.VOYAGE_REQUESTS_PER_MINUTE,
+                        token_bound_per_minute=settings.VOYAGE_TOKEN_BOUND_PER_MINUTE,
+                        max_429_retries=0,
+                        max_wait_seconds=0,
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "sat_voyage_unavailable error_type=%s",
+                        type(error).__name__,
+                    )
             app_instance.state.query_retriever = SATChatRetriever(
-                store, settings.SAT_AS_OF
+                store,
+                settings.SAT_AS_OF,
+                provider=voyage_provider,
+                rerank_max_bytes=settings.VOYAGE_RERANK_MAX_BYTES,
             )
         else:
             app_instance.state.query_retriever = app_instance.state.rag_engine

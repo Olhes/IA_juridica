@@ -3,12 +3,16 @@ import asyncio
 from collections import OrderedDict
 from hashlib import sha256
 from datetime import date
+import logging
 import re
 from threading import RLock
 
 from ingestion.sat_graph.store import SATGraphStore
-from retrieval.sat import SATRetriever, SearchPlan, fingerprint
+from retrieval.sat import RankStages, SATRetriever, SearchPlan, fingerprint
 from retrieval.sat_citations import article_number, match_article_heading, references, requests_literals, resolve_reference, with_prior_reference
+from retrieval.voyage import VoyageError
+
+logger = logging.getLogger("ia_juridica.sat_chat")
 
 
 _ARTICLE_HEADING = re.compile(r"^Art[ií]culo\s+\d+(?:-[A-Z0-9]+)?", re.IGNORECASE)
@@ -176,9 +180,22 @@ def _expand_ranked_component(result, retriever, plan):
 
 
 class SATChatRetriever:
-    def __init__(self, store: SATGraphStore, as_of: str | None = None):
+    def __init__(
+        self,
+        store: SATGraphStore,
+        as_of: str | None = None,
+        *,
+        provider=None,
+        strategy: str | None = None,
+        dense_candidates: int = 40,
+        rerank_max_bytes: int = 32000,
+    ):
         self.store = store
         self.as_of = date.fromisoformat(as_of) if as_of else None
+        self.provider = provider
+        self.strategy = strategy
+        self.dense_candidates = dense_candidates
+        self.rerank_max_bytes = rerank_max_bytes
         self._retrievers = OrderedDict()
         self._retrievers_lock = RLock()
 
@@ -280,8 +297,10 @@ class SATChatRetriever:
         lexical_query = query
         if prior_questions and not articles:
             lexical_query = query + "\nContexto de preguntas anteriores:\n" + "\n".join(prior_questions)[-3000:]
+        strategy = self.strategy or ("hybrid" if self.provider is not None else "metadata")
         plan = SearchPlan(query=lexical_query[:4000], as_of=self.as_of, top_k=min(top_k, 20),
                           candidates=min(max(top_k, candidates), 100),
+                          strategy=strategy,
                           structural_units=True,
                           resource_ids=sorted(resolved) if len(resolved) == 1 else [])
         if len(resources) == 1 and articles:
@@ -303,7 +322,29 @@ class SATChatRetriever:
                     retriever, exact, (q, {resource}, citation, incisos, numerals, False),
                     heading_list=True,
                 )
-        result = retriever.search(plan)
+        if self.provider is not None:
+            result = None
+            attempts = (
+                (None, self.dense_candidates, self.rerank_max_bytes),
+                (RankStages(dense=True, rerank=False), self.dense_candidates, None),
+                (RankStages(dense=False, rerank=True), None, self.rerank_max_bytes),
+            )
+            for stages, dense_cap, rerank_cap in attempts:
+                try:
+                    result = retriever.search(
+                        plan,
+                        provider=self.provider,
+                        stages=stages,
+                        dense_candidates=dense_cap,
+                        rerank_max_bytes=rerank_cap,
+                    )
+                    break
+                except (VoyageError, ValueError) as error:
+                    logger.warning("sat_voyage_stage_fallback error_type=%s", type(error).__name__)
+            if result is None:
+                result = retriever.search(plan.model_copy(update={"strategy": "metadata"}))
+        else:
+            result = retriever.search(plan)
         if not result['hits'] and result['candidate_count']:
             result.update(reference={'status': 'unresolved'},
                           warning='La sección principal supera el presupuesto de contexto. Precisa un numeral o literal para consultar su texto completo.')
@@ -311,7 +352,7 @@ class SATChatRetriever:
 
     async def query_with_rerank(self, query, top_k=None, rerank_candidates=None, trace=None, *, prior_questions=()):
         result = await asyncio.to_thread(
-            self._search, query, top_k or 5, rerank_candidates or 30, prior_questions
+            self._search, query, top_k or 6, rerank_candidates or 50, prior_questions
         )
         docs = [{
             'id': h['id'], 'document_id': h['work_id'], 'content': h['content'],

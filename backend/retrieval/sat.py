@@ -400,7 +400,13 @@ class SATRetriever:
         }
 
     def search(
-        self, plan: SearchPlan, *, provider=None, stages: RankStages | None = None
+        self,
+        plan: SearchPlan,
+        *,
+        provider=None,
+        stages: RankStages | None = None,
+        dense_candidates: int | None = None,
+        rerank_max_bytes: int | None = None,
     ) -> dict:
         stages = stages or RankStages()
         # One cached index per immutable snapshot; changing any field that
@@ -440,33 +446,46 @@ class SATRetriever:
             and plan.strategy in {"hybrid", "ppr", "tree"}
             and chunks
         ):
+            if dense_candidates is not None:
+                lexical_pool = ranked(rrf(rankings, weights=weights))[:dense_candidates]
+                dense_pool = [by_id[cid] for cid in lexical_pool] if lexical_pool else chunks[:dense_candidates]
+                provider_tpm = getattr(provider, "tpm", None)
+                group_limit = (min(30000, provider_tpm) if isinstance(provider_tpm, int) else 30000) - 256
+            else:
+                dense_pool = chunks
+                group_limit = None
             # Nunca mezclar instrumentos/versiones en un grupo contextual.
             grouped = defaultdict(list)
-            for chunk in chunks:
+            for chunk in dense_pool:
                 grouped[(chunk["resource_id"], chunk["version_id"])].append(chunk)
-            groups = [
-                sorted(grouped[key], key=lambda c: c["start"])
-                for key in sorted(grouped)
-            ]
-            vectors, usage = provider.embed(
-                [[c["content"] for c in group] for group in groups]
-            )
-            query_vectors, query_usage = provider.embed(
-                [[plan.query]], input_type="query"
-            )
-            aligned = [
-                (chunk["id"], vector)
-                for group, embedded in zip(groups, vectors, strict=True)
-                for chunk, vector in zip(group, embedded, strict=True)
-            ]
-            ids, rows = zip(*aligned, strict=True)
-            dense = dict(zip(ids, cosine_scores(rows, query_vectors[0][0]), strict=True))
-            rankings.append(ranked(dense))
-            weights.append(1.0)
-            dense_status = "executed"
-            for key in api:
-                api[key] += usage[key] + query_usage[key]
-                api_stages["dense"][key] += usage[key] + query_usage[key]
+            groups = []
+            for key in sorted(grouped):
+                group = sorted(grouped[key], key=lambda c: c["start"])
+                if group_limit is not None:
+                    bound = sum(len(c["content"].encode("utf-8")) + 64 for c in group)
+                    if bound > group_limit:
+                        continue
+                groups.append(group)
+            if groups:
+                vectors, usage = provider.embed(
+                    [[c["content"] for c in group] for group in groups]
+                )
+                query_vectors, query_usage = provider.embed(
+                    [[plan.query]], input_type="query"
+                )
+                aligned = [
+                    (chunk["id"], vector)
+                    for group, embedded in zip(groups, vectors, strict=True)
+                    for chunk, vector in zip(group, embedded, strict=True)
+                ]
+                ids, rows = zip(*aligned, strict=True)
+                dense = dict(zip(ids, cosine_scores(rows, query_vectors[0][0]), strict=True))
+                rankings.append(ranked(dense))
+                weights.append(1.0)
+                dense_status = "executed"
+                for key in api:
+                    api[key] += usage[key] + query_usage[key]
+                    api_stages["dense"][key] += usage[key] + query_usage[key]
         ppr_status = None
         if plan.strategy == "ppr":
             seeds = ranked(metadata)[:5]
@@ -529,24 +548,50 @@ class SATRetriever:
             and ordered
             and plan.strategy in {"hybrid", "ppr", "tree"}
         ):
-            # Orden canónico: mismos candidatos de otra ablación reutilizan el rerank.
-            rerank_ids = sorted(ordered)
-            reordered, usage = provider.rerank(
-                plan.query,
-                [by_id[i]["content"] for i in rerank_ids],
-                top_k=len(rerank_ids),
-            )
-            ordered = [rerank_ids[index] for index, _ in reordered]
-            rerank_status = "executed"
-            for key in api:
-                api[key] += usage[key]
-                api_stages["rerank"][key] += usage[key]
+            query_bytes = len(plan.query.encode("utf-8"))
+            provider_tpm = getattr(provider, "tpm", None)
+            batch_limit = min(550000, provider_tpm) if isinstance(provider_tpm, int) else 550000
+            if rerank_max_bytes is not None:
+                batch_limit = min(batch_limit, rerank_max_bytes)
+            doc_limit = min(30000, batch_limit) - query_bytes - 128
+            eligible_rerank, skipped_rerank, reserved = [], [], 0
+            seen_rerank_texts = set()
+            for cid in ordered:
+                content = by_id[cid]["content"]
+                text_sig = sha256(" ".join(content.split()).encode("utf-8")).hexdigest()
+                if text_sig in seen_rerank_texts:
+                    continue
+                doc_bytes = len(content.encode("utf-8"))
+                cost = query_bytes + 64 + doc_bytes
+                if doc_bytes <= doc_limit and reserved + cost <= batch_limit:
+                    eligible_rerank.append(cid)
+                    seen_rerank_texts.add(text_sig)
+                    reserved += cost
+                else:
+                    skipped_rerank.append(cid)
+            if eligible_rerank:
+                # Orden canónico: mismos candidatos de otra ablación reutilizan el rerank.
+                rerank_ids = sorted(eligible_rerank)
+                reordered, usage = provider.rerank(
+                    plan.query,
+                    [by_id[i]["content"] for i in rerank_ids],
+                    top_k=len(rerank_ids),
+                )
+                ordered = [rerank_ids[index] for index, _ in reordered] + skipped_rerank
+                rerank_status = "executed"
+                for key in api:
+                    api[key] += usage[key]
+                    api_stages["rerank"][key] += usage[key]
         hits, used = [], 0
         seen_versions = set()
-        # Evaluación y contexto a nivel CTV: no inflar resultados con subchunks.
+        seen_texts = set()
+        # Evaluación y contexto a nivel CTV: no inflar resultados con subchunks ni duplicados.
         for identity in ordered:
             chunk = by_id[identity]
             if chunk["version_id"] in seen_versions:
+                continue
+            text_sig = sha256(" ".join(chunk["content"].split()).encode("utf-8")).hexdigest()
+            if text_sig in seen_texts:
                 continue
             size = len(chunk["content"].encode("utf-8"))
             if used + size > plan.context_bytes:
@@ -555,6 +600,7 @@ class SATRetriever:
                 continue
             hits.append({**chunk, "score": scores[identity]})
             seen_versions.add(chunk["version_id"])
+            seen_texts.add(text_sig)
             used += size
             if len(hits) == plan.top_k:
                 break

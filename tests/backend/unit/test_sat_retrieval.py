@@ -372,3 +372,57 @@ def test_metadata_search_inherits_ancestor_chapter_and_subchapter_headings(tmp_p
     assert "ctv:art564" in ordered_ids[:2]
     assert ordered_ids.index("ctv:art149") < ordered_ids.index("ctv:art445")
 
+
+def test_hybrid_search_bounds_dense_candidates_and_skips_oversized_chunks(tmp_path):
+    store = SATGraphStore(tmp_path / "dense_bounds.sqlite3")
+    with store._transaction() as db:
+        for i in range(5):
+            text = f"Alimentos pensión artículo {i} obligación alimentaria"
+            if i == 0:
+                text = "Alimentos " + ("x" * 35000)
+            store._node(db, f"work:{i}", "Work", {
+                "resource_id": "pe:dl:768", "component": f"a{i}", "kind": "article", "label": f"Artículo {i}",
+            })
+            store._node(db, f"ctv:{i}", "CTV", {
+                "work_id": f"work:{i}", "scope": "PE", "provenance_state": "user_attested_snapshot",
+                "snapshot_as_of": "2026-11-12", "valid_from": None, "valid_to": None,
+                "checked_through": "2026-11-12", "review_id": "r",
+            })
+            store._node(db, f"clv:{i}", "CLV", {
+                "language": "es", "text": text, "start": 0,
+                "source_url": "https://example.org", "evidence_id": "source",
+            })
+            store._edge(db, f"ctv:{i}", "has_text", f"clv:{i}", {})
+
+    seen_embed_sizes = []
+    seen_rerank_sizes = []
+
+    class StrictProvider:
+        tpm = 20000
+
+        def embed(self, groups, *, input_type="document"):
+            if input_type == "document":
+                for g in groups:
+                    for t in g:
+                        assert len(t.encode()) < 20000
+                        seen_embed_sizes.append(len(t.encode()))
+            return [[[1.0, 0.0] for _ in g] for g in groups], {"requests": 1, "tokens": 4, "cache_hits": 0}
+
+        def rerank(self, query, docs, *, top_k=5):
+            for d in docs:
+                assert len((query + d).encode()) < 20000
+                seen_rerank_sizes.append(len(d.encode()))
+            return [(i, 1.0 / (i + 1)) for i in range(top_k)], {"requests": 1, "tokens": 4, "cache_hits": 0}
+
+    engine = SATRetriever(store.export())
+    res = engine.search(
+        SearchPlan(query="pensión de alimentos", strategy="hybrid", structural_units=True, top_k=3, candidates=5),
+        provider=StrictProvider(),
+        dense_candidates=3,
+    )
+    assert res["dense_status"] == "executed"
+    assert res["rerank_status"] == "executed"
+    assert 1 <= len(seen_embed_sizes) <= 3
+    assert len(seen_rerank_sizes) >= 1
+
+
