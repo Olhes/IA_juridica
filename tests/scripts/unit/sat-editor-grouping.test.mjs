@@ -139,3 +139,114 @@ test('group titles, create a child and autosave a changed heading without publis
     assert.match($('notice').textContent,/descendientes/);
   } finally {window.close();}
 });
+
+test('selection reuses tree DOM, parent options hydrate on focus, and history loads on toggle', async () => {
+  const assets = new URL('../../../backend/static/sat-review/', import.meta.url);
+  const dom = new JSDOM(readFileSync(new URL('index.html', assets), 'utf8'), {
+    runScripts: 'outside-only',
+    url: 'http://localhost:8010/sat-graph/review',
+  });
+  const {window} = dom;
+  window.structuredClone = structuredClone;
+  const markdown = 'Norma 😀\n## Artículo 1\nTexto ñ único.\n';
+  const cpLen = s => Array.from(s).length;
+  const artStart = cpLen(markdown.slice(0, markdown.indexOf('## Artículo 1')));
+  const totalCp = cpLen(markdown);
+  window.fixture = {
+    id: 'pe:ley:test',
+    title: 'Ley de prueba',
+    editable: true,
+    history: [],
+    components: 2,
+    retrievable: 1,
+    versions: [
+      {
+        id: 'v-active',
+        work_id: 'w-art1',
+        component_id: 'art1',
+        label: 'Artículo 1',
+        retrievable: true,
+        archived: false,
+        provenance: 'user_attested_snapshot',
+        texts: [{id: 't-active', language: 'es'}],
+      },
+      {
+        id: 'v-archived',
+        work_id: 'w-art1',
+        component_id: 'art1-old',
+        label: 'Artículo 1 (anterior)',
+        retrievable: false,
+        archived: true,
+        provenance: 'user_attested_snapshot',
+        texts: [{id: 't-archived', language: 'es'}],
+      },
+    ],
+    edition: {
+      revision: 'rev-1',
+      markdown,
+      components: [
+        {id: 'root', label: 'Norma', kind: 'document', parent_id: null, start: 0, end: totalCp},
+        {id: 'art1', label: 'Artículo 1', kind: 'article', parent_id: 'root', start: artStart, end: totalCp},
+      ],
+    },
+  };
+  try {
+    window.eval(
+      readFileSync(new URL('editor.js', assets), 'utf8').replace(
+        /\bconnect\(\);\s*$/u,
+        'window.loadFixture=()=>showDocument(window.fixture); window.loadFixture();',
+      ),
+    );
+    const $ = id => window.document.getElementById(id);
+
+    // 1. Unicode non-BMP (emoji) slicing matches exact codepoint offsets.
+    const artRowBefore = window.document.querySelector('[data-node-id="art1"]');
+    artRowBefore.querySelector('.node-select').click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const artRowAfter = window.document.querySelector('[data-node-id="art1"]');
+    assert.equal(artRowAfter, artRowBefore, 'selectNode must toggle classes in place without rebuilding #tree');
+    assert.equal(artRowAfter.getAttribute('aria-selected'), 'true');
+    assert.equal($('node-text').value, '## Artículo 1\nTexto ñ único.\n');
+
+    // 2. Parent dropdown starts minimal and hydrates full valid options on focus (excluding self/descendants).
+    assert.equal($('node-parent').options.length, 2);
+    $('node-parent').dispatchEvent(new window.Event('focus'));
+    assert.deepEqual(
+      Array.from($('node-parent').options, o => o.value),
+      ['', 'root'],
+    );
+
+    // 3. History tab renders collapsed <details> lazily and fetches archived text only on toggle.
+    let batchCalls = 0;
+    window.fetch = async (url, options) => {
+      batchCalls++;
+      assert.equal(url, '/sat-graph/api/text-units/batch-get');
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.versionIds, ['v-archived']);
+      return {
+        ok: true,
+        json: async () => [{id: 't-archived', sourceId: 'v-archived', language: 'es', content: 'Texto histórico archivado'}],
+      };
+    };
+    window.document.querySelector('[data-tab="history"]').click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const details = window.document.querySelectorAll('#all-versions details');
+    assert.equal(details.length, 2);
+    assert.equal(window.document.querySelectorAll('#all-versions .readonly-body').length, 0);
+    assert.equal(batchCalls, 0);
+
+    // Expanding active version reads from draft markdown without network call.
+    details[0].open = true;
+    details[0].dispatchEvent(new window.Event('toggle'));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(batchCalls, 0);
+    assert.match(details[0].textContent, /Texto ñ único/);
+
+    // Expanding archived version hydrates via batch-get once.
+    details[1].open = true;
+    details[1].dispatchEvent(new window.Event('toggle'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(batchCalls, 1);
+    assert.match(details[1].textContent, /Texto histórico archivado/);
+  } finally {window.close();}
+});
