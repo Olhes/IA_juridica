@@ -294,7 +294,7 @@ class SurrealAdapter:
         if not self.conv_conn:
             raise DatabaseUnavailableError("SurrealDB unavailable")
 
-        owner = "00000000-0000-0000-0000-000000000001" if user_id == "debug-user" else user_id
+        owner = user_id
         identity = str(uuid.uuid4())
         timestamp = _now()
         resolved_title = title or f"Conversación en {language}"

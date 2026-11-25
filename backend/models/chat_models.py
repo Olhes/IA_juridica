@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
-import uuid
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
 
 
@@ -56,8 +55,7 @@ class MessageResponse(MessageBase):
     model_used: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ConversationBase(BaseModel):
@@ -94,8 +92,7 @@ class ConversationResponse(ConversationBase):
     message_count: int = 0
     last_message: Optional[MessageResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatSession(BaseModel):

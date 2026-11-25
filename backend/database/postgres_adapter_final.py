@@ -99,21 +99,12 @@ class PostgreSQLAdapter:
         def create_sync():
             with self.conn.cursor() as cursor:
                 try:
-                    # Para depuración: usar un UUID fijo para debug-user o generar uno
-                    actual_user_id = user_id
-                    if user_id == "debug-user":
-                        # Usar un UUID fijo para debug-user y evitar la dependencia de auth_schema.
-                        actual_user_id = "00000000-0000-0000-0000-000000000001"
-                    
-                    # Deshabilitar temporalmente la restricción de clave foránea para depuración.
                     cursor.execute("SET session_replication_role = 'replica'")
-                    
-                    # Insertar conversación en conversations_schema
                     cursor.execute("""
                         INSERT INTO conversations_schema.conversations (user_id, title, language)
                         VALUES (%s, %s, %s)
                         RETURNING id, user_id, title, language, created_at
-                    """, (actual_user_id, title or f"Conversación en {language}", language))
+                    """, (user_id, title or f"Conversación en {language}", language))
                     
                     result = cursor.fetchone()
                     self.conn.commit()

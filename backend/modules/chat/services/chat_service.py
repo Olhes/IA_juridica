@@ -4,13 +4,13 @@ IA Jurídica - Redis Cache + PostgreSQL Storage
 """
 
 import asyncio
+import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 from models.chat_models import (
     MessageCreate,
     MessageResponse,
-    ConversationCreate,
     ConversationResponse,
     ConversationUpdate,
     ChatRequest,
@@ -23,6 +23,34 @@ from database.redis_adapter import redis_adapter
 from database.adapter import get_database_adapter
 from database.postgres_adapter_final import PostgreSQLAdapter
 
+logger = logging.getLogger("ia_juridica.chat")
+
+
+def _parse_datetime(value: Any) -> datetime:
+    return datetime.fromisoformat(value) if isinstance(value, str) else value
+
+
+def _conversation_from_row(
+    row: Dict[str, Any],
+    *,
+    message_count: Optional[int] = None,
+    last_message: Optional[MessageResponse] = None,
+) -> ConversationResponse:
+    created_at = _parse_datetime(row["created_at"])
+    updated_raw = row.get("updated_at", row["created_at"])
+    return ConversationResponse(
+        id=row["id"],
+        user_id=row.get("user_id", ""),
+        title=row["title"],
+        language=row["language"],
+        metadata=row.get("metadata", {}),
+        created_at=created_at,
+        updated_at=_parse_datetime(updated_raw),
+        is_active=row.get("is_active", True),
+        message_count=row.get("message_count", 0) if message_count is None else message_count,
+        last_message=last_message,
+    )
+
 
 class ChatService:
     """Servicio principal para gestión de chat persistente"""
@@ -31,9 +59,9 @@ class ChatService:
         self.redis = redis_adapter
         self.db = get_database_adapter(PostgreSQLAdapter)
         self.cache_ttl = {
-            "conversation": 3600,  # 1 hora
-            "session": 86400,  # 24 horas
-            "context": 1800,  # 30 minutos
+            "conversation": 3600,
+            "session": 86400,
+            "context": 1800,
         }
 
     async def initialize(self):
@@ -43,8 +71,6 @@ class ChatService:
             if isinstance(outcome, BaseException):
                 raise outcome
 
-    # === Gestión de Conversaciones ===
-
     async def create_conversation(
         self, user_id: str, title: Optional[str] = None, language: str = "spanish"
     ) -> ConversationResponse:
@@ -53,56 +79,11 @@ class ChatService:
             title or f"Conversación {datetime.now().strftime('%d/%m %H:%M')}"
         )
 
-        # Simulación temporal para depuración: omitir la base de datos para debug-user.
-        if user_id == "debug-user":
-            import uuid
-
-            return ConversationResponse(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                title=conversation_title,
-                language=language,
-                metadata={},
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                is_active=True,
-                message_count=0,
-                last_message=None,
-            )
-
-        # Guardar en base de datos (pasar parámetros individuales)
         db_conversation = await self.db.create_conversation(
             user_id=user_id, title=conversation_title, language=language
         )
+        conversation_response = _conversation_from_row(db_conversation, message_count=0)
 
-        # Construir respuesta desde el dict del adapter
-        conversation_response = ConversationResponse(
-            id=db_conversation["id"],
-            user_id=db_conversation["user_id"],
-            title=db_conversation["title"],
-            language=db_conversation["language"],
-            metadata=db_conversation.get("metadata", {}),
-            created_at=(
-                db_conversation["created_at"]
-                if isinstance(db_conversation["created_at"], datetime)
-                else datetime.fromisoformat(db_conversation["created_at"])
-            ),
-            updated_at=(
-                db_conversation.get("updated_at", db_conversation["created_at"])
-                if isinstance(
-                    db_conversation.get("updated_at", db_conversation["created_at"]),
-                    datetime,
-                )
-                else datetime.fromisoformat(
-                    db_conversation.get("updated_at", db_conversation["created_at"])
-                )
-            ),
-            is_active=db_conversation.get("is_active", True),
-            message_count=0,
-            last_message=None,
-        )
-
-        # Cache en Redis
         try:
             cached_conv = CachedConversation(
                 id=conversation_response.id,
@@ -114,14 +95,13 @@ class ChatService:
                 created_at=conversation_response.created_at,
                 updated_at=conversation_response.updated_at,
             )
-
             await self.redis.set_cache(
                 self._conversation_cache_key(user_id, conversation_response.id),
                 cached_conv.to_redis_format(),
                 self.cache_ttl["conversation"],
             )
-        except Exception:
-            print("Conversation cache write failed")
+        except Exception as error:
+            logger.warning("conversation_cache_write_failed error_type=%s", type(error).__name__)
 
         return conversation_response
 
@@ -129,22 +109,6 @@ class ChatService:
         self, conversation_id: str, user_id: str
     ) -> Optional[ConversationResponse]:
         """Obtener conversación con mensajes"""
-        # Simulación temporal para depuración: omitir la base de datos para debug-user.
-        if user_id == "debug-user":
-            return ConversationResponse(
-                id=conversation_id,
-                user_id=user_id,
-                title="Conversación de prueba",
-                language="spanish",
-                metadata={},
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-                is_active=True,
-                message_count=0,
-                last_message=None,
-            )
-
-        # Primero intentar Redis cache
         cache_key = self._conversation_cache_key(user_id, conversation_id)
         cached = await self.redis.get_cache(cache_key)
         if cached:
@@ -165,12 +129,10 @@ class ChatService:
                     ),
                 )
 
-        # Si no está en cache, buscar en base de datos
         db_conversation = await self.db.get_conversation(conversation_id, user_id)
         if not db_conversation:
             return None
 
-        # Obtener mensajes
         messages = await self.db.get_conversation_messages(conversation_id, user_id)
         message_responses = []
         for msg in messages:
@@ -186,45 +148,19 @@ class ChatService:
                         message_type=MessageType.TEXT,
                         tokens_used=msg.get("tokens_used", 0),
                         model_used=msg.get("model_used"),
-                        created_at=(
-                            msg["created_at"]
-                            if isinstance(msg["created_at"], datetime)
-                            else datetime.fromisoformat(msg["created_at"])
-                        ),
+                        created_at=_parse_datetime(msg["created_at"]),
                     )
                 )
-            except Exception:
-                print("Cached message parse failed")
+            except Exception as error:
+                logger.warning("cached_message_parse_failed error_type=%s", type(error).__name__)
                 continue
 
-        # Construir respuesta
-        conversation_response = ConversationResponse(
-            id=db_conversation["id"],
-            user_id=db_conversation.get("user_id", ""),
-            title=db_conversation["title"],
-            language=db_conversation["language"],
-            metadata=db_conversation.get("metadata", {}),
-            created_at=(
-                db_conversation["created_at"]
-                if isinstance(db_conversation["created_at"], datetime)
-                else datetime.fromisoformat(db_conversation["created_at"])
-            ),
-            updated_at=(
-                db_conversation.get("updated_at", db_conversation["created_at"])
-                if isinstance(
-                    db_conversation.get("updated_at", db_conversation["created_at"]),
-                    datetime,
-                )
-                else datetime.fromisoformat(
-                    db_conversation.get("updated_at", db_conversation["created_at"])
-                )
-            ),
-            is_active=db_conversation.get("is_active", True),
+        conversation_response = _conversation_from_row(
+            db_conversation,
             message_count=len(message_responses),
             last_message=message_responses[-1] if message_responses else None,
         )
 
-        # Actualizar cache
         try:
             cached_conv = CachedConversation(
                 id=conversation_response.id,
@@ -236,12 +172,11 @@ class ChatService:
                 created_at=conversation_response.created_at,
                 updated_at=conversation_response.updated_at,
             )
-
             await self.redis.set_cache(
                 cache_key, cached_conv.to_redis_format(), self.cache_ttl["conversation"]
             )
-        except Exception:
-            print("Conversation cache write failed")
+        except Exception as error:
+            logger.warning("conversation_cache_write_failed error_type=%s", type(error).__name__)
 
         return conversation_response
 
@@ -249,69 +184,20 @@ class ChatService:
         self, user_id: str, limit: int = 50
     ) -> List[ConversationResponse]:
         """Obtener conversaciones de un usuario"""
-        # Simulación temporal para depuración: omitir la base de datos para debug-user.
-        if user_id == "debug-user":
-            return []
-
         conversations = await self.db.get_user_conversations(user_id, limit)
         result = []
         for conv in conversations:
             try:
-                result.append(
-                    ConversationResponse(
-                        id=conv["id"],
-                        user_id=conv.get("user_id", ""),
-                        title=conv["title"],
-                        language=conv["language"],
-                        metadata=conv.get("metadata", {}),
-                        created_at=(
-                            conv["created_at"]
-                            if isinstance(conv["created_at"], datetime)
-                            else datetime.fromisoformat(conv["created_at"])
-                        ),
-                        updated_at=(
-                            conv.get("updated_at", conv["created_at"])
-                            if isinstance(
-                                conv.get("updated_at", conv["created_at"]), datetime
-                            )
-                            else datetime.fromisoformat(
-                                conv.get("updated_at", conv["created_at"])
-                            )
-                        ),
-                        is_active=conv.get("is_active", True),
-                        message_count=conv.get("message_count", 0),
-                        last_message=None,
-                    )
-                )
-            except Exception:
-                print("Conversation parse failed")
+                result.append(_conversation_from_row(conv))
+            except Exception as error:
+                logger.warning("conversation_parse_failed error_type=%s", type(error).__name__)
                 continue
         return result
-
-    # === Gestión de Mensajes ===
 
     async def add_message(
         self, conversation_id: str, user_id: str, message_data: MessageCreate
     ) -> MessageResponse:
         """Agregar mensaje a conversación"""
-        # Simulación temporal para depuración: omitir la base de datos para debug-user.
-        if user_id == "debug-user":
-            import uuid
-
-            return MessageResponse(
-                id=str(uuid.uuid4()),
-                conversation_id=conversation_id,
-                role=message_data.role,
-                content=message_data.content,
-                language=message_data.language,
-                metadata=message_data.metadata or {},
-                created_at=datetime.now(timezone.utc),
-                message_type="text",  # Required field
-                tokens_used=0,  # Required field
-                model_used="debug",  # Required field
-            )
-
-        # Guardar en base de datos (pasar parámetros individuales)
         db_message = await self.db.create_message(
             conversation_id=conversation_id,
             owner_id=user_id,
@@ -496,23 +382,15 @@ class ChatService:
             return await self.redis.delete_cache(
                 self._conversation_cache_key(user_id, conversation_id)
             )
-        except Exception:
-            print("Conversation cache invalidation failed")
+        except Exception as error:
+            logger.warning("conversation_cache_invalidation_failed error_type=%s", type(error).__name__)
             return False
-
-    # === Utilidades ===
 
     async def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         """Eliminar conversación"""
-        # Simulación temporal para depuración: omitir la base de datos para debug-user.
-        if user_id == "debug-user":
-            return True
-
-        # Eliminar de base de datos
         success = await self.db.delete_conversation(conversation_id, user_id)
 
         if success:
-            # Eliminar de cache
             await self.redis.delete_cache(
                 self._conversation_cache_key(user_id, conversation_id)
             )
