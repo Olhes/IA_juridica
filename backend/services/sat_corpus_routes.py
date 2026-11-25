@@ -1,5 +1,7 @@
 """Authenticated editor APIs; static shell contains no corpus data or secrets."""
 import asyncio
+import logging
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,6 +9,8 @@ from fastapi.responses import FileResponse, Response
 
 from config.settings import settings
 from ingestion.sat_graph.runtime import runtime_sat_store
+from ingestion.sat_graph.surreal import SurrealSATGraphStore
+from scripts.bootstrap_sat_corpus import export_snapshot
 from services.quality_access import require_quality_admin
 from services.sat_corpus import (
     CandidateShelf,
@@ -19,6 +23,7 @@ from services.sat_corpus import (
     replace_text,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sat-graph/review", tags=["SAT corpus review"])
 ASSETS = Path(__file__).resolve().parents[1] / "static" / "sat-review"
 REVIEWS = Path(__file__).resolve().parents[1] / "docs" / "sat_reviews"
@@ -109,18 +114,35 @@ async def preview(edit: TextEdit):
     return await call(lambda: replace_text(edit).model_dump())
 
 
+def _maybe_export_snapshot(store) -> None:
+    """Keep backend/docs/sat_graph.surql.gz in sync after live SurrealDB publishes."""
+    if not isinstance(store, SurrealSATGraphStore) or getattr(store, "candidates", False):
+        return
+    if os.getenv("SAT_AUTO_EXPORT_SNAPSHOT", "1") == "0" or os.getenv("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        counts = export_snapshot()
+        logger.info("SAT snapshot synced to disk: %s", counts)
+    except Exception:
+        logger.exception("Failed to sync SAT snapshot after publish")
+
+
 @router.post("/documents/{resource_id}")
 async def publish(resource_id: str, publication: Publication, request: Request,
                   actor: str = Depends(require_quality_admin)):
     if request.headers.get("X-SAT-Review") != "1":
         raise HTTPException(403, "Falta confirmación del editor")
     def apply_review():
+        current_editor = editor()
         if resource_id.startswith("candidate:"):
             shelf = candidate_shelf()
             candidate = shelf.get(resource_id)
             shelf.pdf_path(candidate)
-            return editor().apply(resource_id, publication, actor, candidate=candidate)
-        return editor().apply(resource_id, publication, actor)
+            result = current_editor.apply(resource_id, publication, actor, candidate=candidate)
+        else:
+            result = current_editor.apply(resource_id, publication, actor)
+        _maybe_export_snapshot(current_editor.store)
+        return result
     return await call(apply_review)
 
 
