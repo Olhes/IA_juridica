@@ -141,9 +141,8 @@ SurrealDB. Si se detecta un corpus parcial, el inicializador se detiene para
 permitir recuperar un respaldo. Para recuperar un despliegue anterior, restaura su
 export en un volumen de SurrealDB vacío y valida el corpus antes de usarlo.
 
-El respaldo de instalación contiene el corpus publicado del commit
-`4c08e7acec`, procedente de `backend/docs/sat_graph.pg_dump`. PostgreSQL queda
-disponible para recuperación histórica desde un checkout de su despliegue anterior.
+El respaldo de instalación en `backend/docs/sat_graph.surql.gz` contiene el corpus
+publicado del commit `4c08e7acec` listo para restaurar directamente en SurrealDB.
 
 Los candidatos pendientes también dependen de los archivos en
 `/srv/ia-juridica/temp/sat-corpus-work`. `SAT_AS_OF` fija opcionalmente una fecha de

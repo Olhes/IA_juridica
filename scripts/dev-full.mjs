@@ -30,7 +30,6 @@ export function profileEnvironment(profile) {
   const frontend = `http://localhost:${profile.DEV_FRONTEND_PORT}`;
   return {
     ...profile,
-    DATABASE_BACKEND: "surrealdb",
     PYTHONIOENCODING: "utf-8",
     NEXT_PUBLIC_API_URL: api,
     BACKEND_URL: api,

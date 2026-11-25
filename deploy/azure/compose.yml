@@ -51,9 +51,8 @@ services:
     restart: unless-stopped
     env_file:
       - /etc/ia-juridica/backend.env
-    # SurrealDB por defecto; los secretos vienen de compose.env (bootstrap-secrets.sh).
+    # SurrealDB; los secretos vienen de compose.env (bootstrap-secrets.sh).
     environment:
-      DATABASE_BACKEND: surrealdb
       SURREAL_URL: ws://surreal:8000/rpc
       SURREAL_USER: ${SURREAL_USER:-root}
       SURREAL_PASSWORD: ${SURREAL_PASSWORD:?falta SURREAL_PASSWORD}

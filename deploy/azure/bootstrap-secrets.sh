@@ -66,8 +66,7 @@ CORS_ORIGINS=["$FRONTEND_ORIGIN"]
 CORS_ALLOW_METHODS=["GET","POST","PUT","DELETE","OPTIONS"]
 CORS_ALLOW_HEADERS=["Content-Type","X-API-Key","X-Request-ID"]
 
-# SurrealDB v4.0.1 es el backend por defecto (namespace ia_juridica).
-DATABASE_BACKEND=surrealdb
+# SurrealDB v4.0.1 (namespace ia_juridica).
 SURREAL_URL=ws://surreal:8000/rpc
 SURREAL_USER=$SURREAL_USER
 SURREAL_PASSWORD=$SURREAL_PASSWORD
@@ -102,9 +101,7 @@ ensure_key() {
 }
 ensure_key RAG_ENGINE sat
 
-# Un backend.env previo a SurrealDB no tiene estas claves; se completan con los
-# mismos valores de compose.env sin tocar el resto del archivo (idempotente).
-ensure_key DATABASE_BACKEND surrealdb
+# Completa claves de SurrealDB sin tocar el resto del archivo (idempotente).
 ensure_key SURREAL_URL ws://surreal:8000/rpc
 ensure_key SURREAL_USER "$SURREAL_USER"
 ensure_key SURREAL_PASSWORD "$SURREAL_PASSWORD"

@@ -77,18 +77,14 @@ test("development startup ensures the external SurrealDB volume before compose u
   );
 });
 
-test("Docker Compose excludes legacy PostgreSQL by default", (t) => {
+test("Docker Compose defines only SurrealDB and Redis services", (t) => {
   const cwd = fileURLToPath(new URL("../../../", import.meta.url));
-  const config = (...args) => spawnSync("docker", ["compose", ...args, "config", "--services"], {
+  const defaults = spawnSync("docker", ["compose", "config", "--services"], {
     cwd, encoding: "utf8",
   });
-  const defaults = config();
   if (defaults.error?.code === "ENOENT") return t.skip("Docker CLI is not installed");
   assert.equal(defaults.status, 0, defaults.stderr);
   assert.deepEqual(defaults.stdout.trim().split(/\r?\n/).sort(), ["redis", "surreal"]);
-  const legacy = config("--profile", "legacy-postgres");
-  assert.equal(legacy.status, 0, legacy.stderr);
-  assert.deepEqual(legacy.stdout.trim().split(/\r?\n/).sort(), ["postgres", "redis", "surreal"]);
 });
 
 test("SAT uses the SurrealDB corpus initializer", async () => {

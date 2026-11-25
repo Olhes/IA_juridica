@@ -23,7 +23,7 @@ mismo flujo con un volumen persistente. [Operación en Azure](deploy/azure/READM
 | Parámetro | Valor predeterminado |
 | --- | --- |
 | Motor | `RAG_ENGINE=sat` |
-| Persistencia | `DATABASE_BACKEND=surrealdb` |
+| Persistencia | SurrealDB v4 |
 | Endpoint desde el host local | `ws://127.0.0.1:8010/rpc` |
 | Endpoint dentro de la red de Azure Compose | `ws://surreal:8000/rpc` |
 | Namespace y base del corpus | `ia_juridica` / `sat_graph` |
@@ -37,8 +37,3 @@ mismo flujo con un volumen persistente. [Operación en Azure](deploy/azure/READM
 - `/ready` verifica si el corpus está disponible. Si falta, devuelve HTTP 503.
 - El asistente puede abstenerse cuando la consulta carece de evidencia recuperada.
   [Contratos de la API](API_DOC.md) · [Validación de respuestas](backend/VALIDATION_GUIDE.md).
-
-Para recuperar un respaldo histórico de PostgreSQL, consulta el
-[migrador de SAT](backend/scripts/migrate_postgres_to_surrealdb.py). La opción
-`--apply --sat-only` importa a tablas vacías. La opción
-`--verify-only --sat-only` compara datos sin escribir.
