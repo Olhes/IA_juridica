@@ -237,9 +237,16 @@ async def test_reasoning_model_passes_explicit_thinking_option(monkeypatch):
     monkeypatch.setattr(settings, "COHERE_THINKING_TOKEN_BUDGET", None)
     await agent.respond_general("Consulta", {})
     assert [t async for t in agent.stream_general_text("Consulta", {})] == ["Respuesta completa."]
-    assert agent.cohere_client.chat.await_args.kwargs["thinking"] == {"type": "disabled"}
-    assert stream_calls[0]["thinking"] == {"type": "disabled"}
+    # command-a-plus leaks chain-of-thought into text blocks when sent type="disabled";
+    # default disabled mode uses a minimal hidden containment budget so text stays clean.
+    assert agent.cohere_client.chat.await_args.kwargs["thinking"] == {"type": "enabled", "token_budget": 64}
+    assert stream_calls[0]["thinking"] == {"type": "enabled", "token_budget": 64}
 
+    agent.model_name = "command-a-reasoning-08-2025"
+    await agent.respond_general("Consulta", {})
+    assert agent.cohere_client.chat.await_args.kwargs["thinking"] == {"type": "disabled"}
+
+    agent.model_name = "command-a-plus-05-2026"
     monkeypatch.setattr(settings, "COHERE_THINKING_ENABLED", True)
     monkeypatch.setattr(settings, "COHERE_THINKING_TOKEN_BUDGET", 1024)
     await agent.respond_general("Consulta", {})
@@ -273,4 +280,5 @@ async def test_cohere_chat_and_stream_log_warning_on_max_tokens(monkeypatch, cap
     assert chunks == ["Texto cortado"]
     assert caplog.text.count("cohere_truncated_max_tokens") == 2
     assert "private" not in caplog.text and "secret" not in caplog.text
+    assert chat.await_args.kwargs["thinking"] == {"type": "enabled", "token_budget": 64}
 

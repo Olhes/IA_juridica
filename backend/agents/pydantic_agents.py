@@ -206,21 +206,21 @@ class LegalAgent:
         )
 
     def _cohere_generation_options(self) -> Dict[str, Any]:
+        from services.cohere_chat import default_thinking_option
+
         options: Dict[str, Any] = {
             "model": self.model_name,
             "preamble": get_legal_system_prompt(),
             "temperature": settings.COHERE_TEMPERATURE,
             "max_tokens": settings.COHERE_MAX_TOKENS,
         }
-        model_lower = (self.model_name or "").lower()
-        if any(token in model_lower for token in ("command-a-plus", "command-a-reasoning")):
-            if settings.COHERE_THINKING_ENABLED:
-                thinking: Dict[str, Any] = {"type": "enabled"}
-                if settings.COHERE_THINKING_TOKEN_BUDGET is not None:
-                    thinking["token_budget"] = settings.COHERE_THINKING_TOKEN_BUDGET
-                options["thinking"] = thinking
-            else:
-                options["thinking"] = {"type": "disabled"}
+        thinking = default_thinking_option(
+            self.model_name,
+            enabled=settings.COHERE_THINKING_ENABLED,
+            token_budget=settings.COHERE_THINKING_TOKEN_BUDGET,
+        )
+        if thinking is not None:
+            options["thinking"] = thinking
         return options
 
     async def _generate_text_with_cohere(
