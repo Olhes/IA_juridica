@@ -15,6 +15,7 @@ def test_source_identity_is_pinned():
         parse_cpc((PDF_DIR / CPC_PDF).read_bytes() + b"\n")
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_full_official_cpc_and_amending_law_are_searchable(tmp_path):
     store = FixtureSATStore(tmp_path / "official.sqlite3")

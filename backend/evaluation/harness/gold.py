@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from evaluation.harness.corpus import Corpus
 from evaluation.harness.matching import anchor_matches, compile_pattern, pattern_matches
 from services.citation_verifier import citation_matches, despace, evidence_keys
-from utils.text_match import contains
+from utils.text_match import compact, contains, normalize
 
 GOLD_DIR = Path(__file__).resolve().parents[3] / "tests" / "backend" / "fixtures" / "gold"
 LEGAL_QA_PATH = GOLD_DIR / "legal_qa.v1.jsonl"
@@ -144,6 +144,29 @@ class GoldValidationError(ValueError):
         super().__init__("Gold inválido:\n- " + "\n- ".join(self.problems))
 
 
+def _corpus_search_index(corpus: Corpus):
+    key = tuple((sid, seg.sha) for sid, seg in corpus.segments.items())
+    cached = getattr(corpus, "_gold_search_index", None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    whole = corpus.all_text()
+    despaced = despace(whole)
+    index = (
+        (normalize(whole), normalize(despaced)),
+        (compact(whole), compact(despaced)),
+    )
+    corpus._gold_search_index = (key, index)
+    return index
+
+
+def _pattern_in_index(pattern: str, normalized_variants: tuple[str, str], compacted_variants: tuple[str, str]) -> bool:
+    regex = compile_pattern(pattern)
+    if regex is not None:
+        return any(regex.search(variant) is not None for variant in normalized_variants)
+    needle = compact(pattern)
+    return bool(needle) and any(needle in variant for variant in compacted_variants)
+
+
 def verify_case(case: GoldCase, corpus: Corpus) -> list:
     """Problemas de ``case`` frente al corpus (lista vacía si todo se sustenta)."""
     problems = []
@@ -175,8 +198,7 @@ def verify_case(case: GoldCase, corpus: Corpus) -> list:
                     anchor_matches("", anchor)
                 except re.error:
                     problems.append(f"{tag}/{fact.id}: expresión regular inválida {anchor!r}")
-    whole = corpus.all_text()
-    whole_variants = (whole, despace(whole))
+    normalized_variants, compacted_variants = _corpus_search_index(corpus)
     for claim in case.forbidden_claims:
         for pattern in claim.patterns:
             try:
@@ -188,7 +210,10 @@ def verify_case(case: GoldCase, corpus: Corpus) -> list:
         if claim.kind == "contradicted":
             check_quote(claim.id, claim.contradicted_by, False)
         else:
-            hit = next((p for p in claim.patterns if any(pattern_matches(v, p) for v in whole_variants)), None)
+            hit = next(
+                (p for p in claim.patterns if _pattern_in_index(p, normalized_variants, compacted_variants)),
+                None,
+            )
             if hit:
                 problems.append(f"{tag}/{claim.id}: el patrón {hit!r} aparece en el corpus; no es `unsupported`")
     if refs:
@@ -198,8 +223,10 @@ def verify_case(case: GoldCase, corpus: Corpus) -> list:
                 problems.append(f"{tag}: la cita aceptable {acceptable} no aparece en los segmentos de referencia")
     elif case.acceptable_citations:
         problems.append(f"{tag}: sin segmentos de referencia no hay citas aceptables")
+    compacted_whole = compacted_variants[0]
     for term in case.absent_terms:
-        if contains(whole, term):
+        target = compact(term)
+        if target and target in compacted_whole:
             problems.append(f"{tag}: el término {term!r} sí aparece en el corpus")
     return problems
 
