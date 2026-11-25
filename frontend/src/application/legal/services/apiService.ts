@@ -246,7 +246,7 @@ export class ApiService {
     status: string;
     components: {
       redis: string;
-      postgresql: string;
+      surrealdb: string;
       cache: string;
     };
     timestamp: string;

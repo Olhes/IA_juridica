@@ -12,7 +12,7 @@ from ..services.auth_service import AuthService
 from ..services.security import AuthService as SecurityService
 from database.adapter import get_database_adapter
 from database.redis_adapter import redis_adapter
-from database.postgres_adapter_final import PostgreSQLAdapter
+from database.surreal_adapter import SurrealAdapter
 from config.settings import settings
 import httpx
 import urllib.parse
@@ -117,7 +117,7 @@ async def get_current_user(request: Request):
     except Exception as e:
         logger.warning("Redis cache miss: %s", type(e).__name__)
 
-    db = get_database_adapter(PostgreSQLAdapter)
+    db = get_database_adapter(SurrealAdapter)
     await db.initialize()
     user = await db.get_user_by_id(user_id)
 
@@ -237,7 +237,7 @@ async def google_callback(request: Request, code: str, state: str = None):
 
         # Crear o actualizar usuario en la base de datos
         stage = "initialize"
-        db = get_database_adapter(PostgreSQLAdapter)
+        db = get_database_adapter(SurrealAdapter)
         await db.initialize()  # Asegurar que la conexión esté inicializada
 
         stage = "get_user_by_email"

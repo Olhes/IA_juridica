@@ -1,12 +1,12 @@
 from fastapi import HTTPException, status
 from .security import AuthService as SecurityService
 from database.adapter import get_database_adapter
-from database.postgres_adapter_final import PostgreSQLAdapter
+from database.surreal_adapter import SurrealAdapter
 
 
 class AuthService:
     def __init__(self):
-        self.db = get_database_adapter(PostgreSQLAdapter)
+        self.db = get_database_adapter(SurrealAdapter)
         self.security = SecurityService()
     
     async def authenticate_user(self, username: str, password: str):
@@ -14,7 +14,7 @@ class AuthService:
         Autentica un usuario usando username (email) y password.
         Retorna access_token y refresh_token.
         """
-        # Buscar usuario en PostgreSQL
+        # Buscar usuario en SurrealDB
         user = await self.db.get_user_by_email(username)
         
         if not user:

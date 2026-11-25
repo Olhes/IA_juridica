@@ -1,6 +1,6 @@
 """
 Servicio de gestión de conversaciones con persistencia
-IA Jurídica - Redis Cache + PostgreSQL Storage
+IA Jurídica - Redis Cache + SurrealDB Storage
 """
 
 import asyncio
@@ -21,7 +21,7 @@ from models.chat_models import (
 )
 from database.redis_adapter import redis_adapter
 from database.adapter import get_database_adapter
-from database.postgres_adapter_final import PostgreSQLAdapter
+from database.surreal_adapter import SurrealAdapter
 
 logger = logging.getLogger("ia_juridica.chat")
 
@@ -57,7 +57,7 @@ class ChatService:
 
     def __init__(self):
         self.redis = redis_adapter
-        self.db = get_database_adapter(PostgreSQLAdapter)
+        self.db = get_database_adapter(SurrealAdapter)
         self.cache_ttl = {
             "conversation": 3600,
             "session": 86400,

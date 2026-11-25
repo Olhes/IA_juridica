@@ -23,7 +23,7 @@ async def roles_from_session(request: Request) -> Optional[list]:
     token = request.cookies.get("access_token")
     if not token:
         return None
-    import database.postgres_adapter_final as postgres_module
+    import database.surreal_adapter as surreal_module
     from database.adapter import get_database_adapter
     from modules.auth.services.security import AuthService as SecurityService  # mismo alias que auth_routes
 
@@ -33,7 +33,7 @@ async def roles_from_session(request: Request) -> Optional[list]:
         return None
     if payload.get("type") != "access":
         return None
-    database = get_database_adapter(postgres_module.PostgreSQLAdapter)
+    database = get_database_adapter(surreal_module.SurrealAdapter)
     await database.initialize()
     user = await database.get_user_by_id(payload.get("user_id"))
     if not user or not user.get("is_active"):

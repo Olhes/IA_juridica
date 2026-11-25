@@ -253,7 +253,7 @@ async def chat_health_check():
             "status": overall_status,
             "components": {
                 "redis": redis_health.get("status", "unknown"),
-                "postgresql": db_health.get("status", "unknown"),
+                "surrealdb": db_health.get("status", "unknown"),
                 "cache": "working" if cache_working else "error",
             },
             "timestamp": datetime.now(timezone.utc).isoformat(),

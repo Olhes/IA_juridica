@@ -12,7 +12,7 @@ from pydantic import ValidationError
 import main
 from config.settings import settings
 from context.conversation_prompt import bounded_history, with_conversation
-from database.postgres_adapter_final import DatabaseUnavailableError
+from database.errors import DatabaseUnavailableError
 from models.chat_models import ChatRequest, ConversationCreate
 from modules.language.services.translation_service import TranslationService
 from optimization.query_cache import answer_cache_key

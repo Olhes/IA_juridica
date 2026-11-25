@@ -32,24 +32,12 @@ class Settings(BaseSettings):
     NODE_ENV: str = "development"
     ENVIRONMENT: str = "development"
     
-    # Configuración de Base de Datos
-    # "surrealdb" (default) or "postgresql"; PostgreSQL remains the rollback path.
-    DATABASE_BACKEND: str = os.getenv("DATABASE_BACKEND", "surrealdb")
+    # Configuración de Base de Datos (SurrealDB)
     # SurrealDB publishes host port 8010: 8000 belongs to the FastAPI backend.
     SURREAL_URL: str = os.getenv("SURREAL_URL", "ws://127.0.0.1:8010/rpc")
     SURREAL_USER: str = os.getenv("SURREAL_USER", "root")
     SURREAL_PASSWORD: str = os.getenv("SURREAL_PASSWORD", "root")
     SURREAL_NAMESPACE: str = os.getenv("SURREAL_NAMESPACE", "ia_juridica")
-    DATABASE_HOST: str = os.getenv("DATABASE_HOST", "localhost")
-    DATABASE_PORT: int = int(os.getenv("DATABASE_PORT", "5433"))
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "juridica_db")
-    DATABASE_USER: str = os.getenv("DATABASE_USER", "juridica_user")
-    DATABASE_PASSWORD: str = os.getenv("DATABASE_PASSWORD", "")
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
-    
-    # Configuración de SQLAlchemy para PostgreSQL (chat persistente)
-    # Usando psycopg en lugar de asyncpg por compatibilidad con Windows
-    SQLALCHEMY_DATABASE_URL: str = os.getenv("SQLALCHEMY_DATABASE_URL", f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_NAME}")
     
     # Configuración de Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379")
@@ -64,11 +52,6 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    
-    # Configuración de SQLAlchemy
-    SQLALCHEMY_ECHO: bool = False
-    SQLALCHEMY_POOL_SIZE: int = 10
-    SQLALCHEMY_MAX_OVERFLOW: int = 20
     
     # Configuración de OpenAI (legacy)
     OPENAI_API_KEY: str = ""
@@ -249,9 +232,6 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return not self.is_development()
 
-    def uses_surreal(self) -> bool:
-        return str(self.DATABASE_BACKEND or "").lower().startswith("surreal")
-
     def docs_enabled(self) -> bool:
         if self.API_DOCS_ENABLED is not None:
             return self.API_DOCS_ENABLED
@@ -326,11 +306,8 @@ class Settings(BaseSettings):
                 issues.append("CORS methods/headers no pueden usar wildcard en producción")
             if self.RATE_LIMIT_ENABLED and self.RATE_LIMIT_STORAGE_URI == "memory://":
                 issues.append("RATE_LIMIT_STORAGE_URI debe ser compartido entre workers en producción")
-            if self.uses_surreal():
-                if not self.SURREAL_URL or not self.SURREAL_PASSWORD:
-                    issues.append("SURREAL_URL y SURREAL_PASSWORD son obligatorios en producción")
-            elif not self.DATABASE_PASSWORD and not os.getenv("DATABASE_URL"):
-                issues.append("DATABASE_PASSWORD o DATABASE_URL es obligatorio en producción")
+            if not self.SURREAL_URL or not self.SURREAL_PASSWORD:
+                issues.append("SURREAL_URL y SURREAL_PASSWORD son obligatorios en producción")
 
         if self.ANONYMOUS_SESSION_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
             issues.append("ANONYMOUS_SESSION_COOKIE_SAMESITE debe ser lax, strict o none")
