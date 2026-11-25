@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+pytest_plugins = ["tests.backend.fixtures.validation"]
+
 
 def pytest_configure(config):
     # Directorio único por ejecución: no reutiliza ni borra temporales de otra sesión.
