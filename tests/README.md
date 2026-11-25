@@ -85,15 +85,6 @@ Las puntuaciones no certifican exactitud jurídica ni calidad lingüística.
 Compara solo resultados obtenidos con casos, modelos, métricas y versiones
 compatibles. Los informes pueden incluir contexto y respuestas: trátalos como sensibles.
 
-## Diagnósticos manuales
-
-No forman parte de CI ni del informe de SonarQube:
-
-| Archivo | Uso |
-|---|---|
-| `backend/manual/diagnose_pg_connection.py` | Comparación heredada de conexiones psycopg. |
-| `backend/manual/diagnose_settings_connection.py` | Conexión con la configuración del backend. |
-
 Para investigar la ingesta y recuperación, consulta los
 [experimentos SAT-Graph](../docs/SAT-GRAPH-EXPERIMENTS.md) y la
 [guía de ingesta](../docs/SAT-GRAPH-INGESTION.md). Los inventarios y resultados
