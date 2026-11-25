@@ -212,3 +212,65 @@ def test_usage_accepts_float_counts_from_the_cohere_sdk(caplog):
     with caplog.at_level(logging.INFO, logger='ia_juridica.cohere'):
         _record_usage(Usage(billed_units=UsageBilledUnits(input_tokens=17, output_tokens=4)), 'test')
     assert 'input_tokens=17.0 output_tokens=4.0' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reasoning_model_passes_explicit_thinking_option(monkeypatch):
+    from agents.pydantic_agents import LegalAgent
+    from config.settings import settings
+
+    stream_calls = []
+
+    def stream(**kwargs):
+        stream_calls.append(kwargs)
+        async def chunks():
+            yield NS(text="Respuesta completa.")
+        return chunks()
+
+    agent = object.__new__(LegalAgent)
+    agent.model_name = "command-a-plus-05-2026"
+    agent.cohere_client = NS(
+        chat=AsyncMock(return_value=NS(text="Respuesta completa.")),
+        chat_stream=stream,
+    )
+    monkeypatch.setattr(settings, "COHERE_THINKING_ENABLED", False)
+    monkeypatch.setattr(settings, "COHERE_THINKING_TOKEN_BUDGET", None)
+    await agent.respond_general("Consulta", {})
+    assert [t async for t in agent.stream_general_text("Consulta", {})] == ["Respuesta completa."]
+    assert agent.cohere_client.chat.await_args.kwargs["thinking"] == {"type": "disabled"}
+    assert stream_calls[0]["thinking"] == {"type": "disabled"}
+
+    monkeypatch.setattr(settings, "COHERE_THINKING_ENABLED", True)
+    monkeypatch.setattr(settings, "COHERE_THINKING_TOKEN_BUDGET", 1024)
+    await agent.respond_general("Consulta", {})
+    assert agent.cohere_client.chat.await_args.kwargs["thinking"] == {"type": "enabled", "token_budget": 1024}
+
+    agent.model_name = "command-r7b-12-2024"
+    await agent.respond_general("Consulta", {})
+    assert "thinking" not in agent.cohere_client.chat.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_cohere_chat_and_stream_log_warning_on_max_tokens(monkeypatch, caplog):
+    import logging
+
+    chat = AsyncMock(return_value=NS(
+        finish_reason="MAX_TOKENS",
+        message=NS(content=[NS(type="text", text="Texto cortado")]),
+    ))
+
+    async def stream(**kwargs):
+        yield NS(type="content-delta", delta=NS(message=NS(content=NS(text="Texto cortado"))))
+        yield NS(type="message-end", delta=NS(finish_reason="MAX_TOKENS", usage=None))
+
+    monkeypatch.setattr("services.cohere_chat.cohere.AsyncClientV2", lambda **_: NS(chat=chat, chat_stream=stream))
+    client = CohereChat("secret")
+    with caplog.at_level(logging.WARNING, logger="ia_juridica.cohere"):
+        resp = await client.chat(message="private", model="command-a-plus-05-2026")
+        chunks = [e.text async for e in client.chat_stream(message="private", model="command-a-plus-05-2026")]
+    assert resp.text == "Texto cortado"
+    assert resp.finish_reason == "MAX_TOKENS"
+    assert chunks == ["Texto cortado"]
+    assert caplog.text.count("cohere_truncated_max_tokens") == 2
+    assert "private" not in caplog.text and "secret" not in caplog.text
+

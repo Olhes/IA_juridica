@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     COHERE_LLM_MODEL: str = "command-r7b-12-2024"
     COHERE_MAX_TOKENS: int = 4096
     COHERE_TEMPERATURE: float = 0.2
+    COHERE_THINKING_ENABLED: bool = False
+    COHERE_THINKING_TOKEN_BUDGET: Optional[int] = Field(default=None, ge=1)
     
     # Configuración de Neo4j
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")

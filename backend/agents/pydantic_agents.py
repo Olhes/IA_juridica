@@ -205,6 +205,24 @@ class LegalAgent:
             f"Contexto recuperado por RAG:\n{evidence_prompt}"
         )
 
+    def _cohere_generation_options(self) -> Dict[str, Any]:
+        options: Dict[str, Any] = {
+            "model": self.model_name,
+            "preamble": get_legal_system_prompt(),
+            "temperature": settings.COHERE_TEMPERATURE,
+            "max_tokens": settings.COHERE_MAX_TOKENS,
+        }
+        model_lower = (self.model_name or "").lower()
+        if any(token in model_lower for token in ("command-a-plus", "command-a-reasoning")):
+            if settings.COHERE_THINKING_ENABLED:
+                thinking: Dict[str, Any] = {"type": "enabled"}
+                if settings.COHERE_THINKING_TOKEN_BUDGET is not None:
+                    thinking["token_budget"] = settings.COHERE_THINKING_TOKEN_BUDGET
+                options["thinking"] = thinking
+            else:
+                options["thinking"] = {"type": "disabled"}
+        return options
+
     async def _generate_text_with_cohere(
         self,
         query: str,
@@ -220,10 +238,7 @@ class LegalAgent:
 
         response = await self.cohere_client.chat(
             message=user_prompt,
-            model=self.model_name,
-            preamble=get_legal_system_prompt(),
-            temperature=settings.COHERE_TEMPERATURE,
-            max_tokens=settings.COHERE_MAX_TOKENS,
+            **self._cohere_generation_options(),
         )
 
         response_text = getattr(response, "text", "")
@@ -306,10 +321,7 @@ class LegalAgent:
         try:
             stream = self.cohere_client.chat_stream(
                 message=user_prompt,
-                model=self.model_name,
-                preamble=get_legal_system_prompt(),
-                temperature=settings.COHERE_TEMPERATURE,
-                max_tokens=settings.COHERE_MAX_TOKENS,
+                **self._cohere_generation_options(),
             )
 
             async for event in stream:

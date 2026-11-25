@@ -28,6 +28,13 @@ def _messages(message, preamble=None, chat_history=()):
     ]
 
 
+def _check_finish_reason(finish_reason, model):
+    if finish_reason == "MAX_TOKENS":
+        logger.warning(
+            "cohere_truncated_max_tokens model=%s", model or "unknown"
+        )
+
+
 class CohereChat:
     def __init__(self, api_key):
         self.client = cohere.AsyncClientV2(api_key=api_key)
@@ -35,9 +42,14 @@ class CohereChat:
     async def chat(self, *, message, preamble=None, chat_history=(), **options):
         result = await self.client.chat(messages=_messages(message, preamble, chat_history), **options)
         _record_usage(getattr(result, 'usage', None), options.get('model'))
-        return SimpleNamespace(text="".join(
-            block.text for block in (result.message.content or []) if block.type == "text"
-        ))
+        finish_reason = getattr(result, "finish_reason", None)
+        _check_finish_reason(finish_reason, options.get("model"))
+        return SimpleNamespace(
+            text="".join(
+                block.text for block in (result.message.content or []) if block.type == "text"
+            ),
+            finish_reason=finish_reason,
+        )
 
     async def chat_stream(self, *, message, preamble=None, chat_history=(), **options):
         stream = self.client.chat_stream(messages=_messages(message, preamble, chat_history), **options)
@@ -47,4 +59,6 @@ class CohereChat:
                 if text:
                     yield SimpleNamespace(text=text)
             elif event.type == 'message-end':
-                _record_usage(getattr(getattr(event, 'delta', None), 'usage', None), options.get('model'))
+                delta = getattr(event, 'delta', None)
+                _record_usage(getattr(delta, 'usage', None), options.get('model'))
+                _check_finish_reason(getattr(delta, "finish_reason", None), options.get("model"))
