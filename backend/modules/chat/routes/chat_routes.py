@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from config.settings import settings
-from database.postgres_adapter_final import DatabaseUnavailableError
+from database.errors import DatabaseUnavailableError
 from models.chat_models import (
     ChatRequest,
     ChatResponse,

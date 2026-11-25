@@ -72,7 +72,7 @@ from services.sat_corpus_routes import router as sat_corpus_router
 from services.sat_api import router as sat_api_router
 from context.conversation_prompt import bounded_history, with_conversation
 from models.request_types import NonBlankMessage, SupportedLanguage, RequestContext
-from database.postgres_adapter_final import DatabaseUnavailableError
+from database.errors import DatabaseUnavailableError
 
 # ─────────────────────────────────────────────────────────────────────────────
 

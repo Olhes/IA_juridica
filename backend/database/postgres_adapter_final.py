@@ -6,11 +6,8 @@ Conexión simple y robusta
 import asyncio
 from typing import Dict, Any, Optional, List
 
+from database.errors import DatabaseUnavailableError
 from database.postgres_connection import connect_postgres
-
-
-class DatabaseUnavailableError(RuntimeError):
-    pass
 
 
 class PostgreSQLAdapter:
