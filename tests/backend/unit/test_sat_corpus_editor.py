@@ -253,3 +253,10 @@ def test_canonical_graph_links_are_immutable_during_concurrent_reads(corpus):
     assert set(cg.links.keys()) == keys_before
     for _key in cg.links:
         assert cg.children("v:art2", versions=True) == []
+
+
+def test_sat_review_app_default_port_avoids_backend_and_surrealdb():
+    from sat_review_app import DEFAULT_PORT
+
+    assert DEFAULT_PORT not in {8000, 8010}
+    assert DEFAULT_PORT == 8011

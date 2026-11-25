@@ -1,6 +1,6 @@
 """Independent, loopback-only SAT editorial workstation (no chat/LLM startup).
 
-Launch: uv run python backend/sat_review_app.py [--open] [--port 8010]
+Launch: uv run python backend/sat_review_app.py [--open] [--port 8011]
 An ephemeral capability bootstraps an HttpOnly session; it is never stored in JS.
 """
 import argparse
@@ -60,9 +60,12 @@ def create_local_app(token):
     return app
 
 
+DEFAULT_PORT = 8011  # 8000 = FastAPI backend, 8010 = SurrealDB host port
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=8010)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--open", action="store_true")
     args = parser.parse_args()
     try:

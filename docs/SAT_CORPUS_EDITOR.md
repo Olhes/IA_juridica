@@ -42,7 +42,7 @@ Desde la raíz del proyecto:
 pnpm sat:review
 ```
 
-Se abre el navegador en `127.0.0.1:8010`. La terminal imprime un enlace privado
+Se abre el navegador en `127.0.0.1:8011`. La terminal imprime un enlace privado
 que inicia la sesión local. No compartas ese enlace. El servidor solo escucha
 en loopback; no permite acceso desde la red. Ctrl+C lo detiene.
 
