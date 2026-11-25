@@ -100,3 +100,38 @@ def test_sat_section_does_not_hide_a_misattributed_article():
     }}]
     checks = _response_citations("artículo 164-A de la Ley 31464", documents)
     assert next(c for c in checks if c["key"] == "ley31464:art:164-a")["status"] == "unverified"
+
+
+def test_extracts_decreto_legislativo_and_dl_qualified_articles():
+    assert keys("Decreto Legislativo N.° 768 y DL 635") == ["dl:768", "dl:635"]
+    assert keys("artículo 2 del D.L. 1377") == ["dl1377:art:2", "dl:1377"]
+
+
+def test_verification_inherits_code_from_evidence_source_without_allowing_misattribution():
+    evidence = [
+        {
+            "source": "Código Procesal Civil — DL 768 / TUO RM 010-93-JUS",
+            "text": "Artículo 566.- Ejecución anticipada y ejecución forzada.",
+        },
+        {
+            "source": "Código Penal — DL 635, copia del Congreso",
+            "text": "Artículo 149°.- Omisión de prestación de alimentos.",
+        },
+        {
+            "source": "Ley 27337 — Código de los Niños y Adolescentes",
+            "text": "Artículo 96º.- Competencia.",
+        },
+    ]
+    answer = (
+        "Aplica el art. 566 del Código Procesal Civil (DL 768), "
+        "el art. 149 del Código Penal, el art. 96 del Código de los Niños y Adolescentes, "
+        "y no el art. 566 del Código Penal."
+    )
+    by_key = {r["key"]: r for r in verify_citations(answer, evidence)}
+    assert by_key["cpc:art:566"]["status"] == "verified"
+    assert by_key["cpc:art:566"]["source"] == "Código Procesal Civil — DL 768 / TUO RM 010-93-JUS"
+    assert by_key["dl:768"]["status"] == "verified"
+    assert by_key["cp:art:149"]["status"] == "verified"
+    assert by_key["cna:art:96"]["status"] == "verified"
+    assert by_key["cp:art:566"]["status"] == "unverified"
+

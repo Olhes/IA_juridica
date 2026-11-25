@@ -22,6 +22,7 @@ _CODES = (
     ("const", r"constitucion"),
 )
 _LEY = re.compile(r"ley\s+(?:n[\s.°º]*0?\s*)?(\d{4,6})\b")
+_DL = re.compile(r"\b(?:decreto legislativo|d\.?\s*l\.?)\s*(?:n[\s.°º]*0?\s*)?(\d{2,5})\b")
 _ARTICLE = re.compile(
     r"art(?:iculos?|s?)?[.;]?\s*"
     r"(\d{1,4}(?:-[a-z])?(?:\s*(?:,|y|e)\s*\d{1,4}(?:-[a-z])?)*)"
@@ -56,10 +57,24 @@ def _code_after(folded: str, end: int) -> Optional[str]:
     ley = re.match(r"ley\s+(?:n[\s.°º]*0?\s*)?(\d{4,6})", tail)
     if ley:
         return f"ley{ley.group(1)}"
+    dl = re.match(r"(?:decreto legislativo|d\.?\s*l\.?)\s*(?:n[\s.°º]*0?\s*)?(\d{2,5})\b", tail)
+    if dl:
+        return f"dl{dl.group(1)}"
     for code, pattern in _CODES:
         if re.match(pattern.replace("\b", ""), tail):
             return code
     return None
+
+
+def _source_codes(source: str) -> set[str]:
+    """Norm codes explicitly named by an evidence item's source title."""
+    norm = fold(source)
+    codes = {f"ley{m.group(1)}" for m in _LEY.finditer(norm)}
+    codes |= {f"dl{m.group(1)}" for m in _DL.finditer(norm)}
+    for code, pattern in _CODES:
+        if re.search(pattern, norm):
+            codes.add(code)
+    return codes
 
 
 def extract_citations(text: str) -> list:
@@ -77,6 +92,8 @@ def extract_citations(text: str) -> list:
         add(m.start(), "decreto_supremo", f"ds:{m.group(1)}-{m.group(2)}-{m.group(3)}", m.span())
     for m in _LEY.finditer(norm):
         add(m.start(), "ley", f"ley:{m.group(1)}", m.span())
+    for m in _DL.finditer(norm):
+        add(m.start(), "decreto_legislativo", f"dl:{m.group(1)}", m.span())
     for m in _ARTICLE.finditer(norm):
         code = _code_after(norm, m.end())
         for number in re.findall(r"\d{1,4}(?:-[a-z])?", m.group(1)):
@@ -144,13 +161,17 @@ def verify_citations(answer_text: str, evidence: list) -> list:
     for item in evidence:
         source = item.get("source")
         text = item.get("text") or ""
-        prepared.append(
-            (
-                source,
-                text,
-                evidence_keys(text) | evidence_keys(item.get("citation") or "") | evidence_keys(source or ""),
-            )
-        )
+        keys = evidence_keys(text) | evidence_keys(item.get("citation") or "") | evidence_keys(source or "")
+        src_codes = _source_codes(source or "")
+        if src_codes:
+            inherited = {
+                f"{code}:art:{parts[1]}"
+                for key in keys
+                if (parts := _article_parts(key)) and not parts[0]
+                for code in src_codes
+            }
+            keys |= inherited
+        prepared.append((source, text, keys))
     for citation in extract_citations(answer_text):
         hit = next(
             (
