@@ -6,8 +6,8 @@ import bcrypt
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import RedirectResponse
-from .schemas import TokenResponseSchema, RefreshTokenRequest, UserResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from .schemas import UserResponse
 from ..services.auth_service import AuthService
 from ..services.security import AuthService as SecurityService
 from database.adapter import get_database_adapter
@@ -19,6 +19,35 @@ import urllib.parse
 import jwt
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
+logger = logging.getLogger("ia_juridica.auth")
+
+ACCESS_TOKEN_MAX_AGE = 900
+REFRESH_TOKEN_MAX_AGE = 604800
+
+
+def _set_auth_cookies(
+    response: Response, access_token: str, refresh_token: str | None = None
+) -> None:
+    secure = settings.session_cookie_secure()
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=ACCESS_TOKEN_MAX_AGE,
+        path="/",
+    )
+    if refresh_token is not None:
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=secure,
+            samesite="lax",
+            max_age=REFRESH_TOKEN_MAX_AGE,
+            path="/",
+        )
 
 
 @router.post("/login")
@@ -35,32 +64,8 @@ async def login(
         form_data.username, form_data.password
     )
 
-    # Crear respuesta con cookies httpOnly
-    from fastapi.responses import JSONResponse
-
     resp = JSONResponse(content={"message": "Login exitoso"})
-
-    # Establecer cookies httpOnly
-    resp.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=settings.session_cookie_secure(),
-        samesite="lax",
-        max_age=900,  # 15 minutos
-        path="/",
-    )
-
-    resp.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.session_cookie_secure(),
-        samesite="lax",
-        max_age=604800,  # 7 días
-        path="/",
-    )
-
+    _set_auth_cookies(resp, access_token, refresh_token)
     return resp
 
 
@@ -74,34 +79,20 @@ async def refresh_token(request: Request, response: Response):
     auth_service = AuthService()
     new_access_token = await auth_service.refresh_access_token(refresh_token)
 
-    # Actualizar la cookie de access token
-    from fastapi.responses import JSONResponse
-
     resp = JSONResponse(
         content={"access_token": new_access_token, "token_type": "bearer"}
     )
-
-    resp.set_cookie(
-        key="access_token",
-        value=new_access_token,
-        httponly=True,
-        secure=settings.session_cookie_secure(),
-        samesite="lax",
-        max_age=900,  # 15 minutos
-    )
-
+    _set_auth_cookies(resp, new_access_token)
     return resp
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(request: Request):
     """Obtiene información del usuario actual desde el token JWT en cookie con cache en Redis"""
-    # Obtener token de la cookie
     access_token = request.cookies.get("access_token")
     if not access_token:
         raise HTTPException(status_code=401, detail="No autenticado")
 
-    # Decodificar token
     security_service = SecurityService()
     try:
         payload = security_service.decode_token(access_token, is_refresh=False)
@@ -113,8 +104,6 @@ async def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     user_id = payload.get("user_id")
-
-    # Intentar obtener de Redis cache primero
     cache_key = f"user:{user_id}:profile"
     try:
         # `initialize()` es idempotente: reutiliza la conexión ya abierta.
@@ -126,11 +115,10 @@ async def get_current_user(request: Request):
             user_data = json.loads(cached_user) if isinstance(cached_user, str) else cached_user
             return UserResponse(**user_data)
     except Exception as e:
-        logging.getLogger("ia_juridica.auth").warning(f"Redis cache miss: {e}")
+        logger.warning("Redis cache miss: %s", type(e).__name__)
 
-    # Si no está en cache, obtener de la base de datos
     db = get_database_adapter(PostgreSQLAdapter)
-    await db.initialize()  # Asegurar que la conexión esté inicializada
+    await db.initialize()
     user = await db.get_user_by_id(user_id)
 
     if not user:
@@ -150,15 +138,14 @@ async def get_current_user(request: Request):
         is_active=user["is_active"],
     )
 
-    # Guardar en Redis cache por 5 minutos
     try:
         await redis_adapter.set_cache(
             cache_key,
             json.dumps(user_response.model_dump()),
-            300  # 5 minutos
+            300,
         )
     except Exception as e:
-        logging.getLogger("ia_juridica.auth").warning(f"Redis cache write failed: {e}")
+        logger.warning("Redis cache write failed: %s", type(e).__name__)
 
     return user_response
 
@@ -166,32 +153,10 @@ async def get_current_user(request: Request):
 @router.post("/logout")
 async def logout(response: Response):
     """Endpoint de logout - elimina las cookies httpOnly"""
-    from fastapi.responses import JSONResponse
-
     resp = JSONResponse(content={"message": "Sesión cerrada correctamente"})
-
-    # Eliminar cookies
     resp.delete_cookie(key="access_token")
     resp.delete_cookie(key="refresh_token")
-
     return resp
-
-
-@router.post("/reset-admin-password")
-async def reset_admin_password():
-    """
-    Endpoint temporal para resetear el password del admin a 'admin123'
-    """
-    # Hash precalculado de 'admin123' con bcrypt
-    new_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5NU7bXqL0f1eS"
-
-    return {
-        "message": "Usa este hash para actualizar manualmente en la base de datos",
-        "email": "admin@iajuridica.pe",
-        "password": "admin123",
-        "hash": new_hash,
-        "sql": f"UPDATE auth_schema.users SET password_hash = '{new_hash}', is_active = true WHERE email = 'admin@iajuridica.pe';",
-    }
 
 
 # --- OAuth 2.0 Google Endpoints ---
@@ -317,30 +282,8 @@ async def google_callback(request: Request, code: str, state: str = None):
             {"user_id": user["id"], "email": user["email"]}
         )
 
-        # Crear respuesta con cookies httpOnly
         response = RedirectResponse(url=settings.GOOGLE_FRONTEND_CALLBACK_URI)
-
-        # Establecer cookies httpOnly (más seguras que localStorage)
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=settings.session_cookie_secure(),
-            samesite="lax",
-            max_age=900,  # 15 minutos
-            path="/",
-        )
-
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=settings.session_cookie_secure(),
-            samesite="lax",
-            max_age=604800,  # 7 días
-            path="/",
-        )
-
+        _set_auth_cookies(response, access_token, refresh_token)
         return response
 
     except HTTPException:
@@ -348,7 +291,7 @@ async def google_callback(request: Request, code: str, state: str = None):
     except Exception as e:
         # Provider exceptions may contain authorization codes or token payloads.
         # Keep only safe diagnostics, never exception text or traceback.
-        logging.getLogger("ia_juridica.auth").error(
+        logger.error(
             "oauth_callback_failed stage=%s request_id=%s error_type=%s",
             stage,
             getattr(request.state, "request_id", "unknown"),
