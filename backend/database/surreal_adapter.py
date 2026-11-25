@@ -148,10 +148,14 @@ class SurrealAdapter:
                 return
 
             if self._loop is not None and self._loop is not current_loop:
-                # Rebinding on a new event loop: drop references tied to the old loop.
+                # Rebinding on a new event loop: close old clients so AsyncSurreal
+                # tears down sockets and reconnect/ping tasks cleanly.
+                old_conn, old_conv = self.conn, self.conv_conn
                 self.conn = None
                 self.conv_conn = None
                 self._loop = None
+                await _close_connection(old_conv)
+                await _close_connection(old_conn)
 
             max_retries = 3
             for attempt in range(max_retries):
@@ -204,7 +208,7 @@ class SurrealAdapter:
         logger.info("SurrealDB connections closed")
 
     async def health_check(self) -> Dict[str, Any]:
-        if not self.conn:
+        if not self._connections_valid_for_current_loop():
             return {
                 "status": "unhealthy",
                 "database": "surrealdb",
@@ -212,7 +216,7 @@ class SurrealAdapter:
                 "timestamp": _now(),
             }
         try:
-            version = await self._server_version()
+            version = await self._server_version(strict=True)
             return {
                 "status": "healthy",
                 "database": "surrealdb",
@@ -229,22 +233,30 @@ class SurrealAdapter:
     def is_connected(self) -> bool:
         return self.conn is not None and self.conv_conn is not None
 
-    async def _server_version(self) -> str:
+    async def _server_version(self, *, strict: bool = False) -> str:
         if not self.conn:
+            if strict:
+                raise DatabaseUnavailableError("SurrealDB unavailable")
             return "unknown"
+        last_error: Optional[Exception] = None
         for name in ("version", "server_version"):
             attr = getattr(self.conn, name, None)
+            if attr is None:
+                continue
             if callable(attr):
                 try:
                     value = attr()
                     if asyncio.iscoroutine(value):
                         value = await value
-                except Exception:
+                except Exception as error:
+                    last_error = error
                     continue
             else:
                 value = attr
             if value:
                 return str(value)
+        if strict and last_error is not None:
+            raise last_error
         return "unknown"
 
     async def _ensure(self):
@@ -281,17 +293,6 @@ class SurrealAdapter:
             params[name] = value
             assignments.append(f"{key} = ${name}")
         await self._run(f"CREATE $rid SET {', '.join(assignments)}", params, database)
-
-    async def _update_record(
-        self, rid: RecordID, fields: Dict[str, Any], database: str
-    ):
-        params: Dict[str, Any] = {"rid": rid}
-        assignments = []
-        for index, (key, value) in enumerate(fields.items()):
-            name = f"v{index}"
-            params[name] = value
-            assignments.append(f"{key} = ${name}")
-        await self._run(f"UPDATE $rid SET {', '.join(assignments)}", params, database)
 
     # -- row mapping --------------------------------------------------------
     @staticmethod
@@ -558,22 +559,26 @@ class SurrealAdapter:
             return []
 
         title_matches = set()
-        remaining_ids: List[str] = []
+        candidate_ids: List[str] = []
+        title_count = 0
         for row in rows:
             cid = _plain_id(row.get("id"))
             if needle in (row.get("title") or "").lower():
                 title_matches.add(cid)
+                title_count += 1
+                if title_count >= cap:
+                    break
             else:
-                remaining_ids.append(cid)
+                candidate_ids.append(cid)
 
         message_matches = set()
-        if remaining_ids and len(title_matches) < cap:
+        if candidate_ids:
             matched_rows = await self._run(
                 "SELECT conversation_id FROM messages "
                 "WHERE conversation_id INSIDE $ids "
                 "AND string::lowercase(content) CONTAINS $needle "
                 "GROUP BY conversation_id",
-                {"ids": remaining_ids, "needle": needle},
+                {"ids": candidate_ids, "needle": needle},
                 CONVERSATIONS_DB,
             )
             message_matches = {
@@ -663,6 +668,8 @@ class SurrealAdapter:
         return self._user(rows[0], with_password=True) if rows else None
 
     async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        if not user_id:
+            return None
         await self._ensure()
         if not self.conn:
             return None

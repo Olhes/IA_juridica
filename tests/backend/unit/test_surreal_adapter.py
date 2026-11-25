@@ -61,10 +61,11 @@ async def test_initialize_creates_indexes_once_and_rebinds_across_loops(monkeypa
     assert "idx_conversations_user_updated" in conv_sql
     assert "idx_messages_conversation_created" in conv_sql
 
-    # Simulating a different event loop triggers clean rebind without touching old connections.
+    # Simulating a different event loop closes stale clients and rebinds cleanly.
     adapter._loop = object()
     await adapter.initialize()
     assert len(opened) == 4
+    assert opened[0][1].closed and opened[1][1].closed
     await adapter.close()
     assert not adapter.is_connected()
     assert opened[2][1].closed and opened[3][1].closed
@@ -227,3 +228,70 @@ async def test_unavailable_database_raises_domain_error(monkeypatch):
     monkeypatch.setattr(adapter, "initialize", AsyncMock())
     with pytest.raises(DatabaseUnavailableError):
         await adapter.get_user_conversations("u-1")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_health_check_reports_unhealthy_when_version_raises_or_loop_mismatch():
+    adapter = _connected_adapter()
+
+    async def broken_version():
+        raise ConnectionError("socket closed")
+
+    adapter.conn.version = broken_version
+    assert (await adapter.health_check())["status"] == "unhealthy"
+
+    # Wrong event loop also reports unhealthy instead of probing a stale socket.
+    adapter2 = _connected_adapter()
+    adapter2._loop = object()
+    assert (await adapter2.health_check())["status"] == "unhealthy"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_conversations_returns_newest_body_match_ahead_of_older_title_match():
+    def handle_conv(sql, params):
+        if "FROM conversations" in sql:
+            return [[
+                {
+                    "id": RecordID("conversations", "c-newest-body"),
+                    "user_id": "u-1",
+                    "title": "Consulta general",
+                    "language": "spanish",
+                    "created_at": "2026-11-24T12:00:00+00:00",
+                    "updated_at": "2026-11-24T13:00:00+00:00",
+                },
+                {
+                    "id": RecordID("conversations", "c-older-title"),
+                    "user_id": "u-1",
+                    "title": "Consulta REDAM",
+                    "language": "spanish",
+                    "created_at": "2026-11-24T10:00:00+00:00",
+                    "updated_at": "2026-11-24T11:00:00+00:00",
+                },
+                {
+                    "id": RecordID("conversations", "c-oldest-ignored"),
+                    "user_id": "u-1",
+                    "title": "Sin coincidencia",
+                    "language": "spanish",
+                    "created_at": "2026-11-24T08:00:00+00:00",
+                    "updated_at": "2026-11-24T09:00:00+00:00",
+                },
+            ]]
+        if "FROM messages" in sql:
+            assert params == {"ids": ["c-newest-body"], "needle": "redam"}
+            return [[{"conversation_id": "c-newest-body"}]]
+        raise AssertionError(f"Unexpected SQL: {sql}")
+
+    adapter = _connected_adapter(conv_handler=handle_conv)
+    found = await adapter.search_conversations("u-1", "redam", limit=1)
+    assert [row["id"] for row in found] == ["c-newest-body"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_user_by_id_returns_none_for_empty_id():
+    adapter = _connected_adapter()
+    assert await adapter.get_user_by_id(None) is None
+    assert await adapter.get_user_by_id("") is None
+    assert adapter.conn.queries == []
