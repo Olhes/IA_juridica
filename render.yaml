@@ -1,0 +1,111 @@
+# Render Blueprint — Backend only (Free Tier)
+# Docs: deploy/render/README.md
+#
+# Free tier defaults:
+# - Web Service (512 MB RAM, spins down after 15 min idle, ephemeral disk)
+# - Key Value / Redis-compatible cache (25 MB RAM, private network only)
+# - Embedded SurrealDB v4 pre-seeded with the SAT legal corpus at Docker build time.
+#   To switch to persistent free cloud storage (SurrealDB Cloud Free), set:
+#     EMBEDDED_SURREAL=false, SURREAL_URL=wss://<instance>, SURREAL_USER, SURREAL_PASSWORD
+
+services:
+  - type: web
+    name: ia-juridica-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: WORKERS
+        value: "1"
+      - key: RAG_ENGINE
+        value: sat
+      - key: LOAD_LOCAL_KG
+        value: "false"
+      - key: NEO4J_ENABLED
+        value: "false"
+      - key: SAT_INGESTION_LEGACY_RAG
+        value: "false"
+      - key: ADMIN_ENDPOINTS_ENABLED
+        value: "false"
+
+      # SurrealDB v4: embedded inside the container by default (zero external DB cost).
+      # Switch EMBEDDED_SURREAL to "false" and set SURREAL_URL=wss://... for SurrealDB Cloud.
+      - key: EMBEDDED_SURREAL
+        value: "true"
+      - key: AUTO_BOOTSTRAP_SAT
+        value: "true"
+      - key: SURREAL_URL
+        value: ws://127.0.0.1:8010/rpc
+      - key: SURREAL_NAMESPACE
+        value: ia_juridica
+      - key: SURREAL_USER
+        value: root
+      - key: SURREAL_PASSWORD
+        generateValue: true
+      - key: SURREAL_POOL_SIZE
+        value: "2"
+
+      # Redis / Valkey (Render Key Value Free) — shared cache + production rate limiter
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: ia-juridica-cache
+          property: connectionString
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_STORAGE_URI
+        fromService:
+          type: keyvalue
+          name: ia-juridica-cache
+          property: connectionString
+
+      # LLM & Retrieval providers (configure secrets in Render Dashboard)
+      - key: COHERE_API_KEY
+        sync: false
+      - key: COHERE_LLM_MODEL
+        value: command-a-plus-05-2026
+      - key: COHERE_MAX_TOKENS
+        value: "4096"
+      - key: COHERE_TEMPERATURE
+        value: "0.3"
+      - key: COHERE_THINKING_ENABLED
+        value: "false"
+      - key: SAT_VOYAGE_ENABLED
+        value: "true"
+      - key: VOYAGE_API_KEY
+        sync: false
+
+      # Security & Frontend connection
+      # CORS origins must NOT have a trailing slash (browsers send Origin without '/').
+      - key: CORS_ORIGINS
+        value: '["https://ia-juridica-pe.vercel.app"]'
+      - key: GOOGLE_FRONTEND_CALLBACK_URI
+        value: https://ia-juridica-pe.vercel.app/auth/callback
+      # Use "lax" when frontend proxies via Next.js /api rewrite (Vercel),
+      # or "none" if the browser calls Render directly cross-origin.
+      - key: ANONYMOUS_SESSION_COOKIE_SAMESITE
+        value: lax
+      - key: ANONYMOUS_SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_REFRESH_SECRET_KEY
+        generateValue: true
+      - key: ANONYMOUS_SESSION_SECRET
+        generateValue: true
+
+  - type: keyvalue
+    name: ia-juridica-cache
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []

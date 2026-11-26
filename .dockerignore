@@ -13,10 +13,13 @@ __pycache__
 
 logs
 backend/logs
+odd
 
 backend/docs/raw_pdfs
 backend/docs/failed
 backend/docs/knowledge_graph
+backend/docs/knowledge_graph_backup*
+backend/docs/processed_backup*
 
 .env
 .env.local
