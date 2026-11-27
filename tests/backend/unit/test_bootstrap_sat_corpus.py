@@ -287,3 +287,210 @@ def test_bootstrap_records_sha_only_after_row_counts_pass(tmp_path):
     assert conn.upserted is False
 
 
+def test_http_import_surql_chunks_payload_and_checks_errors(tmp_path, monkeypatch):
+    snap = tmp_path / "sample.surql.gz"
+    raw = (
+        "OPTION IMPORT;\n"
+        "DEFINE TABLE sat_nodes SCHEMALESS;\n"
+        "INSERT [ { id: sat_nodes:`1`, text: '" + ("a" * 800) + "' } ];\n"
+        "INSERT [ { id: sat_nodes:`2`, text: '" + ("b" * 800) + "' } ];\n"
+    )
+    with gzip.open(snap, "wt", encoding="utf-8", newline="\n") as out:
+        out.write(raw)
+
+    captured = []
+
+    class FakeResponse:
+        def __init__(self, status_code=200, body=None, text="ok"):
+            self.status_code = status_code
+            self._body = body
+            self.text = text
+
+        def json(self):
+            return self._body
+
+    def make_client(resp):
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def post(self, url, *, headers, content=None, json=None):
+                if url.endswith("/signin"):
+                    return FakeResponse(200, {"token": "jwt-from-signin"})
+                body_str = content.decode("utf-8") if isinstance(content, (bytes, bytearray)) else b"".join(content).decode("utf-8")
+                captured.append({"url": url, "headers": headers, "body": body_str})
+                return resp
+
+        return FakeClient
+
+    monkeypatch.setattr(mod, "surreal_url", lambda: "wss://demo.surreal.cloud/rpc")
+    monkeypatch.setattr(mod, "surreal_credentials", lambda: ("ia_admin", "secret"))
+    monkeypatch.setattr(mod.httpx, "Client", make_client(FakeResponse(200, [{"status": "OK"}])))
+
+    class ConnWithToken:
+        token = "jwt-from-ws"
+
+    mod._http_import_surql(snap, database="sat_graph", max_part_bytes=1200, connection=ConnWithToken())
+    assert len(captured) == 2
+    for part in captured:
+        assert part["url"] == "https://demo.surreal.cloud/import"
+        assert part["headers"]["surreal-db"] == "sat_graph"
+        assert part["headers"]["Authorization"] == "Bearer jwt-from-ws"
+        assert part["body"].startswith("OPTION IMPORT;\n")
+    assert "DEFINE TABLE sat_nodes" in captured[0]["body"]
+    assert "sat_nodes:`1`" in captured[0]["body"]
+    assert "sat_nodes:`2`" in captured[1]["body"]
+
+    captured.clear()
+    mod._http_import_surql(snap, database="sat_graph", max_part_bytes=1200)
+    assert captured[0]["headers"]["Authorization"] == "Bearer jwt-from-signin"
+
+    monkeypatch.setattr(
+        mod.httpx,
+        "Client",
+        make_client(FakeResponse(200, [{"status": "ERR", "result": "parse failure"}])),
+    )
+    with pytest.raises(RuntimeError, match="parse failure"):
+        mod._http_import_surql(snap, database="sat_graph")
+
+    monkeypatch.setattr(mod.httpx, "Client", make_client(FakeResponse(413, None, text="Payload Too Large")))
+    with pytest.raises(RuntimeError, match="413"):
+        mod._http_import_surql(snap, database="sat_graph")
+
+
+def test_bootstrap_http_import_mode_skips_ws_batches_and_records_sha(tmp_path, monkeypatch):
+    counts = {tbl: 1 if tbl == "sat_nodes" else 0 for tbl in mod.SAT_TABLES}
+    snap = tmp_path / "http_mode.surql.gz"
+    with gzip.open(snap, "wt", encoding="utf-8") as out:
+        out.write(f"{mod.EXPECTED_ROWS_PREFIX}{json.dumps(counts)}\n")
+        out.write("OPTION IMPORT;\n")
+
+    imported = []
+
+    class FakeQuery:
+        def __init__(self, result):
+            self._result = result
+
+        def execute(self):
+            return [self._result]
+
+    class FakeConn:
+        def __init__(self):
+            self.stored_sha = None
+            self.has_rev = False
+
+        def timeout(self, _seconds):
+            return nullcontext()
+
+        def query(self, sql, params=None):
+            if sql == mod.REVISION_QUERY:
+                return FakeQuery(["rev:1"] if self.has_rev else [])
+            if "SELECT VALUE snapshot_sha256" in sql:
+                return FakeQuery([self.stored_sha] if self.stored_sha else [])
+            if "DELETE sat_bootstrap:seed" in sql:
+                self.stored_sha = None
+                return FakeQuery([])
+            if "UPSERT sat_bootstrap:seed" in sql:
+                self.stored_sha = params["sha"]
+                return FakeQuery([])
+            if sql.startswith("REMOVE TABLE") or sql.startswith("DEFINE TABLE"):
+                return FakeQuery([])
+            if "INSERT " in sql:
+                raise AssertionError("HTTP import mode must not run WebSocket INSERT batches")
+            for tbl, val in counts.items():
+                if f"FROM {tbl}" in sql:
+                    return FakeQuery([val])
+            raise AssertionError(f"Unexpected SQL: {sql}")
+
+    conn = FakeConn()
+
+    def fake_http_import(
+        path,
+        *,
+        database="sat_graph",
+        max_part_bytes=mod.DEFAULT_HTTP_IMPORT_MAX_BYTES,
+        progress=False,
+        connection=None,
+    ):
+        imported.append((path, database))
+        conn.has_rev = True
+
+    monkeypatch.setattr(mod, "_http_import_surql", fake_http_import)
+    assert mod.bootstrap(conn, snap, use_http_import=True) == "restored"
+    assert imported == [(snap, "sat_graph")]
+    assert conn.stored_sha == mod._snapshot_sha256(snap)
+
+
+def test_compact_snapshot_prunes_superseded_and_audit_data_and_trims_containers(tmp_path):
+    snap = tmp_path / "sat_graph.surql.gz"
+    long_container = "TÍTULO I ALIMENTOS\n" + ("texto duplicado " * 100)
+    raw_lines = [
+        "-- EXPECTED_ROWS: " + json.dumps({t: 0 for t in mod.SAT_TABLES}) + "\n",
+        "OPTION IMPORT;\n",
+        "-- TABLE: sat_documents\n",
+        "DEFINE TABLE sat_documents SCHEMALESS;\n",
+        "-- TABLE DATA: sat_documents\n",
+        "INSERT [ { id: sat_documents:`1`, markdown: 'huge doc' } ];\n",
+        "-- TABLE: sat_nodes\n",
+        "DEFINE TABLE sat_nodes SCHEMALESS;\n",
+        "-- TABLE DATA: sat_nodes\n",
+        "INSERT [ "
+        "{ id: sat_nodes:`1`, nid: 'pe:ley:1', kind: 'Resource', payload: '{\"title\":\"Ley 1\"}' }, "
+        "{ id: sat_nodes:`2`, nid: 'work:active', kind: 'Work', payload: '{\"resource_id\":\"pe:ley:1\",\"kind\":\"article\"}' }, "
+        "{ id: sat_nodes:`3`, nid: 'work:orphan', kind: 'Work', payload: '{\"resource_id\":\"pe:ley:1\",\"kind\":\"article\"}' }, "
+        "{ id: sat_nodes:`4`, nid: 'work:tit1', kind: 'Work', payload: '{\"resource_id\":\"pe:ley:1\",\"kind\":\"titulo\"}' }, "
+        "{ id: sat_nodes:`5`, nid: 'ctv:old', kind: 'CTV', payload: '{\"work_id\":\"work:orphan\",\"editorial_superseded_by\":\"ctv:new\"}' }, "
+        "{ id: sat_nodes:`6`, nid: 'ctv:new', kind: 'CTV', payload: '{\"work_id\":\"work:active\",\"provenance_state\":\"user_attested_snapshot\"}' }, "
+        "{ id: sat_nodes:`7`, nid: 'ctv:tit1', kind: 'CTV', payload: '{\"work_id\":\"work:tit1\",\"provenance_state\":\"user_attested_snapshot\"}' }, "
+        "{ id: sat_nodes:`8`, nid: 'clv:old', kind: 'CLV', payload: '{\"text\":\"old\"}' }, "
+        "{ id: sat_nodes:`9`, nid: 'clv:new', kind: 'CLV', payload: '{\"text\":\"articulo completo vigente\"}' }, "
+        "{ id: sat_nodes:`10`, nid: 'clv:tit1', kind: 'CLV', payload: " + repr(json.dumps({"text": long_container})) + " }, "
+        "{ id: sat_nodes:`11`, nid: 'rev:old', kind: 'DocumentaryRevision', payload: '{\"editorial_superseded_by\":\"rev:new\",\"markdown\":\"old md\"}' }, "
+        "{ id: sat_nodes:`12`, nid: 'rev:new', kind: 'DocumentaryRevision', payload: '{\"review_hash\":\"h1\",\"markdown\":\"huge full markdown\"}' }, "
+        "{ id: sat_nodes:`13`, nid: 'dc:new', kind: 'DocumentaryComponent', payload: '{\"revision_id\":\"rev:new\"}' }, "
+        "{ id: sat_nodes:`14`, nid: 'er:new', kind: 'EditorialReview', payload: '{\"revision_id\":\"rev:new\"}' } "
+        "];\n",
+        "-- TABLE: sat_edges\n",
+        "DEFINE TABLE sat_edges SCHEMALESS;\n",
+        "-- TABLE DATA: sat_edges\n",
+        "INSERT [ "
+        "{ id: sat_edges:`1`, predicate: 'has_text', source: 'ctv:old', target: 'clv:old', payload: '{\"audit\":1}' }, "
+        "{ id: sat_edges:`2`, predicate: 'has_text', source: 'ctv:new', target: 'clv:new', payload: '{\"audit\":1}' }, "
+        "{ id: sat_edges:`3`, predicate: 'has_text', source: 'ctv:tit1', target: 'clv:tit1', payload: '{\"audit\":1}' }, "
+        "{ id: sat_edges:`4`, predicate: 'part_of_revision', source: 'dc:new', target: 'rev:new', payload: '{\"audit\":1}' } "
+        "];\n",
+    ]
+    with gzip.open(snap, "wt", encoding="utf-8", newline="\n") as out:
+        out.writelines(raw_lines)
+
+    counts = mod.compact_snapshot(snap)
+    assert counts["sat_documents"] == 0
+    assert counts["sat_nodes"] == 8
+    assert counts["sat_edges"] == 2
+    assert mod._parse_expected_rows(snap) == counts
+
+    with gzip.open(snap, "rt", encoding="utf-8") as stream:
+        body = stream.read()
+    for kept in ("pe:ley:1", "work:active", "work:tit1", "ctv:new", "ctv:tit1", "clv:new", "clv:tit1", "rev:new", "articulo completo vigente", "TÍTULO I ALIMENTOS"):
+        assert kept in body
+    for dropped in ("work:orphan", "ctv:old", "clv:old", "rev:old", "dc:new", "er:new", "part_of_revision", "huge full markdown", "huge doc", '"audit":1'):
+        assert dropped not in body
+    assert "INSERT [ INSERT [" not in body
+    emitted_objs = sum(
+        len(mod._extract_insert_objects(line.strip()) or [])
+        for line in body.splitlines()
+        if line.startswith("INSERT ")
+    )
+    assert emitted_objs == sum(counts.values())
+    assert len(body) < len("".join(raw_lines))
+
+
+
+
+
