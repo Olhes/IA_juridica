@@ -49,7 +49,7 @@ RUN install -d -o appuser -g appuser \
         /app/backend/templates/pdf \
         /app/surreal_data
 
-# Pre-seed the versioned SAT corpus snapshot into embedded RocksDB at build time.
+# Pre-seed the versioned SAT corpus snapshot into embedded SurrealKV at build time.
 # Runtime entrypoint rotates the temporary build-time root password to SURREAL_PASSWORD.
 RUN if [ -f /app/backend/docs/sat_graph.surql.gz ]; then \
       cd /app/backend || exit 1; \
@@ -58,7 +58,7 @@ RUN if [ -f /app/backend/docs/sat_graph.surql.gz ]; then \
         --pass ia-juridica-build-seed \
         --bind 127.0.0.1:8010 \
         --log warn \
-        "rocksdb:${SURREAL_DATA_DIR}/surreal.db" & \
+        "surrealkv://${SURREAL_DATA_DIR}/surreal.db" & \
       SURREAL_PID=$!; \
       ready=0; \
       for _ in $(seq 1 30); do \

@@ -7,7 +7,7 @@ Este repositorio incluye un Blueprint de Render (`render.yaml`) y una imagen Doc
 1. **`ia-juridica-backend`** (`type: web`, `runtime: docker`, `plan: free`)
    - Ejecuta FastAPI (`uvicorn`, 1 worker) en el puerto `PORT` inyectado por Render.
    - Incluye el binario oficial `surrealdb/surrealdb:v4.0.1` enlazado únicamente a loopback (`127.0.0.1:8010`) cuando `EMBEDDED_SURREAL=true` (valor por defecto).
-   - Precarga el corpus jurídico versionado SAT (`backend/docs/sat_graph.surql.gz`) en RocksDB durante `docker build` para que los arranques en frío sean rápidos y no tengan que reproducir más de 100 000 aristas con 0.1 vCPU.
+   - Precarga el corpus jurídico versionado SAT (`backend/docs/sat_graph.surql.gz`) en SurrealKV durante `docker build` para que los arranques en frío sean rápidos y no tengan que reproducir más de 100 000 aristas con 0.1 vCPU.
    - Health check: `GET /ready` (verifica que el corpus SAT esté cargado).
 2. **`ia-juridica-cache`** (`type: keyvalue`, `plan: free`, `ipAllowList: []`)
    - Instancia privada compatible con Redis/Valkey, conectada automáticamente a `REDIS_URL` y `RATE_LIMIT_STORAGE_URI` para cumplir con la validación estricta de rate limiting en producción.
@@ -18,25 +18,28 @@ Este repositorio incluye un Blueprint de Render (`render.yaml`) y una imagen Doc
 2. Render detectará `render.yaml` y solicitará las variables marcadas con `sync: false`:
    - **`COHERE_API_KEY`** (obligatoria): tu clave de API de Cohere.
    - **`VOYAGE_API_KEY`** (opcional): activa la recuperación híbrida con Voyage dense (`voyage-context-4`) y rerank (`rerank-3-lite`); si se deja vacía, SAT utiliza automáticamente BM25 con encabezados estructurales.
-   - **`CORS_ORIGINS`** ya viene preconfigurado en `render.yaml` con `["https://ia-juridica-pe.vercel.app"]` (sin barra final, tal como envían el header `Origin` los navegadores).
+   - **`GOOGLE_CLIENT_ID`** y **`GOOGLE_CLIENT_SECRET`** (para login con Google OAuth).
+   - **`CORS_ORIGINS`** ya viene preconfigurado en `render.yaml` con `["https://ia-juridica-eight.vercel.app"]` (sin barra final, tal como envían el header `Origin` los navegadores).
 3. Haz clic en **Apply** y espera a que finalice la construcción de la imagen Docker y la comprobación `/ready`.
 
-## Conexión con el frontend (`https://ia-juridica-pe.vercel.app`)
+## Conexión con el frontend (`https://ia-juridica-eight.vercel.app`)
 
 ### Opción A — Recomendada: proxy first-party con Next.js (Vercel)
 `frontend/next.config.mjs` ya reescribe `/api/*` hacia `BACKEND_URL` para que las cookies de sesión permanezcan como first-party:
-- En Vercel (frontend `ia-juridica-pe.vercel.app`):
+- En Vercel (frontend `ia-juridica-eight.vercel.app`, Root Directory = `frontend`):
   - `NEXT_PUBLIC_API_URL=/api`
   - `BACKEND_URL=https://<tu-servicio-render>.onrender.com`
 - En Render (backend):
-  - `CORS_ORIGINS=["https://ia-juridica-pe.vercel.app"]` (ya preconfigurado)
+  - `CORS_ORIGINS=["https://ia-juridica-eight.vercel.app"]` (ya preconfigurado)
+  - `GOOGLE_REDIRECT_URI=https://ia-juridica-eight.vercel.app/api/auth/google/callback` (ya preconfigurado; registrarlo también en Google Cloud Console)
+  - `GOOGLE_FRONTEND_CALLBACK_URI=https://ia-juridica-eight.vercel.app/auth/callback` (ya preconfigurado)
   - `ANONYMOUS_SESSION_COOKIE_SAMESITE=lax` (ya preconfigurado)
 
 ### Opción B — Llamadas directas del navegador hacia Render
 Si el frontend consulta Render directamente sin pasar por un proxy:
 - En Vercel (frontend): `NEXT_PUBLIC_API_URL=https://<tu-servicio-render>.onrender.com`
 - En Render (backend):
-  - `CORS_ORIGINS=["https://ia-juridica-pe.vercel.app"]` (ya preconfigurado)
+  - `CORS_ORIGINS=["https://ia-juridica-eight.vercel.app"]` (ya preconfigurado)
   - `ANONYMOUS_SESSION_COOKIE_SAMESITE=none` (`ANONYMOUS_SESSION_COOKIE_SECURE` ya está configurado en `true`)
 - Nota: las cookies de inicio de sesión JWT del backend usan `SameSite=Lax`, por lo que si utilizas autenticación de usuarios con cookies conviene usar la **Opción A** (proxy `/api/*` first-party).
 

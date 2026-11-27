@@ -59,7 +59,7 @@ def test_render_blueprint_env_passes_production_settings_validation(monkeypatch)
             monkeypatch.setenv(key, "redis://ia-juridica-cache:6379")
         elif key == "COHERE_API_KEY":
             monkeypatch.setenv(key, "synthetic-cohere-key")
-        elif key == "VOYAGE_API_KEY":
+        elif key in {"VOYAGE_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"}:
             monkeypatch.setenv(key, "")
 
     settings = Settings(_env_file=None)
@@ -67,8 +67,9 @@ def test_render_blueprint_env_passes_production_settings_validation(monkeypatch)
     assert report["valid"] is True, report["issues"]
     assert settings.is_production() is True
     assert settings.session_cookie_secure() is True
-    assert settings.CORS_ORIGINS == ["https://ia-juridica-pe.vercel.app"]
-    assert settings.GOOGLE_FRONTEND_CALLBACK_URI == "https://ia-juridica-pe.vercel.app/auth/callback"
+    assert settings.CORS_ORIGINS == ["https://ia-juridica-eight.vercel.app"]
+    assert settings.GOOGLE_REDIRECT_URI == "https://ia-juridica-eight.vercel.app/api/auth/google/callback"
+    assert settings.GOOGLE_FRONTEND_CALLBACK_URI == "https://ia-juridica-eight.vercel.app/auth/callback"
     assert settings.RAG_ENGINE == "sat"
     assert settings.COHERE_THINKING_ENABLED is False
 
@@ -80,11 +81,16 @@ def test_render_entrypoint_has_lf_endings_and_embedded_and_external_paths():
     assert "rotate_embedded_root_password" in text
     assert "export SURREAL_PASSWORD=" in text
     assert "trap - TERM INT EXIT" in text
+    assert "surrealkv://" in text
+    assert "rocksdb:" not in text
+    assert 'if [ ! -e "${SURREAL_DATA_DIR}/surreal.db" ]; then' in text
     assert "bootstrap_sat_corpus" in text
     assert "exec /app/.venv/bin/uvicorn" in text
 
     dockerfile = RENDER_DOCKERFILE.read_text(encoding="utf-8")
     assert "surrealdb/surrealdb:v4.0.1" in dockerfile
+    assert "surrealkv://" in dockerfile
+    assert "rocksdb:" not in dockerfile
     assert "scripts.bootstrap_sat_corpus" in dockerfile
     assert "/app/docs/raw_pdfs" in dockerfile
     assert "/app/docs/processed" in dockerfile

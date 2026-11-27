@@ -77,12 +77,16 @@ PY
 if [ "${EMBEDDED_SURREAL,,}" = "true" ]; then
   trap cleanup TERM INT EXIT
   mkdir -p "${SURREAL_DATA_DIR}"
-  /usr/local/bin/surreal start \
-    --user "${SURREAL_USER}" \
-    --pass "${SURREAL_PASSWORD}" \
-    --bind 127.0.0.1:8010 \
-    --log "${SURREAL_LOG_LEVEL:-warn}" \
-    "rocksdb:${SURREAL_DATA_DIR}/surreal.db" &
+  SURREAL_ARGS=(
+    --bind 127.0.0.1:8010
+    --log "${SURREAL_LOG_LEVEL:-warn}"
+  )
+  # Only pass initial root credentials on a fresh datastore; existing pre-seeded
+  # datastores ignore --user/--pass and log warnings (rotated below via SurrealQL).
+  if [ ! -e "${SURREAL_DATA_DIR}/surreal.db" ]; then
+    SURREAL_ARGS+=(--user "${SURREAL_USER}" --pass "${SURREAL_PASSWORD}")
+  fi
+  /usr/local/bin/surreal start "${SURREAL_ARGS[@]}" "surrealkv://${SURREAL_DATA_DIR}/surreal.db" &
   SURREAL_PID=$!
 
   ready=0

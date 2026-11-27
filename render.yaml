@@ -85,9 +85,15 @@ services:
       # Security & Frontend connection
       # CORS origins must NOT have a trailing slash (browsers send Origin without '/').
       - key: CORS_ORIGINS
-        value: '["https://ia-juridica-pe.vercel.app"]'
+        value: '["https://ia-juridica-eight.vercel.app"]'
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://ia-juridica-eight.vercel.app/api/auth/google/callback
       - key: GOOGLE_FRONTEND_CALLBACK_URI
-        value: https://ia-juridica-pe.vercel.app/auth/callback
+        value: https://ia-juridica-eight.vercel.app/auth/callback
       # Use "lax" when frontend proxies via Next.js /api rewrite (Vercel),
       # or "none" if the browser calls Render directly cross-origin.
       - key: ANONYMOUS_SESSION_COOKIE_SAMESITE
