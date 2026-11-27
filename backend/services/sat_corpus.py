@@ -221,6 +221,7 @@ def _review_index(graph: dict) -> dict:
     nodes = {node["id"]: node for node in graph["nodes"]}
     outgoing = defaultdict(list)
     parents = {}
+    ctv_parents = {}
     derived = {}
     for edge in graph["edges"]:
         etype = edge["type"]
@@ -228,6 +229,8 @@ def _review_index(graph: dict) -> dict:
             outgoing[(edge["source"], "has_text")].append(edge["target"])
         elif etype == "documentary_has_part":
             parents[edge["target"]] = edge["source"]
+        elif etype == "contains_version":
+            ctv_parents[edge["target"]] = edge["source"]
         elif etype == "derived_from_documentary":
             derived[edge["source"]] = edge["target"]
     eligible = eligible_version_ids(nodes, outgoing)
@@ -250,6 +253,7 @@ def _review_index(graph: dict) -> dict:
         "nodes": nodes,
         "outgoing": outgoing,
         "parents": parents,
+        "ctv_parents": ctv_parents,
         "derived": derived,
         "eligible": eligible,
         "summaries": summaries,
@@ -327,11 +331,32 @@ def document(graph, resource_id, *, include_texts: bool = True):
         for n in idx["components_by_revision"].get(revision["id"], ()):
             components.append({"id": n["id"], "label": n["label"], "kind": n["kind"],
                                "start": n["start"], "end": n["end"], "parent_id": parents.get(n["id"])})
-        # Editing only supported for a complete one-to-one documentary edition.
         attached = [v for v in versions if not v["archived"]]
-        editable = (len(attached) == len(components)
-                    and {v["component_id"] for v in attached} == {n["id"] for n in components}
-                    and all(len(v["texts"]) == 1 and v["texts"][0]["language"] == "es" for v in attached))
+        if components:
+            # Editing only supported for a complete one-to-one documentary edition.
+            editable = (len(attached) == len(components)
+                        and {v["component_id"] for v in attached} == {n["id"] for n in components}
+                        and all(len(v["texts"]) == 1 and v["texts"][0]["language"] == "es" for v in attached))
+        elif attached:
+            # Compacted snapshots omit DocumentaryComponent audit nodes; project a
+            # read-only hierarchy directly from active CTVs and contains_version edges.
+            editable = False
+            ctv_parents = idx["ctv_parents"]
+            attached_ids = {v["id"] for v in attached}
+            for v in attached:
+                ctv_node = nodes[v["id"]]
+                v["component_id"] = v["id"]
+                parent_id = ctv_parents.get(v["id"])
+                components.append({
+                    "id": v["id"],
+                    "label": v["label"],
+                    "kind": v["kind"],
+                    "start": ctv_node.get("start") or 0,
+                    "end": ctv_node.get("end") or 0,
+                    "parent_id": parent_id if parent_id in attached_ids else None,
+                })
+        else:
+            editable = False
     history = idx["history_by_resource"].get(resource_id, ())
     return {**info, "editable": editable, "versions": versions,
             "edition": {"revision": revision["id"], "markdown": revision["markdown"],

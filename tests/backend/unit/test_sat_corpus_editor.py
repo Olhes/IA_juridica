@@ -260,3 +260,34 @@ def test_sat_review_app_default_port_avoids_backend_and_surrealdb():
 
     assert DEFAULT_PORT not in {8000, 8010}
     assert DEFAULT_PORT == 8011
+
+
+def test_document_projects_readonly_tree_from_ctvs_when_documentary_components_pruned():
+    from services import sat_corpus
+
+    graph = {
+        "nodes": [
+            {"id": "pe:dl:1377", "type": "Resource", "title": "DL 1377"},
+            {"id": "rev:1", "type": "DocumentaryRevision", "markdown": "", "directory": "dl-1377"},
+            {"id": "work:tit1", "type": "Work", "resource_id": "pe:dl:1377", "kind": "titulo", "label": "TÍTULO I"},
+            {"id": "work:art1", "type": "Work", "resource_id": "pe:dl:1377", "kind": "article", "label": "Artículo 1"},
+            {"id": "ctv:tit1", "type": "CTV", "work_id": "work:tit1", "scope": "PE", "provenance_state": "user_attested_snapshot", "documentary_revision": "rev:1", "start": 0, "end": 20},
+            {"id": "ctv:art1", "type": "CTV", "work_id": "work:art1", "scope": "PE", "provenance_state": "user_attested_snapshot", "documentary_revision": "rev:1", "start": 21, "end": 80},
+            {"id": "clv:tit1", "type": "CLV", "language": "es", "text": "TÍTULO I"},
+            {"id": "clv:art1", "type": "CLV", "language": "es", "text": "Artículo 1. Objeto."},
+        ],
+        "edges": [
+            {"id": "e1", "source": "ctv:tit1", "type": "has_text", "target": "clv:tit1", "evidence": {}},
+            {"id": "e2", "source": "ctv:art1", "type": "has_text", "target": "clv:art1", "evidence": {}},
+            {"id": "e3", "source": "ctv:tit1", "type": "contains_version", "target": "ctv:art1", "evidence": {}},
+        ],
+    }
+
+    doc = sat_corpus.document(graph, "pe:dl:1377")
+    assert doc["editable"] is False
+    comps = {c["id"]: c for c in doc["edition"]["components"]}
+    assert set(comps) == {"ctv:tit1", "ctv:art1"}
+    assert comps["ctv:tit1"]["parent_id"] is None
+    assert comps["ctv:art1"]["parent_id"] == "ctv:tit1"
+    assert {v["component_id"] for v in doc["versions"]} == {"ctv:tit1", "ctv:art1"}
+
