@@ -9,8 +9,9 @@ const nextConfig = {
   turbopack: {
     root: __dirname
   },
-  // En Vercel: NEXT_PUBLIC_API_URL=/api y BACKEND_URL=https://<api>. El navegador
-  // habla solo con el dominio de Vercel, así las cookies de sesión son first-party.
+  // En Vercel: NEXT_PUBLIC_API_URL=/api y BACKEND_URL=https://<api> (p. ej. Render,
+  // sin barra final). El navegador habla solo con el dominio de Vercel, así las
+  // cookies de sesión son first-party.
   async rewrites() {
     const backend = process.env.BACKEND_URL?.replace(/\/$/, '');
     return backend ? [{ source: '/api/:path*', destination: `${backend}/:path*` }] : [];
