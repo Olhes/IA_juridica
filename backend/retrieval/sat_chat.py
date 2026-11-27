@@ -235,6 +235,19 @@ class SATChatRetriever:
         checker = getattr(self.store, "is_ready", None)
         return bool(checker()) if callable(checker) else True
 
+    def warm_cache(self) -> bool:
+        """Pre-warm the chat snapshot and default BM25 index off the first user request."""
+        snapshot_fn = getattr(self.store, "chat_snapshot", None)
+        if not callable(snapshot_fn):
+            return False
+        graph = snapshot_fn()
+        retriever = self._retriever_for(graph)
+        retriever.search(SearchPlan(query="consulta", as_of=self.as_of, strategy="metadata", structural_units=True, top_k=1))
+        headings_fn = getattr(self.store, "chat_heading_snapshot", None)
+        if callable(headings_fn):
+            self._retriever_for(headings_fn())
+        return True
+
     @property
     def documents(self):
         # El validador utiliza exactamente la evidencia del resultado SAT, no LightRAG.

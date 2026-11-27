@@ -871,16 +871,19 @@ class SurrealSATGraphStore(SATGraphStore):
                     {"sel": selected},
                 )
             else:
-                node_rows = _q(
-                    conn,
-                    "SELECT nid AS id, kind, payload FROM sat_nodes "
-                    "WHERE kind IN ['Resource','Work','CTV','CLV'] ORDER BY nid",
-                )
-                edge_rows = _q(
-                    conn,
-                    "SELECT nid AS id, source, predicate, target, payload FROM sat_edges "
-                    "WHERE predicate IN ['has_text','contains_version'] ORDER BY nid",
-                )
+                node_rows = [
+                    row
+                    for row in _q(conn, "SELECT nid AS id, kind, payload FROM sat_nodes")
+                    if row.get("kind") in {"Resource", "Work", "CTV", "CLV"}
+                ]
+                edge_rows = [
+                    row
+                    for row in _q(
+                        conn,
+                        "SELECT nid AS id, source, predicate, target, payload FROM sat_edges",
+                    )
+                    if row.get("predicate") in {"has_text", "contains_version"}
+                ]
 
         nodes = [
             {"id": row["id"], "type": row["kind"], **json.loads(row["payload"])}
@@ -921,83 +924,66 @@ class SurrealSATGraphStore(SATGraphStore):
             if cached is not None:
                 return cached
 
-            article_rows = _q(
-                conn,
-                "SELECT nid AS id, payload FROM sat_nodes WHERE kind='Work' AND payload_kind='article'",
-            )
-            article_works = {row["id"]: json.loads(row["payload"]) for row in article_rows}
-            work_ids = list(article_works)
-            version_rows = (
-                _q(
-                    conn,
-                    "SELECT nid AS id, payload FROM sat_nodes WHERE kind='CTV' AND work_id IN $wids",
-                    {"wids": work_ids},
-                )
-                if work_ids
-                else []
-            )
-            versions = {row["id"]: json.loads(row["payload"]) for row in version_rows}
-            version_ids = list(versions)
+        # Derive headings from the revision-bound full chat_snapshot in memory:
+        # avoids four 2,600-element `WHERE ... IN $ids` scans over remote SurrealDB
+        # (~37s -> ~0.02s when chat_snapshot is warm, ~3.3s cold).
+        full = self.chat_snapshot()
+        revision = full["chat_revision"]
+        key = (self.schema, "heading", (), revision)
+        cached = _cache_get(key)
+        if cached is not None:
+            return cached
 
-            edge_rows = (
-                _q(
-                    conn,
-                    "SELECT nid AS id, source, target, payload FROM sat_edges "
-                    "WHERE predicate='has_text' AND source IN $vids",
-                    {"vids": version_ids},
-                )
-                if version_ids
-                else []
-            )
-            text_ids = list({row["target"] for row in edge_rows})
-            text_rows = (
-                _q(
-                    conn,
-                    "SELECT nid AS id, payload FROM sat_nodes WHERE kind='CLV' AND nid IN $tids",
-                    {"tids": text_ids},
-                )
-                if text_ids
-                else []
-            )
-            texts = {row["id"]: json.loads(row["payload"]) for row in text_rows}
+        article_works = {
+            node["id"]: node
+            for node in full["nodes"]
+            if node["type"] == "Work" and node.get("kind") == "article"
+        }
+        versions = {
+            node["id"]: node
+            for node in full["nodes"]
+            if node["type"] == "CTV" and node.get("work_id") in article_works
+        }
+        texts = {
+            node["id"]: node
+            for node in full["nodes"]
+            if node["type"] == "CLV"
+        }
 
-            # Postgres emits ORDER BY w.id, c.id, t.id. Reproduce that order so
-            # the snapshot is byte-equivalent, not just set-equivalent.
-            rows: list[tuple] = []
-            for row in edge_rows:
-                source, target = row["source"], row["target"]
-                if source not in versions or target not in texts:
-                    continue
-                wid = versions[source].get("work_id")
-                if wid not in article_works:
-                    continue
-                truncated = dict(texts[target])
-                text = truncated.get("text")
-                truncated["text"] = text.split("\n")[0] if isinstance(text, str) else text
-                rows.append((wid, article_works[wid], source, versions[source],
-                             target, truncated, row["id"], json.loads(row["payload"])))
-            rows.sort(key=lambda r: (r[0], r[2], r[4]))
+        # Preserve Postgres ORDER BY w.id, c.id, t.id ordering.
+        rows: list[tuple] = []
+        for edge in full["edges"]:
+            if edge["type"] != "has_text":
+                continue
+            source, target = edge["source"], edge["target"]
+            if source not in versions or target not in texts:
+                continue
+            wid = versions[source].get("work_id")
+            if wid not in article_works:
+                continue
+            truncated = dict(texts[target])
+            text = truncated.get("text")
+            truncated["text"] = text.split("\n")[0] if isinstance(text, str) else text
+            rows.append((wid, article_works[wid], source, versions[source], target, truncated, edge))
+        rows.sort(key=lambda r: (r[0], r[2], r[4]))
 
-            by_id: dict[str, dict] = {}
-            edge_dicts: list[dict] = []
-            for wid, wp, cid, cp, tid, tp, eid, ep in rows:
-                by_id[wid] = {"id": wid, "type": "Work", **wp}
-                by_id[cid] = {"id": cid, "type": "CTV", **cp}
-                by_id[tid] = {"id": tid, "type": "CLV", **tp}
-                edge_dicts.append(
-                    {"id": eid, "source": cid, "type": "has_text",
-                     "target": tid, "evidence": ep}
-                )
-            snapshot = {
-                "engine": "sat",
-                "schema_version": 1,
-                "nodes": list(by_id.values()),
-                "edges": edge_dicts,
-                "documents": [],
-                "chat_revision": revision,
-            }
-            _cache_put(key, snapshot)
-            return snapshot
+        by_id: dict[str, dict] = {}
+        edge_dicts: list[dict] = []
+        for wid, wp, cid, cp, tid, tp, edge in rows:
+            by_id[wid] = wp
+            by_id[cid] = cp
+            by_id[tid] = tp
+            edge_dicts.append(edge)
+        snapshot = {
+            "engine": "sat",
+            "schema_version": 1,
+            "nodes": list(by_id.values()),
+            "edges": edge_dicts,
+            "documents": [],
+            "chat_revision": revision,
+        }
+        _cache_put(key, snapshot)
+        return snapshot
 
     def chat_article_snapshot(self, resource_id, work_id):
         self.ensure_schema()

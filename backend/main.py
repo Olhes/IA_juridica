@@ -238,7 +238,17 @@ async def lifespan(app_instance: FastAPI):
         app_instance.state.corpus_state = (
             "ready" if await asyncio.to_thread(retriever.corpus_ready) else "degraded"
         )
-        app_instance.state.corpus_task = asyncio.create_task(asyncio.sleep(0))
+
+        async def _warm_sat_cache():
+            if os.getenv("PYTEST_CURRENT_TEST") or app_instance.state.corpus_state != "ready":
+                return
+            try:
+                await asyncio.to_thread(retriever.warm_cache)
+                logger.info("SAT chat snapshot and BM25 index pre-warmed")
+            except Exception as error:
+                logger.warning("sat_warm_cache_failed error_type=%s", type(error).__name__)
+
+        app_instance.state.corpus_task = asyncio.create_task(_warm_sat_cache())
     else:
         app_instance.state.corpus_state = "loading"
         app_instance.state.corpus_task = asyncio.create_task(
