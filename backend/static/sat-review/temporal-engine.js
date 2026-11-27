@@ -770,16 +770,14 @@
 
     var m = aMid.length;
     var n = bMid.length;
-    if (m === 0 && n === 0) {
-      // Nothing changed in the middle.
-    } else if (m === 0) {
+    if (m === 0 && n > 0) {
       ops.push({ op: 'insert', text: bMid.join('') });
-    } else if (n === 0) {
+    } else if (n === 0 && m > 0) {
       ops.push({ op: 'delete', text: aMid.join('') });
-    } else if (m * n > 4000000) {
+    } else if (m > 0 && n > 0 && m * n > 4000000) {
       ops.push({ op: 'delete', text: aMid.join('') });
       ops.push({ op: 'insert', text: bMid.join('') });
-    } else {
+    } else if (m > 0 && n > 0) {
       var width = n + 1;
       var dp = new Int32Array((m + 1) * width);
       for (var i = m - 1; i >= 0; i--) {

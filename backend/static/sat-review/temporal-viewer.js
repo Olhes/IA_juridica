@@ -68,7 +68,6 @@
       root.replaceChildren();
       var shell = el('div', undefined, 'ws-shell');
 
-      // 1. Header & Source Selector
       var header = el('div', undefined, 'ws-header');
       var meta = el('div', undefined, 'ws-header-meta');
       meta.append(el('h2', 'SAT-Graph Viewer · Línea temporal normativa'));
@@ -108,7 +107,6 @@
       header.append(meta, sourceBar);
       shell.append(header);
 
-      // Validation & Policy banners
       refs.validationBanner = el('div', undefined, 'ws-banner ws-banner-error');
       refs.validationBanner.id = 'temporal-validation-banner';
       refs.validationBanner.setAttribute('role', 'alert');
@@ -119,11 +117,9 @@
       refs.policyBanner.id = 'temporal-policy-banner';
       shell.append(refs.policyBanner);
 
-      // 2. Temporal Controls Card
       var ctrlCard = el('div', undefined, 'ws-card');
       var ctrlGrid = el('div', undefined, 'temporal-controls-grid');
 
-      // Left: RFC 3339 input + probe buttons + unknown snapshots toggle
       var leftCol = el('div', undefined, 'prov-query-box');
       var instantRow = el('div', undefined, 'temporal-instant-row');
       var instLabel = el('label', 'Instante de consulta (RFC 3339 o YYYY-MM-DD)');
@@ -179,7 +175,6 @@
       unknownLabel.append(refs.includeUnknown, document.createTextNode('Mostrar snapshots sin fecha legal [null, null]'));
       leftCol.append(unknownLabel);
 
-      // Right: Labeled native range slider
       var sliderWrap = el('div', undefined, 'temporal-slider-wrap');
       var sliderHead = el('div', undefined, 'temporal-slider-head');
       var sliderLabel = el('label', 'Hitos de la línea temporal');
@@ -202,7 +197,6 @@
       ctrlCard.append(ctrlGrid);
       shell.append(ctrlCard);
 
-      // 3. Interactive Version Timeline SVG Card
       var svgCard = el('div', undefined, 'ws-card');
       var svgHead = el('div', undefined, 'ws-card-head');
       svgHead.append(el('h3', 'Línea temporal de versiones [inicio, fin) y acciones causales'));
@@ -232,10 +226,8 @@
       svgCard.append(svgScroll);
       shell.append(svgCard);
 
-      // 4. Four Coordinated Panels
       var panelsGrid = el('div', undefined, 'temporal-panels-grid');
 
-      // Panel A: Normativo vigente (S-TV)
       var stvCard = el('div', undefined, 'ws-card');
       var stvHead = el('div', undefined, 'ws-card-head');
       stvHead.append(el('h3', 'Normativo vigente (S-TV)'));
@@ -245,7 +237,6 @@
       refs.stvList.id = 'temporal-statutory-list';
       stvCard.append(stvHead, refs.stvList);
 
-      // Panel B: Interpretativo (I-TV)
       var itvCard = el('div', undefined, 'ws-card');
       var itvHead = el('div', undefined, 'ws-card-head');
       itvHead.append(el('h3', 'Interpretativo (I-TV)'));
@@ -258,7 +249,6 @@
       panelsGrid.append(stvCard, itvCard);
       shell.append(panelsGrid);
 
-      // Panel C: Diff entre versiones
       var diffCard = el('div', undefined, 'ws-card');
       var diffHead = el('div', undefined, 'ws-card-head');
       diffHead.append(el('h3', 'Diff entre versiones'));
@@ -287,7 +277,6 @@
       diffCard.append(refs.diffOutput);
       shell.append(diffCard);
 
-      // Panel D: Raw getValidVersions & getItemHistory Inspector
       var rawDetails = el('details', undefined, 'prov-verifier-details');
       rawDetails.id = 'temporal-raw-details';
       rawDetails.append(el('summary', 'Inspección JSON cruda · getValidVersions(at) y getItemHistory(item)'));
@@ -436,7 +425,6 @@
 
       showValidation([], validationWarnings || []);
 
-      // Pick sensible initial instant
       if (state.ticks.length) {
         var initialTick = state.ticks[state.ticks.length - 1];
         state.currentInstant = initialTick.iso;
@@ -453,7 +441,6 @@
       refs.instantInput.value = state.currentInstant;
       refs.instantError.hidden = true;
 
-      // Populate item selector for getItemHistory
       refs.historyItemSelect.replaceChildren();
       var ordered = orderedItemsWithDepth(norm.items);
       for (var ii = 0; ii < ordered.length; ii++) {
@@ -465,7 +452,6 @@
       state.selectedItemId = itemWithVersions;
       if (state.selectedItemId) refs.historyItemSelect.value = state.selectedItemId;
 
-      // Populate diff version selects
       populateDiffSelects(norm.versions);
       syncSliderReadout();
       renderAllViews();
@@ -550,7 +536,6 @@
         var nextIso = new Date(curMs + deltaMs).toISOString();
         setInstant(nextIso.endsWith('.000Z') ? nextIso.replace('.000Z', 'Z') : nextIso);
       } catch (_err) {
-        // Ignore if current instant is invalid
       }
     }
 
@@ -601,7 +586,6 @@
       var svgH = Math.max(190, topPad + ordered.length * laneH + 26);
       refs.timelineSvg.setAttribute('viewBox', '0 0 ' + svgW + ' ' + svgH);
 
-      // Compute time domain
       var timestamps = [];
       for (var ti = 0; ti < state.ticks.length; ti++) {
         timestamps.push(state.ticks[ti].ms);
@@ -626,7 +610,6 @@
         return leftColW + ((ms - minMs) / (maxMs - minMs)) * plotW;
       }
 
-      // Axis ticks
       var axisSteps = 4;
       for (var a = 0; a <= axisSteps; a++) {
         var tMs = minMs + ((maxMs - minMs) * a) / axisSteps;
@@ -756,7 +739,6 @@
         }
       }
 
-      // Causal Action markers & terminates/produces connectors
       var actions = ds.actions || [];
       for (var ai = 0; ai < actions.length; ai++) {
         (function (act) {
@@ -766,7 +748,6 @@
           var ax = xOf(actMs);
           var ay = topPad - 6;
 
-          // Draw connectors to terminated and produced versions
           for (var t = 0; t < act.terminatesVersionIds.length; t++) {
             var tc = versionCoords.get(act.terminatesVersionIds[t]);
             if (tc) {
@@ -821,7 +802,6 @@
         })(actions[ai]);
       }
 
-      // Query-instant cursor line
       if (queryMs !== null) {
         var qx = xOf(queryMs);
         refs.timelineSvg.append(svgEl('line', {
@@ -962,6 +942,11 @@
 
       var hist = state.selectedItemId ? eng.getItemHistory(ds, state.selectedItemId) : [];
       refs.rawHistoryPre.textContent = JSON.stringify(hist, null, 2);
+      state.lastRawSnapshot = {
+        at: state.currentInstant,
+        validVersions: valid,
+        itemHistory: hist,
+      };
     }
 
     function renderAllViews() {
@@ -1118,11 +1103,12 @@
       });
 
       refs.copyJsonBtn.addEventListener('click', function () {
-        var payload = JSON.stringify({
+        var snapshot = state.lastRawSnapshot || {
           at: state.currentInstant,
-          validVersions: JSON.parse(refs.rawValidPre.textContent || '[]'),
-          itemHistory: JSON.parse(refs.rawHistoryPre.textContent || '[]'),
-        }, null, 2);
+          validVersions: [],
+          itemHistory: [],
+        };
+        var payload = JSON.stringify(snapshot, null, 2);
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           navigator.clipboard.writeText(payload).then(function () {
             var b = bridge();

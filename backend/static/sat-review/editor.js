@@ -15,20 +15,20 @@ const docListeners = new Set(), draftListeners = new Set(), tabListeners = new M
 function getBridgeContext(){
   return {doc,draft,dirty,selectedComponentId:selected,docCpOffsets,draftCpOffsets};
 }
+function emit(listeners, ...args){
+  for(const cb of listeners){try{cb(...args);}catch{}}
+}
 function emitDocumentLoaded(){
-  const ctx=getBridgeContext();
-  for(const cb of docListeners){try{cb(ctx);}catch{/* listener isolation */}}
+  emit(docListeners,getBridgeContext());
 }
 function emitDraftChanged(){
-  const ctx=getBridgeContext();
-  for(const cb of draftListeners){try{cb(ctx);}catch{/* listener isolation */}}
+  emit(draftListeners,getBridgeContext());
 }
 function emitTabActivated(tab){
   const ctx=getBridgeContext();
   for(const key of [tab,'*']){
     const set=tabListeners.get(key);
-    if(!set)continue;
-    for(const cb of set){try{cb(ctx,tab);}catch{/* listener isolation */}}
+    if(set)emit(set,ctx,tab);
   }
 }
 function applyInspectorVisibility(collapsed){

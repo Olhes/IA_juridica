@@ -1,6 +1,7 @@
 """Cached workspace service assembling grounded provenance graphs and query traces."""
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict, defaultdict
 from hashlib import sha256
 from threading import RLock
@@ -218,7 +219,8 @@ class ProvenanceWorkspaceService:
         cohere_model: str = "command-r7b-12-2024",
     ) -> GroundedGraph:
         if mode == "deterministic":
-            return self.get_or_build_deterministic(
+            return await asyncio.to_thread(
+                self.get_or_build_deterministic,
                 doc_payload,
                 component_ids=component_ids,
                 edition_override=edition_override,
@@ -236,7 +238,8 @@ class ProvenanceWorkspaceService:
         cached = self._cache_get(key)
         if cached is not None:
             return cached
-        base = self.get_or_build_deterministic(
+        base = await asyncio.to_thread(
+            self.get_or_build_deterministic,
             doc_payload,
             component_ids=component_ids,
             edition_override=edition_override,

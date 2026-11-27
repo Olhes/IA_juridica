@@ -135,23 +135,14 @@ async def build_provenance_graph(
     doc = await _load_document(resource_id)
 
     try:
-        if body.mode == "deterministic":
-            graph = await call(
-                lambda: workspace_service.get_or_build_deterministic(
-                    doc,
-                    component_ids=body.component_ids,
-                    edition_override=draft_dict,
-                )
-            )
-        else:
-            graph = await workspace_service.get_or_build_graph(
-                doc,
-                mode="hybrid_cohere",
-                component_ids=body.component_ids,
-                edition_override=draft_dict,
-                cohere_api_key=api_key,
-                cohere_model=settings.COHERE_LLM_MODEL,
-            )
+        graph = await workspace_service.get_or_build_graph(
+            doc,
+            mode=body.mode,
+            component_ids=body.component_ids,
+            edition_override=draft_dict,
+            cohere_api_key=api_key,
+            cohere_model=settings.COHERE_LLM_MODEL,
+        )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return serialize_graph(graph)
@@ -168,15 +159,12 @@ async def export_provenance_ntriples(
     api_key = _require_cohere_key() if mode == "hybrid_cohere" else None
     doc = await _load_document(resource_id)
     try:
-        if mode == "deterministic":
-            graph = await call(lambda: workspace_service.get_or_build_deterministic(doc))
-        else:
-            graph = await workspace_service.get_or_build_graph(
-                doc,
-                mode="hybrid_cohere",
-                cohere_api_key=api_key,
-                cohere_model=settings.COHERE_LLM_MODEL,
-            )
+        graph = await workspace_service.get_or_build_graph(
+            doc,
+            mode=mode,
+            cohere_api_key=api_key,
+            cohere_model=settings.COHERE_LLM_MODEL,
+        )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     nt_text = workspace_service.export_ntriples(graph)
@@ -204,23 +192,14 @@ async def query_provenance(
     doc = await _load_document(resource_id)
 
     try:
-        if body.extraction_mode == "deterministic":
-            graph = await call(
-                lambda: workspace_service.get_or_build_deterministic(
-                    doc,
-                    component_ids=body.component_ids,
-                    edition_override=draft_dict,
-                )
-            )
-        else:
-            graph = await workspace_service.get_or_build_graph(
-                doc,
-                mode="hybrid_cohere",
-                component_ids=body.component_ids,
-                edition_override=draft_dict,
-                cohere_api_key=api_key,
-                cohere_model=settings.COHERE_LLM_MODEL,
-            )
+        graph = await workspace_service.get_or_build_graph(
+            doc,
+            mode=body.extraction_mode,
+            component_ids=body.component_ids,
+            edition_override=draft_dict,
+            cohere_api_key=api_key,
+            cohere_model=settings.COHERE_LLM_MODEL,
+        )
         return await workspace_service.run_query(
             graph,
             question=body.question,

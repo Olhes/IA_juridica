@@ -471,3 +471,122 @@ test('Temporal Viewer syncs slider aria-valuetext & CSS vars, handles [null, nul
     window.close();
   }
 });
+
+test('GraphRAGProv scopes passage marks and active unit to query witnesses so clicking any mark activates an SVG edge', async () => {
+  const fixture = makeBaseFixture();
+  const rootText = fixture.edition.markdown;
+  const art1Text = rootText.slice(rootText.indexOf('## Artículo 1'));
+  const artStart = Array.from(rootText.slice(0, rootText.indexOf('## Artículo 1'))).length;
+  const targetOffset = Array.from(art1Text.slice(0, art1Text.indexOf('Poder Judicial'))).length;
+  const targetEnd = targetOffset + Array.from('Poder Judicial').length;
+
+  const nonQueryOcc = {
+    token: 'occ_000000000001',
+    doc_id: 'pe:ley:28970',
+    subject: {kind: 'iri', value: 'urn:root', label: 'Norma'},
+    predicate: {kind: 'iri', value: 'urn:hasHeading', label: 'hasHeading'},
+    object: {kind: 'literal', value: 'Norma', label: 'Norma'},
+    origin: 'structural',
+    spans: {
+      component_id: 'root',
+      component_start_in_doc: 0,
+      evidence_span: {start: 0, end: 5, surface_text: 'Norma', quality: 'exact'},
+      doc_evidence_span: {start: 0, end: 5, surface_text: 'Norma', quality: 'exact'},
+      subject_span: {start: 0, end: 5, surface_text: 'Norma', quality: 'exact'},
+    },
+  };
+  const queryOcc = {
+    token: 'occ_000000000002',
+    doc_id: 'pe:ley:28970',
+    subject: {kind: 'iri', value: 'urn:pj', label: 'Poder Judicial'},
+    predicate: {kind: 'iri', value: 'urn:obligates', label: 'obligates'},
+    object: {kind: 'literal', value: 'REDAM', label: 'REDAM'},
+    origin: 'deterministic_legal',
+    spans: {
+      component_id: 'art1',
+      component_start_in_doc: artStart,
+      evidence_span: {start: targetOffset, end: targetEnd, surface_text: 'Poder Judicial', quality: 'exact'},
+      doc_evidence_span: {start: artStart + targetOffset, end: artStart + targetEnd, surface_text: 'Poder Judicial', quality: 'exact'},
+      subject_span: {start: artStart + targetOffset, end: artStart + targetEnd, surface_text: 'Poder Judicial', quality: 'exact'},
+    },
+  };
+  const sourceUnits = {
+    root: {id: 'root', label: 'Norma', kind: 'document', text: rootText, global_start: 0, global_end: Array.from(rootText).length},
+    art1: {id: 'art1', label: 'Artículo 1', kind: 'article', text: art1Text, global_start: artStart, global_end: Array.from(rootText).length},
+  };
+
+  const {window} = loadWorkstation(fixture, async url => {
+    if (url.endsWith('/provenance/capabilities')) {
+      return {ok: true, json: async () => ({offline_ready: true, cohere_available: false, templates: []})};
+    }
+    if (url.includes('/provenance-graph')) {
+      return {
+        ok: true,
+        json: async () => ({
+          doc_id: 'pe:ley:28970',
+          revision: 'rev-1',
+          occurrences: [nonQueryOcc, queryOcc],
+          sample_queries: [{id: 'q1', title: 'Obligaciones', sparql: 'SELECT ?s WHERE { ?s ?p ?o }'}],
+          source_units: sourceUnits,
+          subgraph: {
+            nodes: [
+              {id: 'iri:urn:root', label: 'Norma', kind: 'iri'},
+              {id: 'iri:urn:pj', label: 'Poder Judicial', kind: 'iri'},
+            ],
+            edges: [
+              {token: nonQueryOcc.token, source: 'iri:urn:root', target: 'iri:urn:root', predicate: 'hasHeading', parallel_index: 0, parallel_count: 1},
+              {token: queryOcc.token, source: 'iri:urn:pj', target: 'iri:urn:pj', predicate: 'obligates', parallel_index: 0, parallel_count: 1},
+            ],
+          },
+          stats: {units: 2, occurrences: 2, predicates: 2, unlocalized_discarded: 0},
+        }),
+      };
+    }
+    if (url.includes('/provenance-query')) {
+      return {
+        ok: true,
+        json: async () => ({
+          doc_id: 'pe:ley:28970',
+          revision: 'rev-1',
+          sparql: 'SELECT ?s WHERE { ?s ?p ?o }',
+          nl_compiler: 'none',
+          variables: ['s'],
+          rows: [{
+            row_index: 0,
+            bindings: {s: {kind: 'iri', value: 'urn:pj', label: 'Poder Judicial'}},
+            polynomial: queryOcc.token,
+            compact_polynomial: queryOcc.token,
+            npcs_prefix: queryOcc.token,
+            monomials: [{coeff: 1, factors: [{token: queryOcc.token, exp: 1}]}],
+            witness_count: 1,
+            occurrence_tokens: [queryOcc.token],
+            truncated: false,
+          }],
+          occurrences: {[queryOcc.token]: queryOcc},
+          source_units: sourceUnits,
+          subgraph: {
+            nodes: [{id: 'iri:urn:pj', label: 'Poder Judicial', kind: 'iri'}],
+            edges: [{token: queryOcc.token, source: 'iri:urn:pj', target: 'iri:urn:pj', predicate: 'obligates', parallel_index: 0, parallel_count: 1}],
+          },
+          execution_ms: 1.0,
+          warnings: [],
+        }),
+      };
+    }
+    return {ok: true, json: async () => ({})};
+  });
+
+  try {
+    const $ = id => window.document.getElementById(id);
+    $('tab-provenance').click();
+    await flushAsync();
+    assert.equal($('prov-unit-select').value, 'art1');
+    const firstMark = $('prov-passage').querySelector('mark.prov-mark');
+    assert.ok(firstMark);
+    assert.equal(firstMark.dataset.tokens, queryOcc.token);
+    firstMark.click();
+    assert.ok($('prov-graph-svg').querySelector(`.prov-svg-edge.prov-active[data-token="${queryOcc.token}"]`));
+  } finally {
+    window.close();
+  }
+});

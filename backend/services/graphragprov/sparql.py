@@ -59,7 +59,6 @@ _UNSUPPORTED_FORMS = frozenset({"CONSTRUCT", "ASK", "DESCRIBE"})
 _NESTED_QUANTIFIER_RE = re.compile(r"\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*?{]")
 
 
-# --- AST nodes ---
 
 @dataclass(frozen=True, slots=True)
 class VarNode:
@@ -146,7 +145,6 @@ class FilterCall(FilterExpr):
     args: tuple[FilterExpr, ...]
 
 
-# --- Lexer ---
 
 @dataclass(frozen=True, slots=True)
 class _Tok:
@@ -211,7 +209,6 @@ def _tokenize(query: str) -> list[_Tok]:
     return tokens
 
 
-# --- Parser ---
 
 def parse_sparql(query: str, *, limits: EvalLimits = EvalLimits()) -> SparqlQuery:
     """Parse a SPARQL SELECT query string into a typed SparqlQuery AST."""
@@ -322,7 +319,6 @@ def parse_sparql(query: str, *, limits: EvalLimits = EvalLimits()) -> SparqlQuer
             )
         raise SparqlSyntaxError(f"Unexpected term token {tok.value!r} at offset {tok.pos}")
 
-    # --- Filter expression recursive descent ---
 
     def parse_filter_expr(depth: int) -> FilterExpr:
         if depth > limits.max_ast_depth:
@@ -397,7 +393,6 @@ def parse_sparql(query: str, *, limits: EvalLimits = EvalLimits()) -> SparqlQuer
             return FilterVar(term_or_var.name)
         return FilterConst(term_or_var.term)
 
-    # --- Group Graph Pattern parser ---
 
     def parse_group_pattern(depth: int) -> GraphPattern:
         if depth > limits.max_ast_depth:
@@ -483,7 +478,6 @@ def parse_sparql(query: str, *, limits: EvalLimits = EvalLimits()) -> SparqlQuer
             result = FilterPattern(result, fexpr)
         return result
 
-    # --- Top-level prologue & SELECT ---
     while is_kw("PREFIX"):
         consume()
         p_tok = consume("PNAME")
@@ -572,7 +566,6 @@ def parse_sparql(query: str, *, limits: EvalLimits = EvalLimits()) -> SparqlQuer
     )
 
 
-# --- Evaluator ---
 
 def _collect_vars(pattern: GraphPattern, out: list[str]) -> None:
     def add_var(node: TermOrVar) -> None:
@@ -993,7 +986,6 @@ def evaluate_sparql(
 
     raw_rows = eval_pattern(ast.where)
 
-    # Determine projected variables.
     if ast.projection is not None:
         variables = ast.projection
     else:
@@ -1001,7 +993,6 @@ def evaluate_sparql(
         _collect_vars(ast.where, found_vars)
         variables = tuple(found_vars)
 
-    # Project and fold identical bindings using semiring_add (preserving exact N[X] multiplicity).
     grouped_bindings: dict[tuple, dict[str, RDFTerm | None]] = {}
     grouped_prov: dict[tuple, ProvExpr] = {}
     for binding, prov in raw_rows:

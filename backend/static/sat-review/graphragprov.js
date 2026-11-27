@@ -96,7 +96,6 @@
       root.replaceChildren();
       var shell = el('div', undefined, 'ws-shell');
 
-      // 1. Header bar
       var header = el('div', undefined, 'ws-header');
       var meta = el('div', undefined, 'ws-header-meta');
       meta.append(el('h2', 'GraphRAGProv · Grafo y proveniencia'));
@@ -131,7 +130,6 @@
       header.append(meta, actions);
       shell.append(header);
 
-      // 2. Query card
       var queryCard = el('div', undefined, 'ws-card prov-query-box');
       var queryHead = el('div', undefined, 'ws-card-head');
       queryHead.append(el('h3', 'Consulta SPARQL SELECT y compilador NL'));
@@ -189,10 +187,8 @@
       queryCard.append(refs.warnings);
       shell.append(queryCard);
 
-      // 3. Split workbench grid: Answer Bindings + SVG Graph
       var grid = el('div', undefined, 'prov-grid');
 
-      // Left: Answers & Polynomials
       var ansCard = el('div', undefined, 'ws-card');
       var ansHead = el('div', undefined, 'ws-card-head');
       ansHead.append(el('h3', 'Respuestas y polinomios de proveniencia N[X]'));
@@ -222,7 +218,6 @@
       ansCard.append(tableWrap);
       grid.append(ansCard);
 
-      // Right: Interactive SVG Graph
       var graphCard = el('div', undefined, 'ws-card');
       var graphHead = el('div', undefined, 'ws-card-head');
       graphHead.append(el('h3', 'Grafo de proveniencia RDF-star'));
@@ -259,7 +254,6 @@
       grid.append(graphCard);
       shell.append(grid);
 
-      // 4. Source Evidence Passage Viewer
       var passageCard = el('div', undefined, 'ws-card');
       var passageHead = el('div', undefined, 'ws-card-head');
       passageHead.append(el('h3', 'Evidencia en texto fuente'));
@@ -294,7 +288,6 @@
       passageCard.append(refs.passage);
       shell.append(passageCard);
 
-      // 5. Collapsible NPCS Polynomial Verifier
       var verifier = el('details', undefined, 'prov-verifier-details');
       verifier.append(el('summary', 'Verificador de polinomios NPCS (N[X])'));
       var vBody = el('div', undefined, 'prov-verifier-body');
@@ -918,12 +911,16 @@
       var offsets = buildCodepointOffsets(text);
       var cpLen = Math.max(0, offsets.length - 1);
 
+      var activeOccSource = (state.queryResult && state.queryResult.occurrences && Object.keys(state.queryResult.occurrences).length)
+        ? Object.values(state.queryResult.occurrences)
+        : Array.from(state.occurrencesByToken.values());
       var unitOccs = [];
-      state.occurrencesByToken.forEach(function (occ) {
+      for (var ui = 0; ui < activeOccSource.length; ui++) {
+        var occ = activeOccSource[ui];
         if (occ && occ.spans && occ.spans.component_id === unit.id) {
           unitOccs.push(occ);
         }
-      });
+      }
 
       var spanEntries = collectUnitSpanEntries(unit, unitOccs, cpLen);
       if (!spanEntries.length) {
@@ -1038,7 +1035,6 @@
     }
 
     function syncHighlightsAcrossPanels(scrollPassage) {
-      // Polynomial chips & monomial groups
       var tokenChips = refs.resultsTable.querySelectorAll('[data-token]');
       for (var i = 0; i < tokenChips.length; i++) {
         tokenChips[i].classList.toggle('prov-active', state.selectedTokens.has(tokenChips[i].dataset.token));
@@ -1054,7 +1050,6 @@
         rows[r].classList.toggle('prov-row-active', Number(rows[r].dataset.rowIndex) === state.selectedRowIndex);
       }
 
-      // SVG edges & nodes
       var svgEdges = refs.graphSvg.querySelectorAll('.prov-svg-edge[data-token]');
       var activeEdgeTokens = new Set();
       for (var e = 0; e < svgEdges.length; e++) {
@@ -1079,7 +1074,6 @@
         svgNodes[n].classList.toggle('prov-active', activeNodes.has(nid));
       }
 
-      // Auto-switch passage component if selected occurrence lives in another unit
       var switchedUnit = false;
       var selectedList = Array.from(state.selectedTokens);
       if (selectedList.length) {
@@ -1199,6 +1193,18 @@
           (result.nl_compiler && result.nl_compiler !== 'none' ? ' · ' + result.nl_compiler : '');
 
         showWarnings(result.warnings || []);
+        var queryOccList = result.occurrences ? Object.values(result.occurrences) : [];
+        if (queryOccList.length) {
+          var currentHasOcc = queryOccList.some(function (occ) {
+            return occ && occ.spans && occ.spans.component_id === state.selectedUnitId;
+          });
+          if (!currentHasOcc) {
+            var firstUnit = queryOccList[0] && queryOccList[0].spans ? queryOccList[0].spans.component_id : '';
+            if (firstUnit && state.sourceUnits.has(firstUnit)) {
+              state.selectedUnitId = firstUnit;
+            }
+          }
+        }
         renderUnitSelector();
         renderResultsTable();
         renderSvgGraph();

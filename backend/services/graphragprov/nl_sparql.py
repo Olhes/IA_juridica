@@ -252,7 +252,6 @@ def compile_nl_to_sparql_deterministic(
             )
             warnings.append("Se aplicó consulta estructural por defecto.")
 
-    # Guarantee generated SPARQL always passes the strict parser.
     parse_sparql(sparql)
     return sparql, warnings
 
