@@ -210,3 +210,80 @@ def test_bootstrap_overwrites_when_snapshot_hash_changes_and_skips_when_identica
     empty_conn = FakeConn(stored_sha=None, has_rev=False)
     assert mod.bootstrap(empty_conn, snap) == "restored"
     assert empty_conn.stored_sha == sha
+
+
+def test_split_insert_statement_splits_oversized_array_respecting_quotes():
+    obj_a = "{ id: sat_nodes:`a`, text: 'hola, } [mundo]' }"
+    obj_b = "{ id: sat_nodes:`b`, text: \"comilla \\\"interna\\\" }\" }"
+    obj_c = "{ id: sat_nodes:`c`, text: 'tercero' }"
+    stmt = f"INSERT [ {obj_a}, {obj_b}, {obj_c} ];"
+
+    parts = mod._split_insert_statement(stmt, max_bytes=len(obj_a) + 30)
+    assert len(parts) == 3
+    for part in parts:
+        assert part.startswith("INSERT [ ") and part.endswith(" ];")
+    assert obj_a in parts[0] and obj_b in parts[1] and obj_c in parts[2]
+
+
+def test_iter_statement_batches_groups_small_statements_and_separates_ddl(tmp_path):
+    snap = tmp_path / "batched.surql.gz"
+    with gzip.open(snap, "wt", encoding="utf-8") as out:
+        out.write("OPTION IMPORT;\n")
+        out.write("DEFINE TABLE sat_nodes SCHEMALESS;\n")
+        out.write("DEFINE INDEX idx_a ON sat_nodes COLUMNS nid;\n")
+        out.write("INSERT [ { id: sat_nodes:`1` } ];\n")
+        out.write("INSERT [ { id: sat_nodes:`2` } ];\n")
+
+    batches = list(mod._iter_statement_batches(snap, max_bytes=1024, max_statements=10))
+    assert len(batches) == 2
+    assert batches[0].startswith("DEFINE TABLE") and "DEFINE INDEX" in batches[0]
+    assert batches[1].startswith("INSERT [") and "sat_nodes:`2`" in batches[1]
+
+
+def test_bootstrap_records_sha_only_after_row_counts_pass(tmp_path):
+    counts = {tbl: 1 if tbl == "sat_nodes" else 0 for tbl in mod.SAT_TABLES}
+    snap = tmp_path / "fail_count.surql.gz"
+    with gzip.open(snap, "wt", encoding="utf-8") as out:
+        out.write(f"{mod.EXPECTED_ROWS_PREFIX}{json.dumps(counts)}\n")
+        out.write("DEFINE TABLE sat_nodes SCHEMALESS;\n")
+        out.write("INSERT [ { id: sat_nodes:`1`, kind: 'DocumentaryRevision' } ];\n")
+
+    class FakeQuery:
+        def __init__(self, result):
+            self._result = result
+
+        def execute(self):
+            return [self._result]
+
+    class FailingCountConn:
+        def __init__(self):
+            self.stored_sha = "stale-sha"
+            self.upserted = False
+
+        def timeout(self, _seconds):
+            return nullcontext()
+
+        def query(self, sql, params=None):
+            if sql == mod.REVISION_QUERY:
+                return FakeQuery([])
+            if "SELECT VALUE snapshot_sha256" in sql:
+                return FakeQuery([self.stored_sha] if self.stored_sha else [])
+            if "DELETE sat_bootstrap:seed" in sql:
+                self.stored_sha = None
+                return FakeQuery([])
+            if "UPSERT sat_bootstrap:seed" in sql:
+                self.upserted = True
+                return FakeQuery([])
+            if sql.startswith("REMOVE TABLE") or sql.startswith("DEFINE TABLE") or sql.startswith("INSERT "):
+                return FakeQuery([])
+            if "SELECT VALUE count() FROM sat_nodes" in sql:
+                return FakeQuery([0])
+            return FakeQuery([0])
+
+    conn = FailingCountConn()
+    with pytest.raises(RuntimeError, match="conteo esperado de sat_nodes"):
+        mod.bootstrap(conn, snap)
+    assert conn.stored_sha is None
+    assert conn.upserted is False
+
+

@@ -426,3 +426,14 @@ def test_hybrid_search_bounds_dense_candidates_and_skips_oversized_chunks(tmp_pa
     assert len(seen_rerank_sizes) >= 1
 
 
+def test_sat_retriever_zero_copy_mode_reuses_snapshot_and_explicit_revision(corpus):
+    store, _, new_id = corpus
+    snapshot = store.export()
+    engine = SATRetriever(snapshot, copy_snapshot=False, revision="chat:42")
+    assert engine.snapshot is snapshot
+    assert engine.revision == "chat:42"
+    result = engine.search(plan())
+    assert [hit["version_id"] for hit in result["hits"]] == [new_id]
+
+
+

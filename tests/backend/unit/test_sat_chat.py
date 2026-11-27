@@ -377,3 +377,47 @@ async def test_sat_chat_uses_voyage_hybrid_dense_and_rerank_and_falls_back_on_er
     assert rerank_trace["sat_result"]["dense_status"] == "not_run"
     assert rerank_trace["sat_result"]["rerank_status"] == "executed"
 
+
+def test_sat_chat_retriever_uses_zero_copy_only_when_chat_revision_present(tmp_path):
+    store = SATGraphStore(tmp_path / "zero_copy.sqlite3")
+    with store._transaction() as db:
+        store._node(db, "pe:ley:1", "Resource", {"title": "Ley 1"})
+        store._node(db, "work:a1", "Work", {"resource_id": "pe:ley:1", "component": "a1", "kind": "article", "label": "Art 1"})
+        store._node(db, "ctv:a1", "CTV", {"work_id": "work:a1", "scope": "PE", "provenance_state": "user_attested_snapshot", "snapshot_as_of": "2026-11-12", "valid_from": None, "valid_to": None, "checked_through": "2026-11-12", "review_id": "r"})
+        store._node(db, "clv:a1", "CLV", {"language": "es", "text": "Texto", "start": 0, "source_url": "https://example.org", "evidence_id": "e"})
+        store._edge(db, "ctv:a1", "has_text", "clv:a1", {})
+
+    chat = SATChatRetriever(store)
+    raw_snap = store.export()
+    copied = chat._retriever_for(raw_snap)
+    assert copied.snapshot is not raw_snap
+    assert not copied.revision.startswith("chat:")
+
+    rev_snap = {**store.export(), "chat_revision": 7}
+    reused = chat._retriever_for(rev_snap)
+    assert reused.snapshot is rev_snap
+    assert reused.revision == "chat:7"
+
+
+def test_prune_superseded_chat_graph_drops_superseded_ctvs_and_orphan_clvs():
+    from ingestion.sat_graph.surreal import _prune_superseded_chat_graph
+
+    nodes = [
+        {"id": "pe:ley:1", "type": "Resource", "title": "Ley 1"},
+        {"id": "work:a1", "type": "Work", "resource_id": "pe:ley:1", "kind": "article"},
+        {"id": "ctv:old", "type": "CTV", "work_id": "work:a1", "editorial_superseded_by": "ctv:new"},
+        {"id": "ctv:new", "type": "CTV", "work_id": "work:a1"},
+        {"id": "clv:old", "type": "CLV", "text": "old text"},
+        {"id": "clv:new", "type": "CLV", "text": "new text"},
+    ]
+    edges = [
+        {"id": "e1", "source": "ctv:old", "type": "has_text", "target": "clv:old", "evidence": {}},
+        {"id": "e2", "source": "ctv:new", "type": "has_text", "target": "clv:new", "evidence": {}},
+        {"id": "e3", "source": "ctv:old", "type": "contains_version", "target": "ctv:new", "evidence": {}},
+    ]
+
+    kept_nodes, kept_edges = _prune_superseded_chat_graph(nodes, edges)
+    assert {n["id"] for n in kept_nodes} == {"pe:ley:1", "work:a1", "ctv:new", "clv:new"}
+    assert [e["id"] for e in kept_edges] == ["e2"]
+
+

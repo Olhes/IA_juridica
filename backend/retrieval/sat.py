@@ -155,13 +155,20 @@ def eligible_version_ids(
 class SATRetriever:
     """Snapshot inmutable por consulta; ninguna búsqueda lee candidatos sin revisar."""
 
-    def __init__(self, snapshot: dict):
+    def __init__(
+        self,
+        snapshot: dict,
+        *,
+        copy_snapshot: bool = True,
+        revision: str | None = None,
+    ):
         # Desacoplar el fingerprint y la lectura de mutaciones externas posteriores.
-        from copy import deepcopy
+        if copy_snapshot:
+            from copy import deepcopy
 
-        snapshot = deepcopy(snapshot)
+            snapshot = deepcopy(snapshot)
         self.snapshot = snapshot
-        self.revision = fingerprint(snapshot)
+        self.revision = revision if revision is not None else fingerprint(snapshot)
         self.nodes = {node["id"]: node for node in snapshot["nodes"]}
         self.edges = snapshot["edges"]
         # Per immutable snapshot only: never reuse eligibility across revisions.

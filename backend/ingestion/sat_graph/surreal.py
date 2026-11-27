@@ -51,7 +51,7 @@ _INDEXES = (
 _SCHEMAS_READY: set[str] = set()
 _CHAT_CACHE = OrderedDict()
 _CHAT_CACHE_LOCK = RLock()
-_MAX_CHAT_CACHE_ENTRIES = 32
+_MAX_CHAT_CACHE_ENTRIES = 8
 _REVISION_RID = RecordID("sat_chat_revision", "1")
 
 # export() is revision-bound exactly like the chat snapshots: a write bumps the
@@ -70,6 +70,36 @@ def _revision_from_conn(conn):
     """Read the shared chat revision from a raw pooled connection."""
     rows = _q(conn, "SELECT revision FROM $rid LIMIT 1", {"rid": _REVISION_RID})
     return int(rows[0]["revision"]) if rows and rows[0].get("revision") is not None else 0
+
+
+def _prune_superseded_chat_graph(nodes: list[dict], edges: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Drop editorially superseded CTVs, orphan CLVs, and dangling edges from chat snapshots."""
+    kept_ctv_ids = {
+        node["id"]
+        for node in nodes
+        if node.get("type") == "CTV" and not node.get("editorial_superseded_by")
+    }
+    referenced_clv_ids = {
+        edge["target"]
+        for edge in edges
+        if edge.get("type") == "has_text" and edge.get("source") in kept_ctv_ids
+    }
+    kept_nodes = [
+        node
+        for node in nodes
+        if (
+            (node.get("type") == "CTV" and node["id"] in kept_ctv_ids)
+            or (node.get("type") == "CLV" and node["id"] in referenced_clv_ids)
+            or node.get("type") not in {"CTV", "CLV"}
+        )
+    ]
+    kept_node_ids = {node["id"] for node in kept_nodes}
+    kept_edges = [
+        edge
+        for edge in edges
+        if edge["source"] in kept_node_ids and edge["target"] in kept_node_ids
+    ]
+    return kept_nodes, kept_edges
 
 
 def _record_id(value):
@@ -856,6 +886,7 @@ class SurrealSATGraphStore(SATGraphStore):
             {"id": row["id"], "type": row["kind"], **json.loads(row["payload"])}
             for row in node_rows
         ]
+        del node_rows
         edges = [
             {
                 "id": row["id"],
@@ -866,6 +897,8 @@ class SurrealSATGraphStore(SATGraphStore):
             }
             for row in edge_rows
         ]
+        del edge_rows
+        nodes, edges = _prune_superseded_chat_graph(nodes, edges)
         nodes.sort(key=lambda node: node["id"])
         edges.sort(key=lambda edge: edge["id"])
         snapshot = {
@@ -874,6 +907,7 @@ class SurrealSATGraphStore(SATGraphStore):
             "nodes": nodes,
             "edges": edges,
             "documents": [],
+            "chat_revision": revision,
         }
         _cache_put(key, snapshot)
         return snapshot

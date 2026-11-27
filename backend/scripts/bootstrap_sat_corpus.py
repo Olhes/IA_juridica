@@ -38,8 +38,141 @@ EXPECTED_ROWS = {
 SAT_TABLES = tuple(EXPECTED_ROWS)
 EXPECTED_ROWS_PREFIX = "-- EXPECTED_ROWS: "
 REVISION_QUERY = "SELECT VALUE id FROM sat_nodes WHERE kind = 'DocumentaryRevision' LIMIT 1"
+DEFAULT_BATCH_MAX_BYTES = 512_000
+DEFAULT_BATCH_MAX_STATEMENTS = 25
 _EXPORT_LOCK = threading.Lock()
 _SECTION_TABLE_RE = re.compile(r"^--\s+TABLE(?:\s+DATA)?:\s+(\S+)\s*$")
+_INSERT_ARRAY_PREFIX_RE = re.compile(r"^INSERT\s+\[")
+_OUTSIDE_DELIM_RE = re.compile(r"""['"`{}\[\]]""")
+_QUOTE_DELIM_RES = {
+    "'": re.compile(r"['\\]"),
+    '"': re.compile(r'["\\]'),
+    "`": re.compile(r"[`\\]"),
+}
+
+
+def _split_insert_statement(
+    statement: str,
+    max_bytes: int = DEFAULT_BATCH_MAX_BYTES,
+) -> list[str]:
+    """Split oversized ``INSERT [ {...}, ... ];`` statements into bounded array chunks."""
+    if len(statement.encode("utf-8")) <= max_bytes:
+        return [statement]
+    match = _INSERT_ARRAY_PREFIX_RE.match(statement)
+    if not match or not statement.endswith("];"):
+        return [statement]
+
+    body = statement[match.end() : -2]
+    body_len = len(body)
+    objects: list[str] = []
+    in_quote: str | None = None
+    depth = 0
+    obj_start: int | None = None
+    pos = 0
+
+    while pos < body_len:
+        if in_quote is not None:
+            m = _QUOTE_DELIM_RES[in_quote].search(body, pos)
+            if m is None:
+                return [statement]
+            ch = m.group(0)
+            if ch == "\\":
+                pos = m.end() + 1
+            else:
+                in_quote = None
+                pos = m.end()
+            continue
+
+        m = _OUTSIDE_DELIM_RE.search(body, pos)
+        if m is None:
+            break
+        idx = m.start()
+        ch = m.group(0)
+        pos = m.end()
+        if ch in ("'", '"', "`"):
+            in_quote = ch
+        elif ch == "{":
+            if depth == 0:
+                obj_start = idx
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth < 0:
+                return [statement]
+            if depth == 0 and obj_start is not None:
+                objects.append(body[obj_start : idx + 1].strip())
+                obj_start = None
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth < 0:
+                return [statement]
+
+    if in_quote is not None or depth != 0 or not objects:
+        return [statement]
+
+    chunks: list[str] = []
+    current: list[str] = []
+    # Fixed wrapper size for "INSERT [ " + " ];"
+    wrapper_bytes = 12
+    current_bytes = wrapper_bytes
+
+    for obj in objects:
+        obj_bytes = len(obj.encode("utf-8"))
+        sep_bytes = 2 if current else 0
+        if current and current_bytes + sep_bytes + obj_bytes > max_bytes:
+            chunks.append(f"INSERT [ {', '.join(current)} ];")
+            current = [obj]
+            current_bytes = wrapper_bytes + obj_bytes
+        else:
+            current.append(obj)
+            current_bytes += sep_bytes + obj_bytes
+
+    if current:
+        chunks.append(f"INSERT [ {', '.join(current)} ];")
+    return chunks
+
+
+def _statement_kind(statement: str) -> str:
+    return "insert" if statement.startswith("INSERT ") else "ddl"
+
+
+def _iter_statement_batches(
+    snapshot: Path,
+    *,
+    max_bytes: int = DEFAULT_BATCH_MAX_BYTES,
+    max_statements: int = DEFAULT_BATCH_MAX_STATEMENTS,
+):
+    """Yield bounded SurrealQL batches, keeping DDL separate from INSERT batches."""
+    batch: list[str] = []
+    batch_bytes = 0
+    batch_kind: str | None = None
+
+    with gzip.open(snapshot, "rt", encoding="utf-8") as statements:
+        for line in statements:
+            raw_statement = line.strip()
+            if not raw_statement or raw_statement.startswith("--") or raw_statement == "OPTION IMPORT;":
+                continue
+            for statement in _split_insert_statement(raw_statement, max_bytes=max_bytes):
+                kind = _statement_kind(statement)
+                stmt_bytes = len(statement.encode("utf-8"))
+                sep_bytes = 1 if batch else 0
+                if batch and (
+                    kind != batch_kind
+                    or len(batch) >= max_statements
+                    or batch_bytes + sep_bytes + stmt_bytes > max_bytes
+                ):
+                    yield "\n".join(batch)
+                    batch = []
+                    batch_bytes = 0
+                    batch_kind = None
+                batch.append(statement)
+                batch_bytes += (1 if len(batch) > 1 else 0) + stmt_bytes
+                batch_kind = kind
+
+    if batch:
+        yield "\n".join(batch)
 
 
 def _has_revisions(connection) -> bool:
@@ -184,7 +317,13 @@ def export_snapshot(snapshot: Path = SNAPSHOT, *, database: str = "sat_graph") -
         return counts
 
 
-def bootstrap(connection, snapshot: Path = SNAPSHOT) -> str:
+def bootstrap(
+    connection,
+    snapshot: Path = SNAPSHOT,
+    *,
+    max_batch_bytes: int = DEFAULT_BATCH_MAX_BYTES,
+    max_batch_statements: int = DEFAULT_BATCH_MAX_STATEMENTS,
+) -> str:
     snapshot_sha = _snapshot_sha256(snapshot)
     if _has_revisions(connection) and _recorded_snapshot_sha256(connection) == snapshot_sha:
         return "present"
@@ -192,32 +331,30 @@ def bootstrap(connection, snapshot: Path = SNAPSHOT) -> str:
     expected_rows = _parse_expected_rows(snapshot)
     had_revisions = _has_revisions(connection)
 
-    # Drop existing canonical tables before starting the import transaction:
-    # SurrealDB forbids DEFINE INDEX in the same transaction that deleted rows
-    # from that table. Clearing snapshot_sha256 first ensures any interrupted
-    # update retries cleanly on the next boot.
+    # Drop existing canonical tables before replaying DDL/data batches.
+    # Clearing snapshot_sha256 first ensures any interrupted run retries cleanly
+    # on the next boot without wrapping the entire multi-megabyte import in one
+    # giant remote transaction.
     with connection.timeout(300):
         connection.query("DEFINE TABLE IF NOT EXISTS sat_bootstrap SCHEMALESS").execute()
         connection.query("DELETE sat_bootstrap:seed").execute()
         for table in expected_rows:
             connection.query(f"REMOVE TABLE IF EXISTS {table}").execute()
 
-    with connection.timeout(300), connection.begin_transaction() as transaction:
-        _record_snapshot_sha256(transaction, snapshot_sha)
-
-        # The native export emits one DEFINE or INSERT per line. Replay each
-        # statement in the same transaction to limit the size of each RPC.
-        with gzip.open(snapshot, "rt", encoding="utf-8") as statements:
-            for line in statements:
-                statement = line.strip()
-                if statement and not statement.startswith("--") and statement != "OPTION IMPORT;":
-                    transaction.query(statement).execute()
+    with connection.timeout(300):
+        for batch in _iter_statement_batches(
+            snapshot,
+            max_bytes=max_batch_bytes,
+            max_statements=max_batch_statements,
+        ):
+            connection.query(batch).execute()
         for table, expected in expected_rows.items():
-            rows = transaction.query(f"SELECT VALUE count() FROM {table} GROUP ALL").execute()[0]
+            rows = connection.query(f"SELECT VALUE count() FROM {table} GROUP ALL").execute()[0]
             if (rows[0] if rows else 0) != expected:
                 raise RuntimeError(f"El respaldo SAT no coincide con el conteo esperado de {table}.")
-        if not _has_revisions(transaction):
+        if not _has_revisions(connection):
             raise RuntimeError("El respaldo SAT no contiene revisiones publicadas.")
+        _record_snapshot_sha256(connection, snapshot_sha)
     return "updated" if had_revisions else "restored"
 
 

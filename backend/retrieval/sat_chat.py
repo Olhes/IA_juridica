@@ -207,7 +207,15 @@ class SATChatRetriever:
             if entry is not None and entry[0] is snapshot:
                 self._retrievers.move_to_end(key)
                 return entry[1]
-            retriever = SATRetriever(snapshot)
+            chat_rev = snapshot.get("chat_revision") if isinstance(snapshot, dict) else None
+            if chat_rev is not None:
+                retriever = SATRetriever(
+                    snapshot,
+                    copy_snapshot=False,
+                    revision=f"chat:{chat_rev}",
+                )
+            else:
+                retriever = SATRetriever(snapshot)
             self._retrievers[key] = (snapshot, retriever)
             self._retrievers.move_to_end(key)
             while len(self._retrievers) > 2:
