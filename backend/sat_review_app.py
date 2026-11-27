@@ -21,6 +21,8 @@ from ingestion.sat_graph.runtime import runtime_sat_store
 from services.quality_access import require_quality_admin
 from services.sat_corpus_routes import router as review_router
 from services.sat_api import router as api_router
+from services.sat_provenance_routes import router as provenance_router
+from services.sat_temporal_routes import router as temporal_router
 
 
 def create_local_app(token):
@@ -57,6 +59,8 @@ def create_local_app(token):
 
     app.include_router(review_router)
     app.include_router(api_router)
+    app.include_router(provenance_router)
+    app.include_router(temporal_router)
     return app
 
 

@@ -16,8 +16,24 @@
       rel="stylesheet"
       href="/sat-graph/review/assets/editor.css"
     />
+    <link
+      rel="stylesheet"
+      href="/sat-graph/review/assets/workstation-panels.css"
+    />
+    <script
+      src="/sat-graph/review/assets/temporal-engine.js"
+      defer
+    ></script>
     <script
       src="/sat-graph/review/assets/editor.js"
+      defer
+    ></script>
+    <script
+      src="/sat-graph/review/assets/graphragprov.js"
+      defer
+    ></script>
+    <script
+      src="/sat-graph/review/assets/temporal-viewer.js"
       defer
     ></script>
   </head>
@@ -159,6 +175,22 @@
               aria-selected="false"
             >
               Historial
+            </button><button
+              type="button"
+              role="tab"
+              id="tab-provenance"
+              data-tab="provenance"
+              aria-selected="false"
+            >
+              Grafo &amp; Proveniencia
+            </button><button
+              type="button"
+              role="tab"
+              id="tab-temporal"
+              data-tab="temporal"
+              aria-selected="false"
+            >
+              Línea temporal SAT
             </button>
           </div>
           <button id="toggle-inspector" type="button" aria-controls="component-inspector" aria-expanded="true">Ocultar inspector</button>
@@ -252,6 +284,20 @@
                 <div id="all-versions"></div>
               </details>
             </div>
+            <div
+              id="provenance-view"
+              class="view"
+              role="tabpanel"
+              aria-labelledby="tab-provenance"
+              hidden
+            ></div>
+            <div
+              id="temporal-view"
+              class="view"
+              role="tabpanel"
+              aria-labelledby="tab-temporal"
+              hidden
+            ></div>
           </section>
           <aside id="component-inspector" class="inspector">
             <div class="inspector-heading">

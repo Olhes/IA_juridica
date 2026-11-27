@@ -65,6 +65,8 @@ from security import (
 from services.quality_reports import admin_overview, load_published
 from services.sat_api import router as sat_api_router
 from services.sat_corpus_routes import router as sat_corpus_router
+from services.sat_provenance_routes import router as sat_provenance_router
+from services.sat_temporal_routes import router as sat_temporal_router
 
 DOCS_DIR = PROJECT_ROOT / "docs"
 RAW_PDFS_DIR = DOCS_DIR / "raw_pdfs"
@@ -358,6 +360,8 @@ app.include_router(sat_admin_router)
 if settings.RAG_ENGINE.lower() == "sat":
     app.include_router(sat_corpus_router)
     app.include_router(sat_api_router)
+    app.include_router(sat_provenance_router)
+    app.include_router(sat_temporal_router)
 
 
 @app.exception_handler(DatabaseUnavailableError)

@@ -8,6 +8,40 @@ let draftById = new Map(), draftChildren = new Map(), draftOrderedRows = [], row
 let currentVersions = new Map(), historyDocument = null, historyRenderToken = 0;
 let candidates = [], showingCandidates = false;
 let parentSelectHydratedFor = null, searchDebounceTimer = null;
+const ALL_TABS = ['structure', 'markdown', 'history', 'provenance', 'temporal'];
+const FULL_WIDTH_TABS = new Set(['provenance', 'temporal']);
+let activeTab = 'structure', inspectorUserCollapsed = false, inspectorAutoHidden = false;
+const docListeners = new Set(), draftListeners = new Set(), tabListeners = new Map();
+function getBridgeContext(){
+  return {doc,draft,dirty,selectedComponentId:selected,docCpOffsets,draftCpOffsets};
+}
+function emitDocumentLoaded(){
+  const ctx=getBridgeContext();
+  for(const cb of docListeners){try{cb(ctx);}catch{/* listener isolation */}}
+}
+function emitDraftChanged(){
+  const ctx=getBridgeContext();
+  for(const cb of draftListeners){try{cb(ctx);}catch{/* listener isolation */}}
+}
+function emitTabActivated(tab){
+  const ctx=getBridgeContext();
+  for(const key of [tab,'*']){
+    const set=tabListeners.get(key);
+    if(!set)continue;
+    for(const cb of set){try{cb(ctx,tab);}catch{/* listener isolation */}}
+  }
+}
+function applyInspectorVisibility(collapsed){
+  const inspector=$('component-inspector');
+  if(!inspector)return;
+  inspector.hidden=collapsed;
+  $('review-grid')?.classList.toggle('inspector-collapsed',collapsed);
+  const toggle=$('toggle-inspector');
+  if(toggle){
+    toggle.setAttribute('aria-expanded',String(!collapsed));
+    toggle.textContent=collapsed?'Mostrar inspector':'Ocultar inspector';
+  }
+}
 const positionKey='sat-review-position-v1';
 function readPosition(){
   try{return JSON.parse(localStorage.getItem(positionKey))||{};}catch{return {};}
@@ -188,9 +222,10 @@ function showDocument(next,position=null){
     $('component-count').textContent=doc.components;$('retrievable-count').textContent=doc.retrievable;$('version-count').textContent=doc.versions.length;
     $('full-markdown').value=draft?.markdown||'Sin edición documental asociada. Consulta todas las versiones en Historial.';
     libraryRender();renderTree();renderInspector();
-    setTab(['structure','markdown','history'].includes(position?.tab)?position.tab:'structure');setDirty(false);
+    setTab(ALL_TABS.includes(position?.tab)?position.tab:'structure');setDirty(false);
     if(position?.node&&selected===position.node&&position.tab==='structure')
       rowElements.get(selected)?.scrollIntoView?.({block:'nearest'});
+    emitDocumentLoaded();
 }
 function syncSelectionRow(previousId,nextId){
   const prev=previousId?rowElements.get(previousId):null;
@@ -388,7 +423,7 @@ function updateDraft(edition){
   syncDraftIndex();
   grouping.clear();formDirty=false;
   $('full-markdown').value=draft.markdown;
-  setDirty(true);renderTree();renderInspector();
+  setDirty(true);renderTree();renderInspector();emitDraftChanged();
 }
 async function moveToParent(sourceId,parentId){
   if(busy||!doc?.editable||!draft)return;
@@ -444,6 +479,7 @@ async function stage(event){
     if(removed||parentId!==originalParent||textChanged||wasDirty!==dirty||!updateRowInPlace(n)){
       renderTree();
     }
+    emitDraftChanged();
     notice(removed?`Borrador guardado: se retiraron ${removed} nodo(s) cuyo texto borraste por completo.`:'Cambios guardados automáticamente en el borrador.');
     return true;
   }catch(error){if(generation===inspectorGeneration)notice(error.message,true);return false;}
@@ -514,7 +550,37 @@ $('all-versions').addEventListener('toggle',event=>{
   const v=doc?.versions?.[index];
   if(v)void hydrateVersionDetails(details,v);
 },true);
-function setTab(tab){for(const b of document.querySelectorAll('[data-tab]'))b.setAttribute('aria-selected',String(b.dataset.tab===tab));for(const name of ['structure','markdown','history'])$(name+'-view').hidden=name!==tab;if(tab==='history'&&doc&&historyDocument!==doc){void renderHistory();historyDocument=doc;}savePosition();}
+function setTab(tab){
+  activeTab=tab;
+  for(const b of document.querySelectorAll('[data-tab]')){
+    const isSelected=b.dataset.tab===tab;
+    b.setAttribute('aria-selected',String(isSelected));
+    if(isSelected&&typeof b.scrollIntoView==='function'){
+      try{b.scrollIntoView({block:'nearest',inline:'nearest',container:'nearest'});}
+      catch{b.scrollIntoView({block:'nearest',inline:'nearest'});}
+    }
+  }
+  for(const name of ALL_TABS){
+    const view=$(name+'-view');
+    if(view)view.hidden=name!==tab;
+  }
+  const inspector=$('component-inspector');
+  if(inspector){
+    if(FULL_WIDTH_TABS.has(tab)){
+      if(!inspectorAutoHidden){
+        inspectorUserCollapsed=Boolean(inspector.hidden);
+        inspectorAutoHidden=true;
+      }
+      applyInspectorVisibility(true);
+    }else if(inspectorAutoHidden){
+      inspectorAutoHidden=false;
+      applyInspectorVisibility(inspectorUserCollapsed);
+    }
+  }
+  if(tab==='history'&&doc&&historyDocument!==doc){void renderHistory();historyDocument=doc;}
+  savePosition();
+  emitTabActivated(tab);
+}
 async function publish(){
   if(busy||!doc?.editable||!draft)return;
   if(formDirty&&!(await stage()))return;
@@ -711,14 +777,46 @@ $('reload').onclick=()=>{if(canLeave())connect();};$('retry').onclick=connect;
 $('toggle-inspector').onclick = () => {
   const inspector = $('component-inspector');
   const collapsed = !inspector.hidden;
-  inspector.hidden = collapsed;
-  $('review-grid').classList.toggle('inspector-collapsed', collapsed);
-  $('toggle-inspector').setAttribute('aria-expanded', String(!collapsed));
-  $('toggle-inspector').textContent = collapsed ? 'Mostrar inspector' : 'Ocultar inspector';
+  inspectorUserCollapsed = collapsed;
+  inspectorAutoHidden = false;
+  applyInspectorVisibility(collapsed);
 };
 $('collapse-inspector').onclick = () => {
   $('toggle-inspector').click();
   $('toggle-inspector').focus();
 };
+function jumpToComponent(componentId){
+  if(!componentId||!draftById.has(componentId))return false;
+  let parent=draftById.get(componentId)?.parent_id, unfolded=false;
+  while(parent&&draftById.has(parent)){
+    if(folded.delete(parent))unfolded=true;
+    parent=draftById.get(parent).parent_id;
+  }
+  setTab('structure');
+  if(unfolded)renderTree();
+  void selectNode(componentId);
+  rowElements.get(componentId)?.scrollIntoView?.({block:'nearest'});
+  return true;
+}
+if(typeof window!=='undefined'){
+  window.SATReviewBridge=Object.freeze({
+    getContext:getBridgeContext,
+    onDocumentLoaded(cb){if(typeof cb==='function')docListeners.add(cb);return ()=>docListeners.delete(cb);},
+    onDraftChanged(cb){if(typeof cb==='function')draftListeners.add(cb);return ()=>draftListeners.delete(cb);},
+    onTabActivated(tabName,cb){
+      if(typeof cb!=='function')return ()=>{};
+      const key=tabName||'*';
+      let set=tabListeners.get(key);
+      if(!set){set=new Set();tabListeners.set(key,set);}
+      set.add(cb);
+      return ()=>set.delete(cb);
+    },
+    jumpToComponent,
+    notify(msg,isError){notice(msg,Boolean(isError));},
+    request,
+    post,
+    buildCpOffsets,
+  });
+}
 window.addEventListener('beforeunload',event=>{if(dirty||formDirty){event.preventDefault();event.returnValue='';}});
 connect();

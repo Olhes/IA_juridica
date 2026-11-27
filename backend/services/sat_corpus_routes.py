@@ -81,9 +81,20 @@ async def page():
         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
+ALLOWED_ASSETS = frozenset({
+    "editor.js",
+    "editor.css",
+    "favicon.svg",
+    "workstation-panels.css",
+    "temporal-engine.js",
+    "temporal-viewer.js",
+    "graphragprov.js",
+})
+
+
 @router.get("/assets/{name}", include_in_schema=False)
 async def asset(name: str):
-    if name not in {"editor.js", "editor.css", "favicon.svg"}:
+    if name not in ALLOWED_ASSETS:
         raise HTTPException(404)
     return FileResponse(ASSETS / name, headers={"Cache-Control": "private, no-cache"})
 
