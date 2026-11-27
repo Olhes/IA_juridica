@@ -62,6 +62,7 @@ kv_store_llm_response_cache.json
 /logs/*-runtime*.log
 /logs/sonar-start*.log
 /backend/temp/**
+odd/
 # production
 /build
 
