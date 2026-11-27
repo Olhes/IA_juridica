@@ -452,8 +452,9 @@ def test_compact_snapshot_prunes_superseded_and_audit_data_and_trims_containers(
         "{ id: sat_nodes:`9`, nid: 'clv:new', kind: 'CLV', payload: '{\"text\":\"articulo completo vigente\"}' }, "
         "{ id: sat_nodes:`10`, nid: 'clv:tit1', kind: 'CLV', payload: " + repr(json.dumps({"text": long_container})) + " }, "
         "{ id: sat_nodes:`11`, nid: 'rev:old', kind: 'DocumentaryRevision', payload: '{\"editorial_superseded_by\":\"rev:new\",\"markdown\":\"old md\"}' }, "
-        "{ id: sat_nodes:`12`, nid: 'rev:new', kind: 'DocumentaryRevision', payload: '{\"review_hash\":\"h1\",\"markdown\":\"huge full markdown\"}' }, "
+        "{ id: sat_nodes:`12`, nid: 'rev:new', kind: 'DocumentaryRevision', payload: '{\"review_hash\":\"h1\",\"markdown\":\"active full markdown\"}' }, "
         "{ id: sat_nodes:`13`, nid: 'dc:new', kind: 'DocumentaryComponent', payload: '{\"revision_id\":\"rev:new\"}' }, "
+        "{ id: sat_nodes:`15`, nid: 'dc:old', kind: 'DocumentaryComponent', payload: '{\"revision_id\":\"rev:old\"}' }, "
         "{ id: sat_nodes:`14`, nid: 'er:new', kind: 'EditorialReview', payload: '{\"revision_id\":\"rev:new\"}' } "
         "];\n",
         "-- TABLE: sat_edges\n",
@@ -463,7 +464,8 @@ def test_compact_snapshot_prunes_superseded_and_audit_data_and_trims_containers(
         "{ id: sat_edges:`1`, predicate: 'has_text', source: 'ctv:old', target: 'clv:old', payload: '{\"audit\":1}' }, "
         "{ id: sat_edges:`2`, predicate: 'has_text', source: 'ctv:new', target: 'clv:new', payload: '{\"audit\":1}' }, "
         "{ id: sat_edges:`3`, predicate: 'has_text', source: 'ctv:tit1', target: 'clv:tit1', payload: '{\"audit\":1}' }, "
-        "{ id: sat_edges:`4`, predicate: 'part_of_revision', source: 'dc:new', target: 'rev:new', payload: '{\"audit\":1}' } "
+        "{ id: sat_edges:`4`, predicate: 'part_of_revision', source: 'dc:new', target: 'rev:new', payload: '{\"audit\":1}' }, "
+        "{ id: sat_edges:`5`, predicate: 'derived_from_documentary', source: 'ctv:new', target: 'dc:new', payload: '{\"audit\":1}' } "
         "];\n",
     ]
     with gzip.open(snap, "wt", encoding="utf-8", newline="\n") as out:
@@ -471,15 +473,15 @@ def test_compact_snapshot_prunes_superseded_and_audit_data_and_trims_containers(
 
     counts = mod.compact_snapshot(snap)
     assert counts["sat_documents"] == 0
-    assert counts["sat_nodes"] == 8
-    assert counts["sat_edges"] == 2
+    assert counts["sat_nodes"] == 9
+    assert counts["sat_edges"] == 3
     assert mod._parse_expected_rows(snap) == counts
 
     with gzip.open(snap, "rt", encoding="utf-8") as stream:
         body = stream.read()
-    for kept in ("pe:ley:1", "work:active", "work:tit1", "ctv:new", "ctv:tit1", "clv:new", "clv:tit1", "rev:new", "articulo completo vigente", "TÍTULO I ALIMENTOS"):
+    for kept in ("pe:ley:1", "work:active", "work:tit1", "ctv:new", "ctv:tit1", "clv:new", "clv:tit1", "rev:new", "dc:new", "derived_from_documentary", "active full markdown", "articulo completo vigente", "TÍTULO I ALIMENTOS"):
         assert kept in body
-    for dropped in ("work:orphan", "ctv:old", "clv:old", "rev:old", "dc:new", "er:new", "part_of_revision", "huge full markdown", "huge doc", '"audit":1'):
+    for dropped in ("work:orphan", "ctv:old", "clv:old", "rev:old", "dc:old", "er:new", "part_of_revision", "huge doc", '"audit":1'):
         assert dropped not in body
     assert "INSERT [ INSERT [" not in body
     emitted_objs = sum(

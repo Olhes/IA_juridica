@@ -128,7 +128,9 @@ def _replace_surql_payload(obj: str, payload: dict) -> str:
 
 
 _ELIGIBLE_WORK_KINDS = frozenset({"article", "numeral", "inciso", "subinciso", "disposition"})
-_CHAT_EDGE_PREDICATES = frozenset({"has_text", "contains_version", "amended_by"})
+_CHAT_EDGE_PREDICATES = frozenset(
+    {"has_text", "contains_version", "amended_by", "documentary_has_part", "derived_from_documentary"}
+)
 
 
 def _extract_insert_objects(statement: str) -> list[str] | None:
@@ -643,13 +645,14 @@ def compact_snapshot(snapshot: Path = SNAPSHOT) -> dict[str, int]:
         clv_is_container[tgt] = clv_is_container.get(tgt, True) and is_container
 
     kept_nodes: set[str] = set()
-    for nid, (k, _p) in nodes_meta.items():
+    for nid, (k, p) in nodes_meta.items():
         if (
             k == "Resource"
             or (k == "Work" and nid in active_works)
             or (k == "CTV" and nid in active_ctvs)
             or (k == "CLV" and nid in referenced_clvs)
             or (k == "DocumentaryRevision" and nid in active_revs)
+            or (k == "DocumentaryComponent" and p.get("revision_id") in active_revs)
         ):
             kept_nodes.add(nid)
 
@@ -679,9 +682,7 @@ def compact_snapshot(snapshot: Path = SNAPSHOT) -> dict[str, int]:
                     if nid not in kept_nodes:
                         continue
                     kind, payload = nodes_meta[nid]
-                    if kind == "DocumentaryRevision" and payload.get("markdown"):
-                        obj = _replace_surql_payload(obj, {**payload, "markdown": ""})
-                    elif kind == "CLV" and clv_is_container.get(nid):
+                    if kind == "CLV" and clv_is_container.get(nid):
                         text = payload.get("text") or ""
                         snippet = "\n".join(text.splitlines()[:3])
                         if len(snippet) > 250:

@@ -59,8 +59,8 @@ function setDirty(recompute=true) {
   $('discard').disabled=!(dirty||formDirty)||busy;
 }
 function versionFor(n) {return currentVersions.get(n.id);}
-function textFor(n) {return sliceDraft(n.start,n.end);}
-function previewFor(n) {return sliceDraft(n.start,Math.min(n.end,n.start+150));}
+function textFor(n) {return sliceDraft(n.start,n.end)||versionFor(n)?.texts?.[0]?.text||'';}
+function previewFor(n) {return sliceDraft(n.start,Math.min(n.end,n.start+150))||(versionFor(n)?.texts?.[0]?.text||'').slice(0,150);}
 function options(select, entries, value) {
   const frag=document.createDocumentFragment();
   for(const [id,label] of entries){const option=el('option',label);option.value=id;frag.append(option);}
@@ -156,7 +156,7 @@ async function openDocument(id,position=null){
     const next=await request(`${BASE}/documents/${encodeURIComponent(id)}?include_texts=false`);
     // Editable documents derive active texts directly from edition.markdown;
     // only non-editable documents without an edition hydrate active texts eagerly.
-    if(!next.edition){
+    if(!next.edition||!next.edition.markdown){
       const current=next.versions.filter(v=>!v.archived);
       const texts=current.length?await post(`${API}/text-units/batch-get`,{versionIds:current.map(v=>v.id),language:'es'}):[];
       const byVersion=new Map();

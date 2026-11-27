@@ -14,8 +14,9 @@ BACKEND_DIR = REPO_ROOT / "backend"
 SNAPSHOT = BACKEND_DIR / "docs" / "sat_graph.surql.gz"
 
 MAX_SNAPSHOT_GZ_BYTES = 12 * 1024 * 1024
-MAX_SNAPSHOT_RAW_BYTES = 40 * 1024 * 1024
+MAX_SNAPSHOT_RAW_BYTES = 50 * 1024 * 1024
 MAX_INSERT_LINE_BYTES = 600_000
+MAX_SINGLE_OBJECT_LINE_BYTES = 1_500_000
 
 
 def test_sat_snapshot_is_compact_valid_and_free_of_superseded_bloat():
@@ -49,12 +50,13 @@ def test_sat_snapshot_is_compact_valid_and_free_of_superseded_bloat():
                 f"Nested INSERT wrapper at {SNAPSHOT.name}:{lineno}. "
                 "Use bootstrap_sat_corpus._extract_insert_objects and _pack_insert_objects."
             )
-            assert line_bytes <= MAX_INSERT_LINE_BYTES, (
-                f"Line {lineno} in {SNAPSHOT.name} is {line_bytes} bytes "
-                f"(cap {MAX_INSERT_LINE_BYTES}). Run `bootstrap_sat_corpus.py --compact`."
-            )
             objs = bootstrap_mod._extract_insert_objects(stripped)
             assert objs, f"Unparseable INSERT statement at {SNAPSHOT.name}:{lineno}."
+            line_cap = MAX_SINGLE_OBJECT_LINE_BYTES if len(objs) == 1 else MAX_INSERT_LINE_BYTES
+            assert line_bytes <= line_cap, (
+                f"Line {lineno} in {SNAPSHOT.name} ({len(objs)} objs) is {line_bytes} bytes "
+                f"(cap {line_cap}). Run `bootstrap_sat_corpus.py --compact`."
+            )
             emitted_objects += len(objs)
             if cur_table == "sat_nodes":
                 for obj in objs:
